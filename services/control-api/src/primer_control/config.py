@@ -23,6 +23,11 @@ class Settings(BaseSettings):
 
     auth_mode: AuthMode = "disabled"
 
+    database_url: str = Field(
+        default="postgresql+asyncpg://primer:primer@localhost:5432/primer",
+        description="PostgreSQL URL; migrations are applied out of band, never at startup",
+    )
+
     subject_header: str = Field(
         default="X-Auth-Request-User",
         description="Edge-injected header carrying the stable OIDC subject",
