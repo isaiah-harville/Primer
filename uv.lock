@@ -1720,6 +1720,7 @@ source = { editable = "services/control-api" }
 dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
+    { name = "celery" },
     { name = "fastapi" },
     { name = "primer-contracts" },
     { name = "primer-storage" },
@@ -1742,6 +1743,7 @@ server = [
 requires-dist = [
     { name = "alembic" },
     { name = "asyncpg" },
+    { name = "celery" },
     { name = "fastapi" },
     { name = "primer-contracts", editable = "packages/contracts" },
     { name = "primer-storage", editable = "packages/storage" },

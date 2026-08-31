@@ -43,6 +43,11 @@ class Settings(BaseSettings):
         description="Read size for streaming uploads and downloads; bounds per-request memory",
     )
 
+    broker_url: str | None = Field(
+        default=None,
+        description="RabbitMQ URL for ingestion work; unset leaves uploaded jobs queued",
+    )
+
     internal_api_token: SecretStr | None = Field(
         default=None,
         description="Shared credential for the cluster-internal worker API; unset denies it",

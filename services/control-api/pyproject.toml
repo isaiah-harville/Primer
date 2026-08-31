@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic",
     "asyncpg",
+    "celery",
     "fastapi",
     "primer-contracts",
     "primer-storage",

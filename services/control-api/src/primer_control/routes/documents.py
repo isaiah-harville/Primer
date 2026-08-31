@@ -13,10 +13,20 @@ from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from primer_contracts.documents import DocumentSummary, IngestionStatus
 from primer_contracts.errors import ErrorCode
+from primer_contracts.ingestion import StageName
 from primer_storage import QuotaExceeded, SourceStore, SourceStoreError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +34,7 @@ from primer_control.db import get_session
 from primer_control.errors import ProblemError
 from primer_control.identity import CurrentPrincipal
 from primer_control.models import Document, Library
+from primer_control.publisher import JobPublisher
 from primer_control.repositories.documents import DocumentRecord, DocumentRepository
 from primer_control.repositories.libraries import LibraryRepository
 from primer_control.services.library_access import LibraryAccess
@@ -41,7 +52,13 @@ def get_source_store(request: Request) -> SourceStore:
     return store
 
 
+def get_publisher(request: Request) -> JobPublisher:
+    publisher: JobPublisher = request.app.state.publisher
+    return publisher
+
+
 Store = Annotated[SourceStore, Depends(get_source_store)]
+Publisher = Annotated[JobPublisher, Depends(get_publisher)]
 Upload = Annotated[UploadFile, File(description="The source file to ingest")]
 
 
@@ -106,6 +123,19 @@ def summarize(record: DocumentRecord) -> DocumentSummary:
     )
 
 
+def enqueue(background: BackgroundTasks, publisher: JobPublisher, record: DocumentRecord) -> None:
+    """Queue the new version's ingestion, after the upload has committed.
+
+    A background task runs once the response is on its way, which is after
+    the session dependency committed. Publishing inline would risk a message
+    outliving a rolled-back upload, and a worker claiming a job that never
+    existed.
+    """
+    if record.job is None:  # pragma: no cover - every version is created with a job
+        return
+    background.add_task(publisher.publish, StageName.PARSE, record.job.id)
+
+
 async def _chunks(upload: UploadFile, size: int) -> AsyncIterator[bytes]:
     while True:
         chunk = await upload.read(size)
@@ -168,12 +198,15 @@ async def upload_document(
     principal: CurrentPrincipal,
     session: Session,
     store: Store,
+    publisher: Publisher,
+    background: BackgroundTasks,
     file: Upload,
 ) -> DocumentSummary:
     await require_library(library_id, principal.user_id, session)
     record = await store_version(
         document=None, library_id=library_id, upload=file, store=store, session=session
     )
+    enqueue(background, publisher, record)
     return summarize(record)
 
 
@@ -188,6 +221,8 @@ async def replace_document(
     principal: CurrentPrincipal,
     session: Session,
     store: Store,
+    publisher: Publisher,
+    background: BackgroundTasks,
     file: Upload,
 ) -> DocumentSummary:
     """Add a version rather than overwriting one.
@@ -209,6 +244,7 @@ async def replace_document(
         store=store,
         session=session,
     )
+    enqueue(background, publisher, record)
     return summarize(record)
 
 

@@ -22,9 +22,16 @@ from primer_contracts.ingestion import (
     TransitionResult,
 )
 from sqlalchemy import Row, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from primer_control.models import Document, DocumentVersion, IngestionJob, Library
+from primer_control.models import (
+    Document,
+    DocumentIndex,
+    DocumentVersion,
+    IngestionJob,
+    Library,
+)
 from primer_control.services.ingestion_pipeline import (
     ABANDONED_STATES,
     TERMINAL_STATES,
@@ -144,6 +151,11 @@ class IngestionJobRepository:
 
         Matching on the generation is what stops a slow worker from marking a
         stage complete after a reindex has already moved the job on.
+
+        Completing the index stage is also what activates the generation.
+        They are the same event - "this build is now the answer" - and doing
+        them in one transaction means there is no instant where a job is
+        ready but nothing points at what it built, or the reverse.
         """
         definition = stage_for(stage)
         result = await self._session.execute(
@@ -160,9 +172,59 @@ class IngestionJobRepository:
                 error_code=None,
                 error_detail=None,
             )
-            .returning(IngestionJob.state)
+            .returning(IngestionJob.id, IngestionJob.state)
         )
-        return await self._result(job_id, result.scalar_one_or_none())
+        row = result.one_or_none()
+        if row is not None and stage is StageName.INDEX:
+            await self._activate(job_id, generation_id)
+        return await self._result(job_id, row.state if row is not None else None)
+
+    async def _activate(self, job_id: UUID, generation_id: UUID) -> None:
+        """Point the version's index at the generation that just finished.
+
+        An upsert, because a reindex activates a version that already has a
+        pointer. The previous generation's chunks are left in the store: they
+        are still being read by searches that started before this moment, and
+        retiring them is the deletion lifecycle's job.
+        """
+        job = await self._job(job_id)
+        if job is None:  # pragma: no cover - the update above proved it exists
+            return
+        version, _document, library = await self._context(job)
+        statement = (
+            insert(DocumentIndex)
+            .values(
+                document_version_id=version.id,
+                library_id=library.id,
+                active_generation_id=generation_id,
+            )
+            .on_conflict_do_update(
+                index_elements=[DocumentIndex.document_version_id],
+                set_={"active_generation_id": generation_id, "updated_at": func.now()},
+            )
+        )
+        await self._session.execute(statement)
+
+    async def active_generations(self, library_id: UUID) -> list[UUID]:
+        """The generations a search of this library may read.
+
+        Only live documents in a live library, and only versions whose index
+        finished. A deleted document stops being searchable the moment its
+        tombstone is written, without waiting for its vectors to be removed.
+        """
+        result = await self._session.execute(
+            select(DocumentIndex.active_generation_id)
+            .join(DocumentVersion, DocumentIndex.document_version_id == DocumentVersion.id)
+            .join(Document, DocumentVersion.document_id == Document.id)
+            .join(Library, Document.library_id == Library.id)
+            .where(
+                DocumentIndex.library_id == library_id,
+                DocumentIndex.active_generation_id.is_not(None),
+                Document.deleted_at.is_(None),
+                Library.deleted_at.is_(None),
+            )
+        )
+        return [generation for generation in result.scalars() if generation is not None]
 
     async def fail(
         self, job_id: UUID, failure: StageFailure, *, max_attempts: int

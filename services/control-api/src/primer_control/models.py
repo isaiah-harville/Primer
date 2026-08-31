@@ -229,3 +229,34 @@ class IngestionJob(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class DocumentIndex(Base):
+    """Which generation currently answers for a document version.
+
+    One row per version, not per generation: this is a pointer, and the
+    generations themselves are recorded on the jobs that built them. Moving
+    the pointer is what "activation" means, and it is a single row update so
+    a rebuild becomes visible all at once rather than document by document.
+    """
+
+    __tablename__ = "document_indexes"
+
+    document_version_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{CONTROL_SCHEMA}.document_versions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    library_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{CONTROL_SCHEMA}.libraries.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: The generation retrieval should search. Null while the first index is
+    #: still being built, which is how a document with no answers yet is
+    #: distinguished from one whose answers are empty.
+    active_generation_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

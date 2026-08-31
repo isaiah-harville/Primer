@@ -74,6 +74,17 @@ async def claim_stage(
         raise unknown_job(job_id) from error
 
 
+@router.get("/libraries/{library_id}/generations", summary="Which generations answer for a library")
+async def active_generations(library_id: UUID, session: Session) -> list[UUID]:
+    """Resolve the scope a search must be filtered to.
+
+    Control owns which build is current, so retrieval never has to hold that
+    state or ask for it per query. A deleted document drops out here the
+    moment its tombstone is written, before its vectors are removed.
+    """
+    return await IngestionJobRepository(session).active_generations(library_id)
+
+
 @router.post("/jobs/{job_id}/heartbeat", summary="Extend a claim")
 async def heartbeat(
     job_id: UUID, payload: StageCompletion, session: Session, settings: Config

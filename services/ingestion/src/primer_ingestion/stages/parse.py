@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from primer_contracts.ingestion import JobClaim, StageName
+from primer_contracts.ingestion import JobClaim
 from primer_storage import ArtifactStore, SourceStore
 
 from primer_ingestion.chunking import DocumentContext
@@ -77,10 +77,3 @@ class ParseStage:
         logger.info(
             "job %s: parsed %s into %d chunks", claim.job_id, claim.document_id, len(chunks)
         )
-
-
-def register(settings: Settings) -> None:
-    """Attach the parse stage to the orchestrator."""
-    from primer_ingestion.tasks import register_handler
-
-    register_handler(StageName.PARSE, ParseStage(settings))

@@ -44,6 +44,21 @@ class Settings(BaseSettings):
         description="Matches Control's upload limit; workers only ever read",
     )
 
+    retrieval_url: str = Field(
+        default="http://retrieval:8000",
+        description="Cluster-internal base URL of the Retrieval service",
+    )
+    retrieval_token: SecretStr | None = Field(
+        default=None,
+        description="Credential for Retrieval; falls back to service_token when unset",
+    )
+    retrieval_timeout_seconds: float = Field(default=120.0, gt=0)
+    index_batch_size: int = Field(
+        default=64,
+        gt=0,
+        description="Chunks per index call; bounds embedding cost lost to one timeout",
+    )
+
     chunk_tokenizer: str | None = Field(
         default=None,
         description="Tokenizer of the embedding model, so chunks fit its context window",
