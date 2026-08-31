@@ -12,9 +12,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  UV_FROZEN: "1"
-
 jobs:
   python:
     name: Python (lint, types, tests)
