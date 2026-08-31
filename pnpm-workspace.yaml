@@ -1,3 +1,13 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# pnpm refuses to run a dependency's install scripts unless it is listed
+# here. Declared in the repository rather than approved locally, so the set
+# of packages allowed to execute code during install is reviewable and the
+# same for every contributor and for CI.
+#
+# esbuild fetches its platform binary in a postinstall script; Vite cannot
+# build without it.
+allowBuilds:
+  esbuild: true

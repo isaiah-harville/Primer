@@ -2,25 +2,25 @@
    grid so they usually fit, scale them to the column, and let them scroll
    rather than shrink past legibility on a narrow screen. */
 .md-grid {
-  max-width: 76rem;
+	max-width: 76rem;
 }
 
 .primer-diagram {
-  margin: 1.5rem 0;
-  overflow-x: auto;
+	margin: 1.5rem 0;
+	overflow-x: auto;
 }
 
 .primer-diagram img {
-  width: 100%;
-  /* Without an explicit auto height the SVG keeps its intrinsic height and
+	width: 100%;
+	/* Without an explicit auto height the SVG keeps its intrinsic height and
      the browser crops instead of scaling. */
-  height: auto;
-  min-width: 46rem;
-  max-width: none;
+	height: auto;
+	min-width: 46rem;
+	max-width: none;
 }
 
 /* Status values and error codes appear constantly in prose; the default
    size makes them shout. */
 .md-typeset code {
-  font-size: 0.85em;
+	font-size: 0.85em;
 }
