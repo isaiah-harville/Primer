@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from primer_storage import SourceStore
 
 from primer_control import __version__
 from primer_control.config import Settings
@@ -16,7 +17,6 @@ from primer_control.routes import health as health_routes
 from primer_control.routes import identity as identity_routes
 from primer_control.routes import internal_ingestion as internal_ingestion_routes
 from primer_control.routes import libraries as library_routes
-from primer_control.source_store import SourceStore
 
 
 def create_app(

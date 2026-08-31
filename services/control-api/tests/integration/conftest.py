@@ -17,7 +17,7 @@ from primer_control.app import create_app
 from primer_control.config import Settings
 from primer_control.db import Database, as_sync_url
 from primer_control.migrations import upgrade_to_head
-from primer_control.source_store import SourceStore
+from primer_storage import SourceStore
 from sqlalchemy.ext.asyncio import AsyncEngine
 from support import ServiceClient, UserClient
 from testcontainers.community.postgres import PostgresContainer

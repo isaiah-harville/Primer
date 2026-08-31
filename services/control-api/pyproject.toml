@@ -7,8 +7,8 @@ dependencies = [
     "alembic",
     "asyncpg",
     "fastapi",
-    "fsspec",
     "primer-contracts",
+    "primer-storage",
     "psycopg[binary]",
     "pydantic-settings",
     "python-multipart",
@@ -30,3 +30,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 primer-contracts = { workspace = true }
+primer-storage = { workspace = true }

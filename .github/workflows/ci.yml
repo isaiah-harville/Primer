@@ -31,6 +31,16 @@ jobs:
       - name: Sync workspace
         run: uv sync --all-packages --locked
 
+      # Docling downloads its layout models on first conversion. Caching them
+      # on the lock file keeps PDF parsing tested on every run without half a
+      # gigabyte of downloads each time. A cache miss is slow, not broken.
+      - name: Cache Docling models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: docling-models-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: docling-models-${{ runner.os }}-
+
       - name: Ruff lint
         run: uv run ruff check .
 

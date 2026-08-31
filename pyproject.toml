@@ -16,6 +16,19 @@ dev = [
 [tool.uv.workspace]
 members = ["packages/*", "services/*"]
 
+#: Docling's layout models run on torch. Primer parses documents on CPU, and
+#: the default Linux wheels carry a bundled CUDA runtime that is several
+#: gigabytes of nothing this deployment uses, so Linux resolves torch from
+#: PyTorch's CPU index instead. macOS wheels are already CPU-only.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 100
@@ -34,6 +47,7 @@ asyncio_mode = "auto"
 addopts = "-ra"
 markers = [
     "integration: needs Docker; runs against a real PostgreSQL container",
+    "models: needs network on first run; downloads Docling's layout models",
 ]
 
 [tool.ty.environment]
