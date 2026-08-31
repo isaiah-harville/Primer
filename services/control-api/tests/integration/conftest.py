@@ -8,6 +8,7 @@ because starting PostgreSQL costs far more than isolating a test inside it.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -16,6 +17,7 @@ from primer_control.app import create_app
 from primer_control.config import Settings
 from primer_control.db import Database, as_sync_url
 from primer_control.migrations import upgrade_to_head
+from primer_control.source_store import SourceStore
 from sqlalchemy.ext.asyncio import AsyncEngine
 from support import UserClient
 from testcontainers.community.postgres import PostgresContainer
@@ -75,15 +77,39 @@ async def clean_tables(database: Database) -> AsyncIterator[AsyncEngine]:
 
     async with database.engine.begin() as connection:
         await connection.execute(
-            text("TRUNCATE control.libraries, control.users RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE control.libraries, control.users, control.source_objects "
+                "RESTART IDENTITY CASCADE"
+            )
         )
     yield database.engine
 
 
+#: Small enough that a test can exceed it with a readable literal.
+MAX_UPLOAD_BYTES = 4096
+
+
+@pytest.fixture
+def source_root(tmp_path: Path) -> Path:
+    """A per-test source store, so stored objects can be counted directly."""
+    return tmp_path / "sources"
+
+
+@pytest.fixture
+def source_store(source_root: Path) -> SourceStore:
+    return SourceStore(f"file://{source_root}", max_bytes=MAX_UPLOAD_BYTES)
+
+
 @pytest_asyncio.fixture
-async def client(database: Database, clean_tables: AsyncEngine) -> AsyncIterator[AsyncClient]:
+async def client(
+    database: Database, clean_tables: AsyncEngine, source_store: SourceStore
+) -> AsyncIterator[AsyncClient]:
     """An OIDC-mode client; each request names its user through edge headers."""
-    app = create_app(Settings(auth_mode="oidc"), database=database)
+    app = create_app(
+        Settings(auth_mode="oidc", max_upload_bytes=MAX_UPLOAD_BYTES),
+        database=database,
+        source_store=source_store,
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://control") as http:
         yield http
@@ -97,3 +123,11 @@ def owner(client: AsyncClient) -> UserClient:
 @pytest.fixture
 def stranger(client: AsyncClient) -> UserClient:
     return UserClient(client, "oidc-stranger")
+
+
+@pytest_asyncio.fixture
+async def library_id(owner: UserClient) -> str:
+    """A library the owner can manage, for document tests to fill."""
+    response = await owner.post("/api/v1/libraries", {"name": "Sources"})
+    assert response.status_code == 201
+    return str(response.json()["id"])
