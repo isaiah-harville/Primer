@@ -1,0 +1,88 @@
+site_name: Primer
+site_description: A self-hosted, multi-user research assistant that answers from your own sources
+copyright: Primer is self-hosted software; your documents stay on your infrastructure.
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+# Agent planning notes live under docs/ but are not published: they are
+# untracked working material, not documentation for anyone reading this site.
+exclude_docs: |
+  superpowers/
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [packages/contracts/src]
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 3
+            members_order: source
+            docstring_style: google
+            separate_signature: true
+            show_signature_annotations: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - assets/primer.css
+
+nav:
+  - Home: index.md
+  - User guide:
+      - Getting started: guide/getting-started.md
+      - Libraries: guide/libraries.md
+      - Adding documents: guide/documents.md
+      - Supported formats: guide/formats.md
+      - When something goes wrong: guide/troubleshooting.md
+  - Architecture:
+      - Overview: architecture/index.md
+      - Ingestion: architecture/ingestion.md
+      - Retrieval: architecture/retrieval.md
+      - Identity and access: architecture/identity.md
+  - Operations:
+      - Configuration: operations/configuration.md
+      - Deploying: operations/deploying.md
+      - Migrations: operations/migrations.md
+  - Reference:
+      - HTTP API: reference/http-api.md
+      - Contracts: reference/contracts.md

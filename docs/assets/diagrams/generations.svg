@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 470" width="1180" height="470" role="img" aria-label="Index generations">
+  <title>Index generations</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" class="edge-head"/>
+    </marker>
+  </defs>
+  <style>
+    .ink { fill: #0f172a; }
+    .ink-muted { fill: #475569; }
+    .edge { stroke: #94a3b8; }
+    .edge-head { fill: #94a3b8; }
+    .group { fill: none; stroke: #cbd5e1; }
+    .chip { fill: #ffffff; }
+    .node rect { fill-opacity: 1.0; }
+  </style>
+  <rect width="1180" height="470" fill="#ffffff" rx="14"/>
+  <g><rect x="840" y="92" width="290" height="216" rx="16" class="group" stroke-dasharray="7 6" stroke-width="1.4"/><text x="858" y="114" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="0.08em" class="ink-muted">AFTER ACTIVATION</text></g>
+  <g><rect x="450" y="92" width="290" height="216" rx="16" class="group" stroke-dasharray="7 6" stroke-width="1.4"/><text x="468" y="114" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="0.08em" class="ink-muted">DURING THE REBUILD</text></g>
+  <g><rect x="60" y="92" width="290" height="216" rx="16" class="group" stroke-dasharray="7 6" stroke-width="1.4"/><text x="78" y="114" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="0.08em" class="ink-muted">BEFORE</text></g>
+  <g class="node"><rect x="85" y="130" width="240" height="68" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5" class="fill-terminal"/><text x="205.0" y="158.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Generation A</text>
+  <text x="205.0" y="178.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">answering searches</text>
+  </g>
+  <text x="205" y="250" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">no rebuild in flight</text>
+  <g class="node"><rect x="475" y="130" width="240" height="68" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5" class="fill-terminal"/><text x="595.0" y="158.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Generation A</text>
+  <text x="595.0" y="178.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">still answering</text>
+  </g>
+  <g class="node"><rect x="475" y="216" width="240" height="68" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-state"/><text x="595.0" y="244.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Generation B</text>
+  <text x="595.0" y="264.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">written, unsearchable</text>
+  </g>
+  <g class="node"><rect x="865" y="130" width="240" height="68" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5" class="fill-terminal"/><text x="985.0" y="158.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Generation B</text>
+  <text x="985.0" y="178.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">answering searches</text>
+  </g>
+  <g class="node"><rect x="865" y="216" width="240" height="68" rx="12" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" class="fill-store"/><text x="985.0" y="244.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Generation A</text>
+  <text x="985.0" y="264.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">retired, then deleted</text>
+  </g>
+  <path d="M 350 200 L 450 200" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="400" y="176" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink">index chunks</text>
+  <path d="M 740 200 L 840 200" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="790" y="176" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink">counts verified</text>
+  <text x="590" y="372" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">Searches read only the active generation, so a half-written rebuild is invisible.</text>
+  <text x="590" y="398" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">Activation is one row update in Control: every answer changes at the same instant.</text>
+  <text x="590" y="424" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">A short or failed build never activates, so nothing silently loses passages.</text>
+</svg>
