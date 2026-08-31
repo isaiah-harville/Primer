@@ -1,0 +1,29 @@
+[project]
+name = "primer-retrieval"
+version = "0.1.0"
+description = "Primer retrieval: the exclusive owner of Primer's vector stores"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "haystack-ai",
+    "pgvector-haystack",
+    "primer-contracts",
+    "pydantic-settings",
+    "qdrant-haystack",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2",
+    "testcontainers[postgres,qdrant]",
+]
+server = [
+    "uvicorn[standard]",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+primer-contracts = { workspace = true }

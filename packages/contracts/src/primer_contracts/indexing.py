@@ -1,0 +1,99 @@
+"""The Retrieval service's cluster-internal API.
+
+Retrieval owns the vector store exclusively. Nothing outside it names a
+collection, a table, or a filter syntax; callers name a library and a
+generation, and Retrieval decides what that means for the backend it was
+configured with.
+"""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from pydantic import Field
+
+from primer_contracts.base import WireModel
+from primer_contracts.chunks import DocumentChunk
+from primer_contracts.identity import Principal
+from primer_contracts.retrieval import RetrievedChunk
+
+
+class IndexRequest(WireModel):
+    """Write one generation's chunks.
+
+    Chunks are written into a pending generation, which nothing searches
+    until it is activated. A half-finished rebuild is therefore invisible
+    rather than partially answering questions.
+    """
+
+    principal: Principal
+    library_id: UUID
+    document_version_id: UUID
+    generation_id: UUID
+    chunks: tuple[DocumentChunk, ...] = Field(min_length=1)
+
+
+class IndexResult(WireModel):
+    generation_id: UUID
+    written: int = Field(ge=0)
+
+
+class GenerationQuery(WireModel):
+    """Address one generation of one version."""
+
+    principal: Principal
+    library_id: UUID
+    document_version_id: UUID
+    generation_id: UUID
+
+
+class GenerationCount(WireModel):
+    """How many chunks a generation actually holds.
+
+    Activation compares this against what ingestion produced. A generation
+    that is short of its expected count is an incomplete index, and
+    activating it would silently drop the missing passages from every future
+    answer.
+    """
+
+    generation_id: UUID
+    count: int = Field(ge=0)
+
+
+class SearchRequest(WireModel):
+    """Search one library, within a known set of active generations.
+
+    Both scope fields are required and neither has a default. A search that
+    could omit them would, on the day someone forgot, quietly return another
+    user's documents - so omission is a validation error, not an empty
+    filter.
+    """
+
+    principal: Principal
+    library_id: UUID
+    generation_ids: tuple[UUID, ...] = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=4000)
+    limit: int = Field(default=8, ge=1, le=50)
+
+
+class SearchResult(WireModel):
+    chunks: tuple[RetrievedChunk, ...] = ()
+
+
+class DeleteRequest(WireModel):
+    """Remove one generation's chunks.
+
+    Deletion is addressed by generation, so retiring a superseded index and
+    erasing a deleted document are the same operation with the same
+    idempotency.
+    """
+
+    principal: Principal
+    library_id: UUID
+    document_version_id: UUID
+    generation_id: UUID
+
+
+class DeleteResult(WireModel):
+    generation_id: UUID
+    deleted: int = Field(ge=0)

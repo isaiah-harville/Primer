@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from support import UserClient
+from control_support import UserClient
 
 
 async def create_library(user: UserClient, name: str = "Private") -> dict[str, Any]:

@@ -1,0 +1,73 @@
+"""The Retrieval service against a real pgvector.
+
+The conformance suite proves each backend meets the contract. This proves
+the service wired on top of one behaves: that routes filter, count, and
+delete the way the endpoints promise.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import math
+import re
+from collections.abc import Iterator
+from dataclasses import replace
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from haystack import Document
+from primer_retrieval.app import create_app
+from primer_retrieval.config import Settings
+from testcontainers.community.postgres import PostgresContainer
+
+POSTGRES_IMAGE = "pgvector/pgvector:pg17"
+SERVICE_TOKEN = "retrieval-service-token"  # noqa: S105 - a fixture value, not a real credential
+DIMENSIONS = 32
+
+WORD = re.compile(r"[a-z0-9]+")
+
+
+def embed(text: str) -> list[float]:
+    """Deterministic and offline; see tests/vector_conformance for the rationale."""
+    vector = [0.0] * DIMENSIONS
+    for word in WORD.findall(text.lower()):
+        vector[hashlib.sha256(word.encode()).digest()[0] % DIMENSIONS] += 1.0
+    norm = math.sqrt(sum(value * value for value in vector))
+    if norm == 0:
+        return [1.0 / math.sqrt(DIMENSIONS)] * DIMENSIONS
+    return [value / norm for value in vector]
+
+
+class StubDocumentEmbedder:
+    def run(self, documents: list[Document]) -> dict[str, Any]:
+        return {"documents": [replace(d, embedding=embed(d.content or "")) for d in documents]}
+
+
+class StubTextEmbedder:
+    def run(self, text: str) -> dict[str, Any]:
+        return {"embedding": embed(text)}
+
+
+@pytest.fixture(scope="session")
+def pgvector_url() -> Iterator[str]:
+    with PostgresContainer(POSTGRES_IMAGE) as container:
+        yield container.get_connection_url(driver=None)
+
+
+@pytest.fixture
+def client(pgvector_url: str, request: pytest.FixtureRequest) -> TestClient:
+    """A service with its own table, so no test can see another's writes."""
+    unique = abs(hash(request.node.nodeid)) % 10**9
+    settings = Settings(
+        vector_store="pgvector",
+        database_url=pgvector_url,
+        vector_schema="public",
+        vector_table=f"service_{unique}",
+        embedding_dimensions=DIMENSIONS,
+        internal_api_token=SERVICE_TOKEN,
+    )
+    app = create_app(
+        settings, document_embedder=StubDocumentEmbedder(), text_embedder=StubTextEmbedder()
+    )
+    return TestClient(app)

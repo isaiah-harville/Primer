@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from support import UserClient
+from control_support import UserClient
 
 PDF_BYTES = b"%PDF-1.7\n1 0 obj\n<< >>\nendobj\ntrailer\n%%EOF\n"
 DOCX_BYTES = b"PK\x03\x04\x14\x00\x06\x00word/document.xml"

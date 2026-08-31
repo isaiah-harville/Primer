@@ -48,4 +48,7 @@ class RetrievedChunk(WireModel):
     content: str
     score: float
     locator: SourceLocator | None = None
-    index_generation: int | None = Field(default=None, ge=1)
+    #: Which index build answered. A UUID, not a counter: generations are
+    #: created concurrently by reindexing and deletion, and a counter would
+    #: need a coordinator to hand out the next value.
+    index_generation: UUID
