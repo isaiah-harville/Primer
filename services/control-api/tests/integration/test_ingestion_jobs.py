@@ -228,3 +228,44 @@ async def test_an_unknown_job_is_not_found(service: ServiceClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["code"] == "not_found"
+
+
+async def test_finishing_the_index_stage_activates_the_generation(
+    service: ServiceClient, owner: UserClient, job: QueuedJob, library_id: str
+) -> None:
+    """Ready and activated are one event, so neither can be observed alone."""
+    generations = f"/internal/v1/ingestion/libraries/{library_id}/generations"
+    assert (await service.get(generations)).json() == []
+
+    for stage in ("parse", "embed", "index"):
+        await service.claim(job.job_id, stage)
+        await service.complete(job.job_id, job.generation_id, stage)
+
+    path = f"/api/v1/libraries/{library_id}/documents/{job.document_id}"
+    assert (await owner.get(path)).json()["status"] == "ready"
+    assert (await service.get(generations)).json() == [job.generation_id]
+
+
+async def test_an_unfinished_index_answers_for_nothing(
+    service: ServiceClient, job: QueuedJob, library_id: str
+) -> None:
+    """A document still being indexed must not be searchable."""
+    await service.claim(job.job_id)
+    await service.complete(job.job_id, job.generation_id)
+
+    generations = f"/internal/v1/ingestion/libraries/{library_id}/generations"
+    assert (await service.get(generations)).json() == []
+
+
+async def test_a_deleted_document_stops_answering_before_its_vectors_go(
+    service: ServiceClient, owner: UserClient, job: QueuedJob, library_id: str
+) -> None:
+    """The tombstone is what takes it out of reach, not the cleanup."""
+    for stage in ("parse", "embed", "index"):
+        await service.claim(job.job_id, stage)
+        await service.complete(job.job_id, job.generation_id, stage)
+
+    await owner.delete(f"/api/v1/libraries/{library_id}/documents/{job.document_id}")
+
+    generations = f"/internal/v1/ingestion/libraries/{library_id}/generations"
+    assert (await service.get(generations)).json() == []

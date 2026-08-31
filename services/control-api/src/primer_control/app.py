@@ -12,6 +12,7 @@ from primer_control.db import Database
 from primer_control.errors import ProblemError, problem_response
 from primer_control.health import DependencyRegistry
 from primer_control.middleware import RequestIDMiddleware
+from primer_control.publisher import JobPublisher, build_publisher
 from primer_control.routes import documents as document_routes
 from primer_control.routes import health as health_routes
 from primer_control.routes import identity as identity_routes
@@ -24,6 +25,7 @@ def create_app(
     dependencies: DependencyRegistry | None = None,
     database: Database | None = None,
     source_store: SourceStore | None = None,
+    publisher: JobPublisher | None = None,
 ) -> FastAPI:
     """Build the Control API.
 
@@ -44,6 +46,7 @@ def create_app(
         max_bytes=settings.max_upload_bytes,
         chunk_bytes=settings.upload_chunk_bytes,
     )
+    app.state.publisher = publisher or build_publisher(settings.broker_url)
     registry = dependencies or DependencyRegistry()
     registry.register_async("database", app.state.database.check)
     app.state.dependencies = registry

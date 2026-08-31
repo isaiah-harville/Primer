@@ -64,6 +64,9 @@ class ServiceClient:
     def _url(self, job_id: str, action: str) -> str:
         return f"/internal/v1/ingestion/jobs/{job_id}/{action}"
 
+    async def get(self, path: str) -> Response:
+        return await self._http.get(path, headers=self._headers)
+
     async def claim(self, job_id: str, stage: str = "parse") -> Response:
         return await self._http.post(
             self._url(job_id, "claim"), json={"stage": stage}, headers=self._headers
