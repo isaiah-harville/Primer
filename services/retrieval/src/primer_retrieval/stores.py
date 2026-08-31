@@ -1,0 +1,48 @@
+"""Document stores, built directly from official Haystack integrations.
+
+There is deliberately no Primer vector adapter interface. Haystack's
+`DocumentStore` protocol is already that abstraction, and wrapping it would
+add a layer whose only job is to be a second place for isolation bugs to
+live. What Primer owns is the filter every query carries, not the store.
+"""
+
+from __future__ import annotations
+
+from haystack.document_stores.types import DocumentStore
+from haystack.utils import Secret
+from haystack_integrations.document_stores.pgvector import PgvectorDocumentStore
+from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
+
+from primer_retrieval.config import Settings
+
+
+def build_document_store(settings: Settings) -> DocumentStore:
+    """Instantiate the configured backend.
+
+    Both branches return an official integration unchanged. The conformance
+    suite runs the same cases against each, so a backend that cannot meet
+    Primer's isolation contract fails there rather than in a library nobody
+    expected to be readable.
+    """
+    if settings.vector_store == "qdrant":
+        return QdrantDocumentStore(
+            url=settings.qdrant_url,
+            index=settings.qdrant_index,
+            embedding_dim=settings.embedding_dimensions,
+            return_embedding=False,
+            # Primer writes deterministic chunk ids, so re-running a stage
+            # must overwrite rather than accumulate duplicates.
+            recreate_index=False,
+            similarity="cosine",
+        )
+
+    return PgvectorDocumentStore(
+        connection_string=Secret.from_token(settings.database_url),
+        schema_name=settings.vector_schema,
+        table_name=settings.vector_table,
+        embedding_dimension=settings.embedding_dimensions,
+        vector_function="cosine_similarity",
+        search_strategy="hnsw",
+        create_extension=True,
+        recreate_table=False,
+    )
