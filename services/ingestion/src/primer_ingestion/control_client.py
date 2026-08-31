@@ -7,6 +7,7 @@ transition is a request to Control, which decides whether it applies.
 from __future__ import annotations
 
 from types import TracebackType
+from typing import Protocol
 from uuid import UUID
 
 import httpx2
@@ -22,6 +23,25 @@ from primer_contracts.ingestion import (
 from primer_ingestion.config import Settings
 
 SERVICE_TOKEN_HEADER = "X-Primer-Service-Token"  # noqa: S105 - a header name, not a secret
+
+
+class JobTransitions(Protocol):
+    """What stage orchestration needs from Control.
+
+    Orchestration depends on this rather than on the HTTP client so the
+    protocol can be exercised without a server, and so a future transport
+    change touches one class instead of every task.
+    """
+
+    def claim(self, job_id: UUID, stage: StageName) -> ClaimResponse: ...
+
+    def heartbeat(
+        self, job_id: UUID, stage: StageName, generation_id: UUID
+    ) -> TransitionResult: ...
+
+    def complete(self, job_id: UUID, stage: StageName, generation_id: UUID) -> TransitionResult: ...
+
+    def fail(self, job_id: UUID, failure: StageFailure) -> TransitionResult: ...
 
 
 class ControlClient:

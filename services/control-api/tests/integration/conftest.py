@@ -19,7 +19,7 @@ from primer_control.db import Database, as_sync_url
 from primer_control.migrations import upgrade_to_head
 from primer_control.source_store import SourceStore
 from sqlalchemy.ext.asyncio import AsyncEngine
-from support import UserClient
+from support import ServiceClient, UserClient
 from testcontainers.community.postgres import PostgresContainer
 
 #: pgvector rather than plain postgres: the Control schema does not need it,
@@ -88,6 +88,11 @@ async def clean_tables(database: Database) -> AsyncIterator[AsyncEngine]:
 #: Small enough that a test can exceed it with a readable literal.
 MAX_UPLOAD_BYTES = 4096
 
+SERVICE_TOKEN = "test-service-token"  # noqa: S105 - a fixture value, not a real credential
+
+#: Two, so the retry budget can be exhausted in a readable number of steps.
+MAX_JOB_ATTEMPTS = 2
+
 
 @pytest.fixture
 def source_root(tmp_path: Path) -> Path:
@@ -106,7 +111,12 @@ async def client(
 ) -> AsyncIterator[AsyncClient]:
     """An OIDC-mode client; each request names its user through edge headers."""
     app = create_app(
-        Settings(auth_mode="oidc", max_upload_bytes=MAX_UPLOAD_BYTES),
+        Settings(
+            auth_mode="oidc",
+            max_upload_bytes=MAX_UPLOAD_BYTES,
+            internal_api_token=SERVICE_TOKEN,
+            max_job_attempts=MAX_JOB_ATTEMPTS,
+        ),
         database=database,
         source_store=source_store,
     )
@@ -131,3 +141,9 @@ async def library_id(owner: UserClient) -> str:
     response = await owner.post("/api/v1/libraries", {"name": "Sources"})
     assert response.status_code == 201
     return str(response.json()["id"])
+
+
+@pytest.fixture
+def service(client: AsyncClient) -> ServiceClient:
+    """A worker, presenting the cluster-internal service credential."""
+    return ServiceClient(client, SERVICE_TOKEN)

@@ -29,7 +29,7 @@ from primer_contracts.ingestion import (
 
 from primer_ingestion.celery_app import QUEUE_NAMES, TASK_NAMES, create_celery
 from primer_ingestion.config import Settings
-from primer_ingestion.control_client import ControlClient
+from primer_ingestion.control_client import ControlClient, JobTransitions
 from primer_ingestion.errors import PermanentStageError, StageError
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ def execute_stage(
     stage: StageName,
     job_id: UUID,
     *,
-    control: ControlClient,
+    control: JobTransitions,
     handler: StageHandler,
     publish: Publisher,
     retries_left: bool,
@@ -124,7 +124,7 @@ def execute_stage(
 
 
 def _report_failure(
-    control: ControlClient,
+    control: JobTransitions,
     claim: JobClaim,
     error: StageError,
     *,
