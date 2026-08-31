@@ -32,6 +32,9 @@ select = ["E", "F", "I", "B", "BLE", "UP", "ASYNC", "S", "C4", "SIM", "RUF"]
 testpaths = ["tests", "packages", "services"]
 asyncio_mode = "auto"
 addopts = "-ra"
+markers = [
+    "integration: needs Docker; runs against a real PostgreSQL container",
+]
 
 [tool.ty.environment]
 python-version = "3.13"

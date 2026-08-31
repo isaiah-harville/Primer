@@ -21,11 +21,11 @@ def live() -> dict[str, str]:
 
 
 @router.get("/health/ready", summary="Readiness probe")
-def ready(
+async def ready(
     response: Response,
     dependencies: Annotated[DependencyRegistry, Depends(get_dependencies)],
 ) -> dict[str, Any]:
-    checks = dependencies.evaluate()
+    checks = await dependencies.evaluate()
     healthy = all(checks.values())
     if not healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
