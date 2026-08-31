@@ -4,14 +4,19 @@ version = "0.1.0"
 description = "Primer Control API: public domain operations and authorization"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic",
+    "asyncpg",
     "fastapi",
     "primer-contracts",
+    "psycopg[binary]",
     "pydantic-settings",
+    "sqlalchemy[asyncio]",
 ]
 
 [dependency-groups]
 dev = [
     "httpx2",
+    "testcontainers[postgres]",
 ]
 server = [
     "uvicorn[standard]",
