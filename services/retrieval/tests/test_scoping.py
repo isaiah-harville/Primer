@@ -34,6 +34,13 @@ class Tripwire:
         return explode
 
 
+class CountingStore:
+    """A store that answers the readiness probe and nothing else."""
+
+    def count_documents(self) -> int:
+        return 0
+
+
 class RecordingEmbedder:
     def __init__(self) -> None:
         self.calls = 0
@@ -210,3 +217,52 @@ def test_a_stored_document_keeps_its_verbatim_text() -> None:
 
     assert stored[0].content == "The corpus was small."
     assert stored[0].embedding == [0.5] * 8
+
+
+def test_health_endpoints_need_no_credential() -> None:
+    """An orchestrator sends no service token, and never will.
+
+    A router-level dependency applies to every route on it, and
+    `dependencies=[]` on a single route adds nothing rather than clearing the
+    router's - so a health probe declared on the internal router answers 401
+    and the container is never reported healthy. That is how this was wrong
+    the first time.
+    """
+    app = create_app(
+        Settings(internal_api_token=SERVICE_TOKEN, embedding_dimensions=8),
+        store=CountingStore(),  # ty: ignore[invalid-argument-type]
+        document_embedder=Tripwire(),  # ty: ignore[invalid-argument-type]
+        text_embedder=Tripwire(),  # ty: ignore[invalid-argument-type]
+        retriever=Tripwire(),
+    )
+    client = TestClient(app)
+
+    assert client.get("/health/live").status_code == 200
+    assert client.get("/health/ready").status_code == 200
+
+
+def test_readiness_reports_a_store_it_cannot_reach() -> None:
+    """Unready, not crashed: the orchestrator should stop sending traffic."""
+    app = create_app(
+        Settings(internal_api_token=SERVICE_TOKEN, embedding_dimensions=8),
+        store=Tripwire(),  # ty: ignore[invalid-argument-type]
+        document_embedder=Tripwire(),  # ty: ignore[invalid-argument-type]
+        text_embedder=Tripwire(),  # ty: ignore[invalid-argument-type]
+        retriever=Tripwire(),
+    )
+
+    assert TestClient(app).get("/health/ready").status_code == 503
+
+
+def test_liveness_does_not_touch_the_store() -> None:
+    """A liveness probe that checked the store would restart this service
+    whenever the store blipped, which is when restarting helps least."""
+    app = create_app(
+        Settings(internal_api_token=SERVICE_TOKEN, embedding_dimensions=8),
+        store=Tripwire(),  # ty: ignore[invalid-argument-type]
+        document_embedder=Tripwire(),  # ty: ignore[invalid-argument-type]
+        text_embedder=Tripwire(),  # ty: ignore[invalid-argument-type]
+        retriever=Tripwire(),
+    )
+
+    assert TestClient(app).get("/health/live").status_code == 200

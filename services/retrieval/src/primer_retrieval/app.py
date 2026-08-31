@@ -80,6 +80,39 @@ def get_state(request: Request) -> RetrievalState:
 State = Annotated[RetrievalState, Depends(get_state)]
 
 
+#: Health is deliberately on its own router. A router-level dependency
+#: applies to every route on it, and `dependencies=[]` on a single route adds
+#: nothing rather than clearing the router's - so a liveness probe declared
+#: on the router above would demand a service credential no orchestrator
+#: sends, and the container would never be reported healthy.
+health = APIRouter(tags=["health"])
+
+
+@health.get("/health/live", summary="Process liveness")
+def live() -> dict[str, str]:
+    """Whether the process is up. Deliberately touches no dependency.
+
+    A liveness probe that checked the vector store would restart this
+    service whenever the store was briefly unreachable, which is precisely
+    when restarting it helps least.
+    """
+    return {"status": "ok"}
+
+
+@health.get("/health/ready", summary="Readiness")
+def ready(state: State) -> JSONResponse:
+    """Whether this instance can serve a search.
+
+    Counting documents in an empty filter is the cheapest call that proves
+    the store is reachable and the schema exists.
+    """
+    try:
+        state.store.count_documents()
+    except Exception:  # noqa: BLE001 - any failure to reach the store means unready
+        return JSONResponse(status_code=503, content={"status": "unready"})
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
+
 @router.post("/index", summary="Write one generation's chunks")
 def index_chunks(payload: IndexRequest, state: State) -> IndexResult:
     """Write into a pending generation.
@@ -169,11 +202,6 @@ def purge_version(payload: PurgeRequest, state: State) -> DeleteResult:
     )
 
 
-@router.get("/health/live", summary="Process liveness", dependencies=[])
-def live() -> dict[str, str]:
-    return {"status": "ok"}
-
-
 def create_app(
     settings: Settings | None = None,
     store: DocumentStore | None = None,
@@ -206,5 +234,6 @@ def create_app(
     async def _handle_problem(request: Request, exc: ProblemError) -> JSONResponse:
         return problem_response(request, exc)
 
+    app.include_router(health)
     app.include_router(router)
     return app
