@@ -13,13 +13,14 @@ repair by hand.
 from __future__ import annotations
 
 import logging
+from typing import Protocol
 
 from primer_contracts.indexing import PurgeRequest
 from primer_contracts.ingestion import JobClaim
 from primer_storage import ArtifactStore, SourceStore
 
 from primer_ingestion.config import Settings
-from primer_ingestion.control_client import ControlClient, JobTransitions
+from primer_ingestion.control_client import ControlClient, JobCleanup
 from primer_ingestion.retrieval_client import (
     RetrievalClient,
     VectorIndex,
@@ -29,13 +30,19 @@ from primer_ingestion.retrieval_client import (
 logger = logging.getLogger(__name__)
 
 
+class SourceRemover(Protocol):
+    """The one storage operation cleanup performs."""
+
+    def remove(self, sha256: str) -> None: ...
+
+
 class DeleteStage:
     def __init__(
         self,
         settings: Settings,
-        control: JobTransitions | None = None,
+        control: JobCleanup | None = None,
         index: VectorIndex | None = None,
-        sources: SourceStore | None = None,
+        sources: SourceRemover | None = None,
         artifacts: ArtifactStore | None = None,
     ) -> None:
         self._settings = settings

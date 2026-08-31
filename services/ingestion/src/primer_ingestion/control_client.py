@@ -46,6 +46,17 @@ class JobTransitions(Protocol):
     def purge(self, job_id: UUID) -> list[str]: ...
 
 
+class JobCleanup(Protocol):
+    """What cleanup needs from Control, which is one call.
+
+    Narrower than JobTransitions on purpose: the delete stage has no business
+    claiming or completing anything, and a protocol that let it would invite
+    a future edit that did.
+    """
+
+    def purge(self, job_id: UUID) -> list[str]: ...
+
+
 class ControlClient:
     """Synchronous, because Celery tasks are."""
 
