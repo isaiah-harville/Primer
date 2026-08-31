@@ -1,0 +1,34 @@
+docs/superpowers
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ty_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+.svelte-kit/
+.pnpm-store/
+apps/*/build/
+apps/*/.output/
+
+# Environment / local state
+.env
+.env.*
+!.env.example
+*.local
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
