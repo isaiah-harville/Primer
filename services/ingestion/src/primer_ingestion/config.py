@@ -34,6 +34,36 @@ class Settings(BaseSettings):
     #: for a dead worker.
     heartbeat_seconds: float = Field(default=60.0, gt=0)
 
+    source_store_url: str = Field(
+        default="file:///var/lib/primer/sources",
+        description="The same fsspec URL Control writes uploads to",
+    )
+    max_source_bytes: int = Field(
+        default=100 * 1024 * 1024,
+        ge=1,
+        description="Matches Control's upload limit; workers only ever read",
+    )
+
+    chunk_tokenizer: str | None = Field(
+        default=None,
+        description="Tokenizer of the embedding model, so chunks fit its context window",
+    )
+    max_chunk_tokens: int = Field(
+        default=512,
+        gt=0,
+        description="Token ceiling per chunk; ignored when no tokenizer is configured",
+    )
+    max_chunks_per_document: int = Field(
+        default=5000,
+        gt=0,
+        description="Refuse rather than silently index part of an enormous document",
+    )
+    parse_deadline_seconds: float = Field(
+        default=900.0,
+        gt=0,
+        description="Budget for converting one document, checked between phases",
+    )
+
     max_retries: int = Field(
         default=4,
         ge=0,

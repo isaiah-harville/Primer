@@ -16,7 +16,7 @@ import hashlib
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from functools import partial
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import uuid4
 
@@ -212,6 +212,15 @@ class SourceStore:
                 yield chunk
         finally:
             await self._run(handle.close)
+
+    def download(self, sha256: str, destination: Path) -> None:
+        """Copy a stored object to a local path.
+
+        Synchronous, unlike the rest of this class: the async methods exist
+        because FastAPI must not block its event loop, and workers have no
+        loop to block. fsspec is synchronous underneath either way.
+        """
+        self._fs.get_file(self._key("sources", sha256), str(destination))
 
     async def exists(self, sha256: str) -> bool:
         return bool(await self._run(self._fs.exists, self._key("sources", sha256)))

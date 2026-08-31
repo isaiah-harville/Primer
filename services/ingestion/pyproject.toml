@@ -5,9 +5,17 @@ description = "Primer ingestion workers: parsing, chunking, embedding, and index
 requires-python = ">=3.13"
 dependencies = [
     "celery",
+    "docling",
     "httpx2",
     "primer-contracts",
+    "primer-storage",
     "pydantic-settings",
+    # Declared directly, though Docling is what needs them, so the workspace
+    # can pin them to the CPU-only index. Left transitive, Linux resolves a
+    # torch that bundles the entire CUDA toolkit for hardware Primer's
+    # document parsing never touches.
+    "torch",
+    "torchvision",
 ]
 
 [build-system]
@@ -16,3 +24,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 primer-contracts = { workspace = true }
+primer-storage = { workspace = true }
