@@ -89,6 +89,23 @@ def scope_filter(library_id: UUID, generation_ids: tuple[UUID, ...]) -> dict[str
     }
 
 
+def version_filter(library_id: UUID, document_version_id: UUID) -> dict[str, Any]:
+    """Everything stored for one version, whatever generation built it.
+
+    Cleanup addresses a version rather than a generation because the
+    generations a version has been through are not recorded anywhere: the
+    point of cleanup is to leave nothing behind, including builds nobody
+    remembers.
+    """
+    return {
+        "operator": "AND",
+        "conditions": [
+            {"field": f"meta.{LIBRARY_ID}", "operator": "==", "value": str(library_id)},
+            {"field": f"meta.{VERSION_ID}", "operator": "==", "value": str(document_version_id)},
+        ],
+    }
+
+
 def to_documents(chunks: tuple[DocumentChunk, ...], embedder: DocumentEmbedder) -> list[Document]:
     """Embed chunks, then store what the document actually says.
 

@@ -20,6 +20,7 @@ from primer_contracts.indexing import (
     GenerationQuery,
     IndexRequest,
     IndexResult,
+    PurgeRequest,
 )
 
 from primer_ingestion.config import Settings
@@ -35,6 +36,8 @@ class VectorIndex(Protocol):
     def verify(self, request: GenerationQuery) -> GenerationCount: ...
 
     def delete(self, request: DeleteRequest) -> DeleteResult: ...
+
+    def purge(self, request: PurgeRequest) -> DeleteResult: ...
 
 
 class RetrievalClient:
@@ -78,6 +81,11 @@ class RetrievalClient:
     def delete(self, request: DeleteRequest) -> DeleteResult:
         return DeleteResult.model_validate(
             self._post("/internal/v1/delete", request.model_dump(mode="json"))
+        )
+
+    def purge(self, request: PurgeRequest) -> DeleteResult:
+        return DeleteResult.model_validate(
+            self._post("/internal/v1/purge", request.model_dump(mode="json"))
         )
 
 

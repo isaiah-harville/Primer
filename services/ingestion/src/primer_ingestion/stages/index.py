@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from primer_contracts.indexing import GenerationQuery
+from primer_contracts.indexing import GenerationQuery, PurgeRequest
 from primer_contracts.ingestion import JobClaim
 from primer_storage import ArtifactStore
 
@@ -63,3 +63,19 @@ class IndexStage:
                 f"The index holds {actual} of {expected} passages.",
             )
         logger.info("job %s: generation complete with %d chunks", claim.job_id, expected)
+
+    def retire_superseded(self, claim: JobClaim) -> None:
+        """Drop earlier builds of this version, once this one is live.
+
+        Called after activation rather than before it: until Control has
+        switched, the older generation is what searches are reading, and
+        removing it early would empty the index a user is querying right now.
+        """
+        self._index.purge(
+            PurgeRequest(
+                principal=worker_principal(claim.owner_user_id),
+                library_id=claim.library_id,
+                document_version_id=claim.document_version_id,
+                keep_generation_id=claim.generation_id,
+            )
+        )

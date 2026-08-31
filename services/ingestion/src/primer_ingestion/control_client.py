@@ -43,6 +43,8 @@ class JobTransitions(Protocol):
 
     def fail(self, job_id: UUID, failure: StageFailure) -> TransitionResult: ...
 
+    def purge(self, job_id: UUID) -> list[str]: ...
+
 
 class ControlClient:
     """Synchronous, because Celery tasks are."""
@@ -99,3 +101,10 @@ class ControlClient:
                 f"/internal/v1/ingestion/jobs/{job_id}/fail", failure.model_dump(mode="json")
             )
         )
+
+    def purge(self, job_id: UUID) -> list[str]:
+        """Drop a deleted document's rows; returns freed content hashes."""
+        response = self._client.post(f"/internal/v1/ingestion/jobs/{job_id}/purge", json={})
+        response.raise_for_status()
+        freed: list[str] = response.json()
+        return freed

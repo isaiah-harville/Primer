@@ -13,6 +13,7 @@ from primer_contracts.indexing import (
     GenerationQuery,
     IndexRequest,
     IndexResult,
+    PurgeRequest,
 )
 from primer_contracts.ingestion import JobClaim, StageName
 from primer_ingestion.config import Settings
@@ -32,6 +33,7 @@ class RecordingIndex:
 
     def __init__(self, reported_count: int | None = None) -> None:
         self.requests: list[IndexRequest] = []
+        self.purges: list[PurgeRequest] = []
         self.reported_count = reported_count
 
     @property
@@ -48,6 +50,12 @@ class RecordingIndex:
 
     def delete(self, request: DeleteRequest) -> DeleteResult:
         return DeleteResult(generation_id=request.generation_id, deleted=0)
+
+    def purge(self, request: PurgeRequest) -> DeleteResult:
+        self.purges.append(request)
+        return DeleteResult(
+            generation_id=request.keep_generation_id or request.document_version_id, deleted=0
+        )
 
 
 def chunk_payload(ordinal: int) -> dict[str, object]:
