@@ -89,14 +89,6 @@ STAGES: dict[StageName, Stage] = {
     ),
 }
 
-#: What a worker publishes once a stage completes. Deletion ends the chain.
-NEXT_STAGE: dict[StageName, StageName | None] = {
-    StageName.PARSE: StageName.EMBED,
-    StageName.EMBED: StageName.INDEX,
-    StageName.INDEX: None,
-    StageName.DELETE: None,
-}
-
 
 def stage_for(name: StageName) -> Stage:
     return STAGES[name]
