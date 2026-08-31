@@ -1,17 +1,17 @@
 {
-  "name": "primer",
-  "private": true,
-  "packageManager": "pnpm@11.18.0",
-  "engines": {
-    "node": ">=24"
-  },
-  "scripts": {
-    "check": "biome ci .",
-    "format": "biome format --write .",
-    "lint": "biome check --write .",
-    "test": "pnpm -r --if-present test"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.0.0"
-  }
+	"name": "primer",
+	"private": true,
+	"packageManager": "pnpm@11.18.0",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"check": "biome ci .",
+		"format": "biome format --write .",
+		"lint": "biome check --write .",
+		"test": "pnpm -r --if-present test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.0"
+	}
 }
