@@ -12,7 +12,7 @@ repeating that decision here without Control's data would mean guessing.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -60,12 +60,13 @@ class RetrievalState:
         store: DocumentStore,
         document_embedder: DocumentEmbedder,
         text_embedder: TextEmbedder,
+        retriever: Any | None = None,
     ) -> None:
         self.settings = settings
         self.store = store
         self.document_embedder = document_embedder
         self.text_embedder = text_embedder
-        self.retriever = build_retriever(store, settings)
+        self.retriever = retriever if retriever is not None else build_retriever(store, settings)
 
 
 def get_state(request: Request) -> RetrievalState:
@@ -149,6 +150,7 @@ def create_app(
     store: DocumentStore | None = None,
     document_embedder: DocumentEmbedder | None = None,
     text_embedder: TextEmbedder | None = None,
+    retriever: Any | None = None,
 ) -> FastAPI:
     """Build the Retrieval service.
 
@@ -168,6 +170,7 @@ def create_app(
         store or build_document_store(settings),
         document_embedder or build_document_embedder(settings),
         text_embedder or build_text_embedder(settings),
+        retriever,
     )
 
     @app.exception_handler(ProblemError)

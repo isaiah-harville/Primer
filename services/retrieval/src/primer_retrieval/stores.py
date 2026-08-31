@@ -45,4 +45,9 @@ def build_document_store(settings: Settings) -> DocumentStore:
         search_strategy="hnsw",
         create_extension=True,
         recreate_table=False,
+        # Derived from the table, because the integration's defaults are
+        # fixed names: two Primer tables in one schema would otherwise try to
+        # create the same index and the second would fail at startup.
+        hnsw_index_name=f"{settings.vector_table}_hnsw_index",
+        keyword_index_name=f"{settings.vector_table}_keyword_index",
     )

@@ -103,6 +103,7 @@ def test_retrieved_chunk_carries_scope_for_authorization_filters() -> None:
         content="passage",
         score=0.71,
         locator=SourceLocator(section="Methods"),
+        index_generation=uuid4(),
     )
     assert {"library_id", "document_version_id"} <= chunk.model_dump().keys()
 
