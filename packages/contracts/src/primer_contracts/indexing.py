@@ -60,6 +60,25 @@ class GenerationCount(WireModel):
     count: int = Field(ge=0)
 
 
+class LibraryAccessRequest(WireModel):
+    """Ask Control whether a principal may read a library, and what to search."""
+
+    principal: Principal
+    library_id: UUID
+
+
+class LibraryScope(WireModel):
+    """Permission and search scope in one answer.
+
+    They travel together because they are decided from the same rows: asking
+    separately would leave a window where a library became readable, or
+    stopped being, between the two calls.
+    """
+
+    library_id: UUID
+    generation_ids: tuple[UUID, ...] = ()
+
+
 class SearchRequest(WireModel):
     """Search one library, within a known set of active generations.
 
