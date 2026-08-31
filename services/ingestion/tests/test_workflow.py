@@ -82,6 +82,9 @@ class FakeControl:
         self.failures.append(failure)
         return TransitionResult(applied=True, status=IngestionStatus.FAILED)
 
+    def purge(self, job_id: UUID) -> list[str]:
+        return []
+
 
 class RecordingStage:
     def __init__(self, error: Exception | None = None) -> None:

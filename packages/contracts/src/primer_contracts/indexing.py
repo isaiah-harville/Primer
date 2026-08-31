@@ -94,6 +94,21 @@ class DeleteRequest(WireModel):
     generation_id: UUID
 
 
+class PurgeRequest(WireModel):
+    """Remove a version's chunks, optionally sparing one generation.
+
+    Retiring a superseded build and erasing a deleted document are the same
+    operation with one parameter different, so they share a code path rather
+    than two that must stay in agreement about what "gone" means.
+    """
+
+    principal: Principal
+    library_id: UUID
+    document_version_id: UUID
+    #: The generation to keep. None erases the version entirely.
+    keep_generation_id: UUID | None = None
+
+
 class DeleteResult(WireModel):
     generation_id: UUID
     deleted: int = Field(ge=0)

@@ -117,10 +117,28 @@ def execute_stage(
         return StageOutcome(ClaimOutcome.SUPERSEDED)
 
     if control.complete(job_id, stage, claim.generation_id).applied:
+        _after_activation(handler, claim)
         following = NEXT_STAGE[stage]
         if following is not None:
             publish(following, job_id)
     return StageOutcome(ClaimOutcome.CLAIMED)
+
+
+def _after_activation(handler: StageHandler, claim: JobClaim) -> None:
+    """Run a stage's follow-up work, if it has any.
+
+    Retiring a superseded index can only happen once Control has switched to
+    the new one, which is what completing the stage does. A failure here
+    leaves storage to reclaim, not a wrong answer, so it is logged rather
+    than failing a job that has already succeeded.
+    """
+    follow_up = getattr(handler, "retire_superseded", None)
+    if follow_up is None:
+        return
+    try:
+        follow_up(claim)
+    except Exception:
+        logger.exception("job %s: could not retire superseded generations", claim.job_id)
 
 
 def _report_failure(

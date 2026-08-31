@@ -239,6 +239,15 @@ class SourceStore:
     async def exists(self, sha256: str) -> bool:
         return bool(await self._run(self._fs.exists, self._key("sources", sha256)))
 
-    async def remove(self, sha256: str) -> None:
-        """Delete a stored object. Callers must confirm nothing references it."""
-        await self._discard(self._key("sources", sha256))
+    def remove(self, sha256: str) -> None:
+        """Delete a stored object, and say nothing if it is already gone.
+
+        Synchronous, like `download`: only cleanup workers call it, and they
+        have no event loop to block. Callers must have confirmed that nothing
+        references these bytes - this class cannot know, because the answer
+        lives in the database.
+        """
+        try:
+            self._fs.rm_file(self._key("sources", sha256))
+        except Exception:  # noqa: BLE001 - an object already gone is the wanted state
+            return

@@ -205,6 +205,21 @@ class IngestionJobRepository:
         )
         await self._session.execute(statement)
 
+    async def deleted_document_for(self, job_id: UUID) -> UUID | None:
+        """The tombstoned document this cleanup job belongs to.
+
+        Requiring the tombstone is the guard: a purge request that named a
+        live document would delete rows a user still expects to exist, so it
+        finds nothing instead.
+        """
+        result = await self._session.execute(
+            select(Document.id)
+            .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+            .join(IngestionJob, IngestionJob.document_version_id == DocumentVersion.id)
+            .where(IngestionJob.id == job_id, Document.deleted_at.is_not(None))
+        )
+        return result.scalar_one_or_none()
+
     async def active_generations(self, library_id: UUID) -> list[UUID]:
         """The generations a search of this library may read.
 

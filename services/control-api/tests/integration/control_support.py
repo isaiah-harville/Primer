@@ -72,6 +72,9 @@ class ServiceClient:
             self._url(job_id, "claim"), json={"stage": stage}, headers=self._headers
         )
 
+    async def purge(self, job_id: str) -> Response:
+        return await self._http.post(self._url(job_id, "purge"), json={}, headers=self._headers)
+
     async def heartbeat(self, job_id: str, generation_id: str, stage: str = "parse") -> Response:
         return await self._http.post(
             self._url(job_id, "heartbeat"),

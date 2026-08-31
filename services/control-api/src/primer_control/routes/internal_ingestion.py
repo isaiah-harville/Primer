@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from primer_control.config import Settings
 from primer_control.db import get_session
 from primer_control.errors import ProblemError
+from primer_control.repositories.documents import DocumentRepository
 from primer_control.repositories.ingestion_jobs import IngestionJobRepository
 from primer_control.security import require_service_credential
 
@@ -83,6 +84,22 @@ async def active_generations(library_id: UUID, session: Session) -> list[UUID]:
     moment its tombstone is written, before its vectors are removed.
     """
     return await IngestionJobRepository(session).active_generations(library_id)
+
+
+@router.post("/jobs/{job_id}/purge", summary="Remove a deleted document's rows")
+async def purge_document(job_id: UUID, session: Session) -> list[str]:
+    """Drop the metadata of a tombstoned document and report freed sources.
+
+    Called by the delete stage once the passages are gone. Returns the
+    content hashes no document references any more, which the worker then
+    removes from the object store - in that order, so bytes are only removed
+    once the database agrees nothing points at them.
+    """
+    repository = IngestionJobRepository(session)
+    document_id = await repository.deleted_document_for(job_id)
+    if document_id is None:
+        raise unknown_job(job_id)
+    return await DocumentRepository(session).purge(document_id)
 
 
 @router.post("/jobs/{job_id}/heartbeat", summary="Extend a claim")

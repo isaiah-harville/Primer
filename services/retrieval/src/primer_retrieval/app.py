@@ -24,6 +24,7 @@ from primer_contracts.indexing import (
     GenerationQuery,
     IndexRequest,
     IndexResult,
+    PurgeRequest,
     SearchRequest,
     SearchResult,
 )
@@ -32,6 +33,7 @@ from primer_retrieval import __version__
 from primer_retrieval.config import Settings
 from primer_retrieval.errors import ProblemError, problem_response
 from primer_retrieval.pipelines import (
+    GENERATION_ID,
     DocumentEmbedder,
     TextEmbedder,
     build_document_embedder,
@@ -40,6 +42,7 @@ from primer_retrieval.pipelines import (
     scope_filter,
     to_documents,
     to_retrieved,
+    version_filter,
 )
 from primer_retrieval.security import require_service_credential
 from primer_retrieval.stores import build_document_store
@@ -138,6 +141,32 @@ def delete_generation(payload: DeleteRequest, state: State) -> DeleteResult:
     if documents:
         state.store.delete_documents([document.id for document in documents])
     return DeleteResult(generation_id=payload.generation_id, deleted=len(documents))
+
+
+@router.post("/purge", summary="Remove a version's chunks")
+def purge_version(payload: PurgeRequest, state: State) -> DeleteResult:
+    """Erase a version, optionally sparing the generation now in use.
+
+    The generation to keep is excluded here rather than in the store's
+    filter, because a not-equals filter is not something every backend
+    supports the same way, and cleanup is the one operation where being
+    approximately right means deleting the wrong thing.
+    """
+    documents = state.store.filter_documents(
+        filters=version_filter(payload.library_id, payload.document_version_id)
+    )
+    keep = str(payload.keep_generation_id) if payload.keep_generation_id else None
+    doomed = [
+        document.id
+        for document in documents
+        if keep is None or str(document.meta.get(GENERATION_ID)) != keep
+    ]
+    if doomed:
+        state.store.delete_documents(doomed)
+    return DeleteResult(
+        generation_id=payload.keep_generation_id or payload.document_version_id,
+        deleted=len(doomed),
+    )
 
 
 @router.get("/health/live", summary="Process liveness", dependencies=[])

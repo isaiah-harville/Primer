@@ -136,6 +136,20 @@ Download the current version's bytes.
 | `200` | Successful Response |
 | `422` | Validation Error |
 
+### `POST /api/v1/libraries/{library_id}/documents/{document_id}/reindex`
+
+Rebuild a document's index.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `library_id` | path | yes |
+| `document_id` | path | yes |
+
+| Status | Meaning |
+| --- | --- |
+| `202` | Successful Response |
+| `422` | Validation Error |
+
 ### `POST /api/v1/libraries/{library_id}/documents/{document_id}/versions`
 
 Replace a document with a new version.

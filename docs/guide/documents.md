@@ -44,13 +44,32 @@ While a replacement is being indexed, the previous version keeps answering
 questions. The switch happens in one step when the new index is complete and
 verified — never halfway.
 
+## Rebuilding an index
+
+Reindexing rebuilds a document's passages without re-uploading it. Use it
+after changing the embedding model, or if a document was indexed while
+something was misconfigured.
+
+The current index keeps answering throughout. The new build only becomes the
+answer once it is complete and verified, and a build that fails changes
+nothing.
+
+Pressing reindex twice does not start two builds. A rebuild already in
+flight is reported as it stands.
+
 ## Deleting a document
 
-A deleted document stops being searchable at once. Its passages and stored
-file are removed afterwards.
+A deleted document stops being searchable at once. Its passages, metadata,
+and stored file are removed afterwards, in that order.
 
-Deleting twice is not an error the second time in any way that matters: the
-document is gone either way.
+The order is deliberate. Passages go first because they are what a search
+can still reach. The file goes last, and only if no other document uses it:
+if you and a colleague uploaded the same PDF, deleting yours leaves theirs
+intact and the file in place.
+
+Deleting a document that is already deleted reports that it is not found,
+the same as any document you cannot see. It does not schedule a second round
+of cleanup.
 
 ## Limits
 

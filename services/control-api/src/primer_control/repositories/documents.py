@@ -14,11 +14,13 @@ from uuid import UUID
 
 from primer_contracts.documents import IngestionStatus
 from primer_storage import StoredSource
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_control.models import Document, DocumentVersion, IngestionJob, Library, SourceObject
+from primer_control.services.ingestion_pipeline import TERMINAL_STATES
 
 
 @dataclass(frozen=True)
@@ -173,6 +175,93 @@ class DocumentRepository:
             return None
         records = await self._records([document])
         return records[0] if records else None
+
+    async def start_reindex(self, record: DocumentRecord) -> IngestionJob | None:
+        """Begin a fresh generation, unless one is already being built.
+
+        Returns None when work is already in flight. Reindexing is a button a
+        user can press twice, and starting a second build would leave two
+        workers writing different generations of the same version with only
+        one of them ever activated.
+        """
+        job = record.job
+        if job is None:  # pragma: no cover - every version is created with a job
+            return None
+        if IngestionStatus(job.state) not in TERMINAL_STATES:
+            return None
+
+        job.generation_id = uuid.uuid4()
+        job.state = IngestionStatus.QUEUED.value
+        job.attempt = 0
+        job.error_code = None
+        job.error_detail = None
+        job.claimed_at = None
+        job.lease_expires_at = None
+        await self._session.flush()
+        await self._session.refresh(job)
+        return job
+
+    async def start_deletion(self, record: DocumentRecord) -> IngestionJob | None:
+        """Mark the job for cleanup, once.
+
+        The tombstone on the document is what makes it unreachable; this only
+        schedules the work of removing what it left behind. Returning None
+        for a job already deleting is what stops a repeated delete from
+        publishing destructive work twice.
+        """
+        job = record.job
+        if job is None:  # pragma: no cover - every version is created with a job
+            return None
+        if IngestionStatus(job.state) in {IngestionStatus.DELETING, IngestionStatus.DELETED}:
+            return None
+
+        job.state = IngestionStatus.DELETING.value
+        job.claimed_at = None
+        job.lease_expires_at = None
+        await self._session.flush()
+        await self._session.refresh(job)
+        return job
+
+    async def purge(self, document_id: UUID) -> list[str]:
+        """Remove a tombstoned document's rows, and report freed source objects.
+
+        Which sources are now unreferenced is decided by PostgreSQL, not by
+        counting. The foreign key from versions to sources is RESTRICT, so
+        deleting a source that another library still points at fails; that
+        failure is the answer, and it cannot race with an upload writing a
+        new version, because the insert holds a lock the delete waits on.
+
+        Idempotent: a document already purged has no rows to remove and
+        frees nothing.
+        """
+        versions = await self._session.execute(
+            select(DocumentVersion.source_sha256).where(DocumentVersion.document_id == document_id)
+        )
+        candidates = set(versions.scalars())
+
+        await self._session.execute(
+            delete(DocumentVersion).where(DocumentVersion.document_id == document_id)
+        )
+        await self._session.execute(delete(Document).where(Document.id == document_id))
+        await self._session.flush()
+
+        freed = []
+        for sha256 in sorted(candidates):
+            if await self._release_source(sha256):
+                freed.append(sha256)
+        return freed
+
+    async def _release_source(self, sha256: str) -> bool:
+        """Delete a source row, or report that something still references it."""
+        savepoint = await self._session.begin_nested()
+        try:
+            await self._session.execute(delete(SourceObject).where(SourceObject.sha256 == sha256))
+            await savepoint.commit()
+        except IntegrityError:
+            # A version in another document still points at these bytes.
+            await savepoint.rollback()
+            return False
+        return True
 
     async def soft_delete(self, document: Document) -> None:
         """Tombstone first; vector and source cleanup follow asynchronously."""

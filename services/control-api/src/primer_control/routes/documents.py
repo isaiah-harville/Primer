@@ -286,12 +286,26 @@ async def download_document(
     )
 
 
-@router.delete(
-    "/{document_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a document"
+@router.post(
+    "/{document_id}/reindex",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Rebuild a document's index",
 )
-async def delete_document(
-    library_id: UUID, document_id: UUID, principal: CurrentPrincipal, session: Session
-) -> Response:
+async def reindex_document(
+    library_id: UUID,
+    document_id: UUID,
+    principal: CurrentPrincipal,
+    session: Session,
+    publisher: Publisher,
+    background: BackgroundTasks,
+) -> DocumentSummary:
+    """Build a new generation, leaving the current one answering.
+
+    Pressing this twice does not start two builds. A second build of the
+    same version would have two workers writing different generations with
+    only one ever activated, so a rebuild already in flight is reported as
+    it stands rather than restarted.
+    """
     await require_library(library_id, principal.user_id, session)
     repository = DocumentRepository(session)
     record = await repository.get(
@@ -299,5 +313,42 @@ async def delete_document(
     )
     if record is None:
         raise not_found()
+
+    job = await repository.start_reindex(record)
+    if job is not None:
+        background.add_task(publisher.publish, StageName.PARSE, job.id)
+        record = DocumentRecord(record.document, record.version, job)
+    return summarize(record)
+
+
+@router.delete(
+    "/{document_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a document"
+)
+async def delete_document(
+    library_id: UUID,
+    document_id: UUID,
+    principal: CurrentPrincipal,
+    session: Session,
+    publisher: Publisher,
+    background: BackgroundTasks,
+) -> Response:
+    """Tombstone first; the passages and bytes go afterwards.
+
+    The tombstone is the deletion the user asked for, and it takes effect
+    immediately. Everything after it is cleanup, and scheduling it separately
+    means a slow or failing cleanup never leaves a deleted document
+    answering questions in the meantime.
+    """
+    await require_library(library_id, principal.user_id, session)
+    repository = DocumentRepository(session)
+    record = await repository.get(
+        document_id, library_id=library_id, where=access.manageable(principal.user_id)
+    )
+    if record is None:
+        raise not_found()
+
     await repository.soft_delete(record.document)
+    job = await repository.start_deletion(record)
+    if job is not None:
+        background.add_task(publisher.publish, StageName.DELETE, job.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

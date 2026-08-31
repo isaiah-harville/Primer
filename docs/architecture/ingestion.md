@@ -70,6 +70,27 @@ converter: that work happens inside native extensions, where killing a
 thread risks a corrupt process. The hard stop is the worker's task time
 limit, which kills the process and lets the job's lease expire.
 
+## Deletion, and shared bytes
+
+Deleting tombstones the document first. That is the deletion the user asked
+for and it takes effect at once; everything after is cleanup, scheduled
+separately so a slow or failing cleanup never leaves a deleted document
+answering questions.
+
+Cleanup then removes passages, then metadata, then the stored bytes — bytes
+last, and only for content nothing references any more.
+
+Which sources are free is decided by PostgreSQL rather than by counting. The
+foreign key from versions to sources is `RESTRICT`, so deleting bytes that
+another library still points at simply fails, and that failure is the
+answer. It cannot race with an upload either, because the version insert
+holds a lock the delete waits on. A count would have to guess about
+transactions it cannot see.
+
+The remaining gap is a worker that dies between the database freeing an
+object and the bytes being removed. That leaks storage rather than losing
+data, and is recoverable by a sweep that does not exist yet.
+
 ## Chunks carry their scope
 
 Every passage carries its library, document, version, owner, and generation.

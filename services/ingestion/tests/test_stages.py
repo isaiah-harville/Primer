@@ -13,10 +13,12 @@ from primer_contracts.indexing import (
     GenerationQuery,
     IndexRequest,
     IndexResult,
+    PurgeRequest,
 )
 from primer_contracts.ingestion import JobClaim, StageName
 from primer_ingestion.config import Settings
 from primer_ingestion.errors import PermanentStageError, StageError
+from primer_ingestion.stages.delete import DeleteStage
 from primer_ingestion.stages.embed import EmbedStage
 from primer_ingestion.stages.index import IndexStage
 from primer_ingestion.stages.parse import CHUNKS_ARTIFACT
@@ -32,6 +34,7 @@ class RecordingIndex:
 
     def __init__(self, reported_count: int | None = None) -> None:
         self.requests: list[IndexRequest] = []
+        self.purges: list[PurgeRequest] = []
         self.reported_count = reported_count
 
     @property
@@ -48,6 +51,12 @@ class RecordingIndex:
 
     def delete(self, request: DeleteRequest) -> DeleteResult:
         return DeleteResult(generation_id=request.generation_id, deleted=0)
+
+    def purge(self, request: PurgeRequest) -> DeleteResult:
+        self.purges.append(request)
+        return DeleteResult(
+            generation_id=request.keep_generation_id or request.document_version_id, deleted=0
+        )
 
 
 def chunk_payload(ordinal: int) -> dict[str, object]:
@@ -165,3 +174,104 @@ def test_the_worker_registers_a_handler_for_every_pipeline_stage() -> None:
     register_stages(Settings())
 
     assert {StageName.PARSE, StageName.EMBED, StageName.INDEX} <= set(HANDLERS)
+
+
+class RecordingControl:
+    """Control, recording what cleanup asked it to drop."""
+
+    def __init__(self, freed: list[str] | None = None) -> None:
+        self.freed = freed if freed is not None else []
+        self.purge_calls = 0
+
+    def purge(self, job_id: uuid.UUID) -> list[str]:
+        self.purge_calls += 1
+        return self.freed
+
+
+class RecordingSources:
+    def __init__(self) -> None:
+        self.removed: list[str] = []
+
+    def remove(self, sha256: str) -> None:
+        self.removed.append(sha256)
+
+
+def delete_claim(claim: JobClaim) -> JobClaim:
+    return claim.model_copy(update={"stage": StageName.DELETE})
+
+
+def test_cleanup_removes_passages_then_rows_then_bytes(
+    settings: Settings, artifacts: ArtifactStore, claim: JobClaim
+) -> None:
+    """Bytes go last, and only once the database says nothing points at them."""
+    index = RecordingIndex()
+    control = RecordingControl(freed=["a" * 64])
+    sources = RecordingSources()
+
+    DeleteStage(settings, control=control, index=index, sources=sources, artifacts=artifacts)(
+        delete_claim(claim)
+    )
+
+    assert control.purge_calls == 1
+    assert sources.removed == ["a" * 64]
+    # Every generation, not just the current one.
+    assert index.purges[0].keep_generation_id is None
+    assert index.purges[0].document_version_id == claim.document_version_id
+
+
+def test_cleanup_leaves_bytes_another_document_still_uses(
+    settings: Settings, artifacts: ArtifactStore, claim: JobClaim
+) -> None:
+    """Deduplication must not let one delete erase another user's document."""
+    sources = RecordingSources()
+
+    DeleteStage(
+        settings,
+        control=RecordingControl(freed=[]),
+        index=RecordingIndex(),
+        sources=sources,
+        artifacts=artifacts,
+    )(delete_claim(claim))
+
+    assert sources.removed == []
+
+
+def test_retiring_superseded_generations_spares_the_live_one(
+    settings: Settings, artifacts: ArtifactStore, claim: JobClaim
+) -> None:
+    """Purging without sparing the active build would empty a live index."""
+    index = RecordingIndex()
+
+    IndexStage(settings, artifacts=artifacts, index=index).retire_superseded(claim)
+
+    assert index.purges[0].keep_generation_id == claim.generation_id
+
+
+def test_superseded_generations_are_retired_only_after_the_switch(
+    settings: Settings, artifacts: ArtifactStore, claim: JobClaim
+) -> None:
+    """Until Control has switched, the old generation is what searches read."""
+    from primer_ingestion.tasks import _after_activation
+
+    index = RecordingIndex(reported_count=1)
+    stage = IndexStage(settings, artifacts=artifacts, index=index)
+
+    write_chunks(artifacts, 1)
+    stage(claim.model_copy(update={"stage": StageName.INDEX}))
+    assert index.purges == []
+
+    _after_activation(stage, claim)
+    assert len(index.purges) == 1
+
+
+def test_a_failed_retirement_does_not_fail_a_finished_job(
+    settings: Settings, artifacts: ArtifactStore, claim: JobClaim
+) -> None:
+    """The generation is already live; leftover storage is not a wrong answer."""
+    from primer_ingestion.tasks import _after_activation
+
+    class Broken(IndexStage):
+        def retire_superseded(self, claim: JobClaim) -> None:
+            raise RuntimeError("retrieval unreachable")
+
+    _after_activation(Broken(settings, artifacts=artifacts, index=RecordingIndex()), claim)
