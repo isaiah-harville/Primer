@@ -88,6 +88,12 @@ class JobClaim(WireModel):
     byte_size: int = Field(ge=0)
 
 
+class StageClaim(WireModel):
+    """Ask to enter a stage. The job is named in the path, not the body."""
+
+    stage: StageName
+
+
 class ClaimResponse(WireModel):
     outcome: ClaimOutcome
     #: Present only when the outcome is `CLAIMED`.
