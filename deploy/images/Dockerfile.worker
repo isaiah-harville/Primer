@@ -1,12 +1,4 @@
-# The ingestion worker.
-#
-# Separate from the API image, and on Debian rather than Alpine, for one
-# reason: Docling's layout models run on torch, and torch publishes only
-# glibc wheels. Keeping this apart is what lets the three API services stay
-# small instead of every one of them carrying a machine-learning stack.
-#
-# Single stage, for the same reason as the API image: nothing is compiled
-# here, so there is nothing a second stage would leave behind.
+# The ingestion worker
 
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
@@ -30,14 +22,8 @@ RUN groupadd --gid 10001 primer \
 
 WORKDIR /app
 
-# One sync, after everything is copied. Each `uv sync` writes a complete
-# virtualenv and the first one stays in its layer, so a separate dependency
-# layer costs more than it saves - and with torch in the graph that cost is
-# measured in gigabytes. The uv cache mount keeps rebuilds cheap.
 COPY pyproject.toml uv.lock ./
-# Every workspace member's manifest, even the ones not installed: uv
-# resolves the whole workspace, and a missing member makes the lock look
-# stale.
+
 COPY services/control-api/pyproject.toml services/control-api/
 COPY services/retrieval/pyproject.toml services/retrieval/
 COPY services/chat/pyproject.toml services/chat/

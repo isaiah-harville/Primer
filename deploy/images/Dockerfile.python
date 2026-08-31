@@ -1,24 +1,10 @@
 # The API services: Control, Chat, and Retrieval.
 #
-# Single stage on purpose. A build/runtime split earns its keep when the
-# build needs compilers, caches, or a package manager the runtime should not
-# have. None of that applies here: every dependency installs from a wheel,
-# uv's cache is a mount rather than a layer, and the runtime base would be
-# the same image anyway. Splitting would add a stage and copy the same files
-# into it.
-#
-# Deliberately excludes the ingestion worker. Docling needs torch, torch
-# publishes no musl wheels, and carrying it would mean a multi-gigabyte
-# image for three services that never import it. The worker has its own
-# Dockerfile for that reason.
-#
 # Which service runs is chosen by the command, so Compose can pin all three
 # to one digest and know they are the same code.
 
 FROM ghcr.io/astral-sh/uv:python3.13-alpine
 
-# The published python+uv tags lag uv itself by several minor versions, so
-# the pinned binary is copied over whatever the tag shipped with.
 COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /usr/local/bin/uv
 
 LABEL org.opencontainers.image.title="Primer API" \
@@ -33,9 +19,6 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# A numeric non-root user with a real passwd entry: the id has to be stable
-# for volume ownership, and a bare `USER 10001` breaks anything that looks
-# itself up.
 RUN addgroup -g 10001 primer \
     && adduser -u 10001 -G primer -s /sbin/nologin -D primer
 
