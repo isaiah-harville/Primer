@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from primer_control.source_store import (
+from primer_storage import (
     DOCX_MEDIA_TYPE,
     PDF_MEDIA_TYPE,
     UnsupportedContent,

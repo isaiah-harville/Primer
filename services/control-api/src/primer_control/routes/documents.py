@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, Request, Response, UploadFile, sta
 from fastapi.responses import StreamingResponse
 from primer_contracts.documents import DocumentSummary, IngestionStatus
 from primer_contracts.errors import ErrorCode
+from primer_storage import QuotaExceeded, SourceStore, SourceStoreError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_control.db import get_session
@@ -26,7 +27,6 @@ from primer_control.models import Document, Library
 from primer_control.repositories.documents import DocumentRecord, DocumentRepository
 from primer_control.repositories.libraries import LibraryRepository
 from primer_control.services.library_access import LibraryAccess
-from primer_control.source_store import QuotaExceeded, SourceStore, SourceStoreError
 
 router = APIRouter(prefix="/api/v1/libraries/{library_id}/documents", tags=["documents"])
 

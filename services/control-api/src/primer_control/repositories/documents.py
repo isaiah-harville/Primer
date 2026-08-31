@@ -13,12 +13,12 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from primer_contracts.documents import IngestionStatus
+from primer_storage import StoredSource
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_control.models import Document, DocumentVersion, IngestionJob, Library, SourceObject
-from primer_control.source_store import StoredSource
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,7 @@ members = [
     "primer-contracts",
     "primer-control",
     "primer-ingestion",
+    "primer-storage",
 ]
 
 [[package]]
@@ -635,8 +636,8 @@ dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi" },
-    { name = "fsspec" },
     { name = "primer-contracts" },
+    { name = "primer-storage" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
@@ -657,8 +658,8 @@ requires-dist = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi" },
-    { name = "fsspec" },
     { name = "primer-contracts", editable = "packages/contracts" },
+    { name = "primer-storage", editable = "packages/storage" },
     { name = "psycopg", extras = ["binary"] },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
@@ -689,6 +690,21 @@ requires-dist = [
     { name = "httpx2" },
     { name = "primer-contracts", editable = "packages/contracts" },
     { name = "pydantic-settings" },
+]
+
+[[package]]
+name = "primer-storage"
+version = "0.1.0"
+source = { editable = "packages/storage" }
+dependencies = [
+    { name = "anyio" },
+    { name = "fsspec" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio" },
+    { name = "fsspec" },
 ]
 
 [[package]]
