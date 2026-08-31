@@ -1,0 +1,230 @@
+# Primer, locally, for one person on one machine.
+#
+#   docker compose -f deploy/compose/compose.yaml up --wait
+#
+# This profile has no authentication and is not meant to gain any. Every
+# request is the same fixed local user, so anyone who can reach the
+# published ports is that user. Bind it to localhost and keep it there.
+#
+# Multi-user Primer is the Kubernetes deployment. That is where the ingress,
+# the identity provider, and the trusted-header boundary live; bolting a
+# proxy onto Compose would produce something that looks multi-user while one
+# forgotten published port makes authentication decorative.
+#
+# No model server is bundled. Primer runs against an OpenAI-compatible
+# endpoint you already have - vLLM, Ollama, or llama.cpp - named by
+# PRIMER_CHAT_BASE_URL and PRIMER_EMBEDDING_BASE_URL.
+
+name: primer
+
+x-python-image: &python-image
+  build:
+    context: ../..
+    dockerfile: deploy/images/Dockerfile.python
+
+x-hardening: &hardening
+  read_only: true
+  security_opt:
+    - "no-new-privileges:true"
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+
+x-service-env: &service-env
+  PRIMER_DATABASE_URL: postgresql+asyncpg://primer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/primer
+  PRIMER_INTERNAL_API_TOKEN: ${PRIMER_INTERNAL_API_TOKEN:?set PRIMER_INTERNAL_API_TOKEN}
+  PRIMER_SERVICE_TOKEN: ${PRIMER_INTERNAL_API_TOKEN:?set PRIMER_INTERNAL_API_TOKEN}
+  PRIMER_SOURCE_STORE_URL: file:///var/lib/primer/sources
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: primer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: primer
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U primer -d primer"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: primer
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Migrations are a one-shot, never part of a service's startup: several
+  # replicas racing to alter the same schema is exactly what this avoids.
+  # Everything that touches the database waits for this to exit cleanly.
+  migrate-control:
+    <<: [*python-image, *hardening]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PRIMER_DATABASE_URL: postgresql://primer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/primer
+    working_dir: /app/services/control-api
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  migrate-chat:
+    <<: [*python-image, *hardening]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PRIMER_DATABASE_URL: postgresql://primer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/primer
+    working_dir: /app/services/chat
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  control:
+    <<: [*python-image, *hardening]
+    depends_on:
+      migrate-control:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      # Fixed, not configurable: see the note at the top of this file.
+      PRIMER_AUTH_MODE: disabled
+      PRIMER_BROKER_URL: amqp://primer:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}@rabbitmq:5672//
+      PRIMER_CHAT_SERVICE_URL: http://chat:8000
+      PRIMER_MAX_UPLOAD_BYTES: ${PRIMER_MAX_UPLOAD_BYTES:-104857600}
+    volumes:
+      - source-objects:/var/lib/primer/sources
+    command:
+      ["uvicorn", "primer_control.app:create_app", "--factory",
+       "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    ports:
+      - "127.0.0.1:${PRIMER_CONTROL_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  retrieval:
+    <<: [*python-image, *hardening]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      # Retrieval reads pgvector synchronously; it does not use asyncpg.
+      PRIMER_DATABASE_URL: postgresql://primer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/primer
+      PRIMER_VECTOR_STORE: ${PRIMER_VECTOR_STORE:-pgvector}
+      PRIMER_EMBEDDING_BASE_URL: ${PRIMER_EMBEDDING_BASE_URL:?set PRIMER_EMBEDDING_BASE_URL}
+      PRIMER_EMBEDDING_MODEL: ${PRIMER_EMBEDDING_MODEL:?set PRIMER_EMBEDDING_MODEL}
+      PRIMER_EMBEDDING_DIMENSIONS: ${PRIMER_EMBEDDING_DIMENSIONS:?set PRIMER_EMBEDDING_DIMENSIONS}
+      PRIMER_EMBEDDING_API_KEY: ${PRIMER_EMBEDDING_API_KEY:-}
+    command:
+      ["uvicorn", "primer_retrieval.app:create_app", "--factory",
+       "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/internal/v1/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  chat:
+    <<: [*python-image, *hardening]
+    depends_on:
+      migrate-chat:
+        condition: service_completed_successfully
+      retrieval:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      # Fixed, not configurable: see the note at the top of this file.
+      PRIMER_AUTH_MODE: disabled
+      PRIMER_CONTROL_URL: http://control:8000
+      PRIMER_RETRIEVAL_URL: http://retrieval:8000
+      PRIMER_CHAT_BASE_URL: ${PRIMER_CHAT_BASE_URL:?set PRIMER_CHAT_BASE_URL}
+      PRIMER_CHAT_MODEL: ${PRIMER_CHAT_MODEL:?set PRIMER_CHAT_MODEL}
+      PRIMER_CHAT_API_KEY: ${PRIMER_CHAT_API_KEY:-}
+    command:
+      ["uvicorn", "primer_chat.app:create_app", "--factory",
+       "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # One worker for every queue. Parsing is CPU-heavy and embedding is mostly
+  # waiting on a network call, so a real deployment splits them; locally,
+  # one process is simpler and the queues are the same.
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/images/Dockerfile.worker
+    <<: *hardening
+    depends_on:
+      control:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      PRIMER_BROKER_URL: amqp://primer:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD}@rabbitmq:5672//
+      PRIMER_CONTROL_URL: http://control:8000
+      PRIMER_RETRIEVAL_URL: http://retrieval:8000
+      PRIMER_ENABLE_OCR: ${PRIMER_ENABLE_OCR:-true}
+    volumes:
+      - source-objects:/var/lib/primer/sources
+      # Docling downloads layout models on first use. A named volume keeps
+      # them across restarts; without it every container start re-downloads
+      # half a gigabyte.
+      - model-cache:/var/cache/primer/huggingface
+    command:
+      ["celery", "-A", "primer_ingestion.worker", "worker",
+       "--loglevel", "info",
+       "-Q", "ingestion.parse,ingestion.embed,ingestion.index,ingestion.delete"]
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/images/Dockerfile.gui
+    <<: *hardening
+    depends_on:
+      control:
+        condition: service_healthy
+    environment:
+      PRIMER_CONTROL_URL: http://control:8000
+      PRIMER_CHAT_URL: http://chat:8000
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${PRIMER_WEB_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  source-objects:
+  model-cache:

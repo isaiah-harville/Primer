@@ -11,18 +11,54 @@
 | `oauth2-proxy` | for multi-user | Not needed with auth off |
 | Qdrant | optional | Alternative to pgvector |
 
-## The processes
+## Running it with Compose
 
 ```bash
-# Control API
-uv run --package primer-control uvicorn primer_control.app:create_app --factory
+cp deploy/compose/env.example deploy/compose/.env
+# fill in the passwords and your model endpoint, then:
+docker compose -f deploy/compose/compose.yaml up --wait
+deploy/compose/scripts/smoke.sh
+```
 
-# Ingestion workers
+!!! danger "The Compose profile is for one person, and stays that way"
+    It runs with authentication off: every request is the same fixed local
+    user, so anyone who can reach the published ports *is* that user. Ports
+    are bound to `127.0.0.1` for that reason.
+
+    Multi-user Primer is the Kubernetes deployment, which is where the
+    ingress and the identity provider live. A proxy bolted onto Compose
+    would look multi-user while one forgotten published port made the
+    authentication decorative.
+
+## The images
+
+Two Python images, not one.
+
+| Image | Base | Contains |
+| --- | --- | --- |
+| `Dockerfile.python` | Alpine + uv | Control, Chat, Retrieval |
+| `Dockerfile.worker` | Debian slim + uv | The ingestion worker |
+| `Dockerfile.gui` | Node slim | The web app |
+
+The split is not tidiness. Docling's layout models run on torch, and torch
+publishes no musl wheels — so the worker needs a glibc base and a machine
+learning stack, while the three API services need neither. Sharing one image
+would put roughly two gigabytes into every service that never imports it.
+
+Both Python images are a single stage. A build/runtime split earns its keep
+when the build needs compilers or caches the runtime should not have; here
+everything installs from a wheel and uv's cache is a mount rather than a
+layer. Each `uv sync` writes a complete virtualenv that stays in its layer,
+so a separate dependency-install layer nearly *doubled* the API image.
+
+## Running the processes directly
+
+```bash
+uv run --package primer-control uvicorn primer_control.app:create_app --factory
+uv run --package primer-retrieval uvicorn primer_retrieval.app:create_app --factory
+uv run --package primer-chat uvicorn primer_chat.app:create_app --factory
 uv run --package primer-ingestion celery -A primer_ingestion.worker worker \
   -Q ingestion.parse,ingestion.embed,ingestion.index,ingestion.delete
-
-# Retrieval
-uv run --package primer-retrieval uvicorn primer_retrieval.app:create_app --factory
 ```
 
 Workers can be split by queue. Parsing is CPU-heavy and holds whole
@@ -39,7 +75,9 @@ them as separate deployments lets each scale on what actually constrains it.
 Starting out of order is not harmful — jobs wait, and stages retry — but
 documents will sit in `queued` until the chain is complete.
 
-## Putting it behind the proxy
+## Putting it behind a proxy
+
+This applies to the Kubernetes deployment, not to Compose.
 
 Primer trusts the identity headers it receives.
 
