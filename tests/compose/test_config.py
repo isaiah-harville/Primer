@@ -1,0 +1,199 @@
+"""Static policy checks on the Compose deployment.
+
+These read the resolved configuration rather than starting anything. What
+they guard is the set of mistakes that are invisible until something goes
+wrong in production: a container that can write its own filesystem, a
+credential with a default, a service reachable that should not be.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+COMPOSE_DIR = Path(__file__).resolve().parents[2] / "deploy" / "compose"
+BASE = COMPOSE_DIR / "compose.yaml"
+
+#: Primer's own containers. The dependencies are third-party images whose
+#: hardening is not ours to assert.
+APPLICATION_SERVICES = ("control", "chat", "retrieval", "worker", "web")
+
+#: Placeholders that satisfy `${VAR:?}` so the file can be resolved. None is
+#: a real credential, and none has a default in the file itself.
+RESOLVE_ENV = {
+    "POSTGRES_PASSWORD": "resolve-only",
+    "RABBITMQ_PASSWORD": "resolve-only",
+    "PRIMER_INTERNAL_API_TOKEN": "resolve-only",
+    "PRIMER_CHAT_BASE_URL": "http://model/v1",
+    "PRIMER_CHAT_MODEL": "test-model",
+    "PRIMER_EMBEDDING_BASE_URL": "http://model/v1",
+    "PRIMER_EMBEDDING_MODEL": "test-embed",
+    "PRIMER_EMBEDDING_DIMENSIONS": "768",
+}
+
+
+def resolve(*files: Path) -> dict[str, Any]:
+    """Ask Docker to resolve the files, so the test sees what Compose sees."""
+    command = ["docker", "compose"]
+    for path in files:
+        command += ["-f", str(path)]
+    command.append("config")
+    result = subprocess.run(  # noqa: S603 - a fixed command on repository files
+        command,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **RESOLVE_ENV},
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.fail(f"docker compose config failed:\n{result.stderr}")
+    return yaml.safe_load(result.stdout)
+
+
+@pytest.fixture(scope="module")
+def compose_config() -> dict[str, Any]:
+    if shutil.which("docker") is None:
+        pytest.skip("docker is not installed")
+    return resolve(BASE)
+
+
+@pytest.mark.parametrize("name", APPLICATION_SERVICES)
+def test_application_services_are_hardened(compose_config: dict[str, Any], name: str) -> None:
+    """The plan's case: read-only roots and no privilege escalation."""
+    service = compose_config["services"][name]
+
+    assert service["read_only"] is True
+    assert service["security_opt"] == ["no-new-privileges:true"]
+    assert service["cap_drop"] == ["ALL"]
+
+
+def test_nothing_mounts_the_docker_socket(compose_config: dict[str, Any]) -> None:
+    """A container with the socket is a container that is root on the host."""
+    for service in compose_config["services"].values():
+        for volume in service.get("volumes", []):
+            source = volume.get("source", "") if isinstance(volume, dict) else str(volume)
+            assert "docker.sock" not in source
+
+
+def test_nothing_bind_mounts_a_host_path(compose_config: dict[str, Any]) -> None:
+    """Named volumes only, so the stack is portable and cannot reach the host."""
+    for name, service in compose_config["services"].items():
+        for volume in service.get("volumes", []):
+            kind = volume.get("type") if isinstance(volume, dict) else None
+            assert kind != "bind", f"{name} bind-mounts a host path"
+
+
+def test_credentials_have_no_defaults(compose_config: dict[str, Any]) -> None:
+    """A password with a default is a password every deployment shares."""
+    text = BASE.read_text()
+    for variable in ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "PRIMER_INTERNAL_API_TOKEN"):
+        assert f"${{{variable}:?" in text, f"{variable} must be required, not defaulted"
+        assert f"${{{variable}:-" not in text, f"{variable} must not have a default"
+
+
+def test_the_resolved_configuration_contains_no_real_secrets(
+    compose_config: dict[str, Any],
+) -> None:
+    """Only the placeholders this test supplied should appear."""
+    rendered = yaml.safe_dump(compose_config)
+    assert "sk-" not in rendered
+    assert "BEGIN PRIVATE KEY" not in rendered
+
+
+def test_migrations_run_as_a_one_shot_before_the_services(
+    compose_config: dict[str, Any],
+) -> None:
+    """Replicas racing to alter one schema is what this ordering prevents."""
+    for migration in ("migrate-control", "migrate-chat"):
+        assert compose_config["services"][migration]["restart"] == "no"
+
+    assert (
+        compose_config["services"]["control"]["depends_on"]["migrate-control"]["condition"]
+        == "service_completed_successfully"
+    )
+    assert (
+        compose_config["services"]["chat"]["depends_on"]["migrate-chat"]["condition"]
+        == "service_completed_successfully"
+    )
+
+
+def test_the_worker_has_its_own_image(compose_config: dict[str, Any]) -> None:
+    """Torch publishes no musl wheels, so the API services cannot share Alpine
+    with the worker. Keeping them apart is what keeps the API image small."""
+    api = compose_config["services"]["control"]["build"]["dockerfile"]
+    worker = compose_config["services"]["worker"]["build"]["dockerfile"]
+
+    assert api.endswith("Dockerfile.python")
+    assert worker.endswith("Dockerfile.worker")
+    assert api != worker
+
+    for name in ("control", "chat", "retrieval"):
+        assert compose_config["services"][name]["build"]["dockerfile"] == api
+
+
+def test_no_model_server_is_bundled(compose_config: dict[str, Any]) -> None:
+    """Primer ships no model; the endpoint is the operator's to provide."""
+    images = [service.get("image", "") for service in compose_config["services"].values()]
+    for marker in ("ollama", "vllm", "llama"):
+        assert not any(marker in image.lower() for image in images)
+
+
+def test_inference_settings_are_required(compose_config: dict[str, Any]) -> None:
+    """A wrong embedding dimension is not detectable later; make it explicit."""
+    text = BASE.read_text()
+    for variable in (
+        "PRIMER_CHAT_BASE_URL",
+        "PRIMER_CHAT_MODEL",
+        "PRIMER_EMBEDDING_BASE_URL",
+        "PRIMER_EMBEDDING_MODEL",
+        "PRIMER_EMBEDDING_DIMENSIONS",
+    ):
+        assert f"${{{variable}:?" in text
+
+
+def test_the_profile_is_single_user_and_says_so(compose_config: dict[str, Any]) -> None:
+    """Compose is one person on one machine, deliberately and permanently.
+
+    Authentication belongs to the Kubernetes deployment, which has an
+    ingress to put a proxy in front of. A proxy bolted onto Compose would
+    look multi-user while one forgotten published port made it decorative.
+    """
+    for name in ("control", "chat"):
+        assert compose_config["services"][name]["environment"]["PRIMER_AUTH_MODE"] == "disabled"
+
+
+def test_auth_mode_is_not_configurable_here(compose_config: dict[str, Any]) -> None:
+    """No variable to half-enable: `oidc` without an edge authenticates nobody."""
+    text = BASE.read_text()
+    assert "${PRIMER_AUTH_MODE" not in text
+
+
+def test_nothing_is_published_beyond_loopback(compose_config: dict[str, Any]) -> None:
+    """With no authentication, reachable means reachable *as the only user*."""
+    published = [
+        (name, port)
+        for name, service in compose_config["services"].items()
+        for port in service.get("ports", [])
+    ]
+    # Guard against a vacuous pass: if nothing is published at all, this test
+    # would silently stop checking anything.
+    assert published, "expected the stack to publish at least the web and control ports"
+
+    for name, port in published:
+        host_ip = port.get("host_ip") if isinstance(port, dict) else None
+        assert host_ip == "127.0.0.1", f"{name} publishes on {host_ip or 'all interfaces'}"
+
+
+def test_every_documented_variable_appears_in_the_example(
+    compose_config: dict[str, Any],
+) -> None:
+    """An operator copying env.example should not hit a missing-variable error."""
+    example = (COMPOSE_DIR / "env.example").read_text()
+    for variable in RESOLVE_ENV:
+        assert variable in example, f"{variable} is required but absent from env.example"
