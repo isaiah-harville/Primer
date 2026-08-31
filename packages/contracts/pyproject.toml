@@ -1,0 +1,10 @@
+[project]
+name = "primer-contracts"
+version = "0.1.0"
+description = "Shared Primer cross-service wire models"
+requires-python = ">=3.13"
+dependencies = ["pydantic"]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
