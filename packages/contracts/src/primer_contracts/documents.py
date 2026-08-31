@@ -24,6 +24,7 @@ class IngestionStatus(StrEnum):
     UNSUPPORTED = "unsupported"
     CANCELLED = "cancelled"
     DELETING = "deleting"
+    DELETED = "deleted"
 
 
 class DocumentSummary(WireModel):

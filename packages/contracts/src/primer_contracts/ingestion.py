@@ -48,6 +48,22 @@ class ClaimOutcome(StrEnum):
     CANCELLED = "cancelled"
 
 
+class FailureDisposition(StrEnum):
+    """What a failure means for the job, decided by the worker.
+
+    The worker is the only party that knows whether a failure was transient,
+    so it says so explicitly rather than leaving Control to infer it from an
+    error code.
+    """
+
+    #: Try again, if the job has retries left.
+    RETRY = "retry"
+    #: Terminal: the stage failed and retrying cannot help.
+    FAILED = "failed"
+    #: Terminal: the document is not something Primer can ingest.
+    UNSUPPORTED = "unsupported"
+
+
 class JobClaim(WireModel):
     """Everything a worker needs, delivered at claim time.
 
@@ -100,10 +116,9 @@ class StageFailure(WireModel):
     generation_id: UUID
     code: str = Field(min_length=1, max_length=64)
     detail: str | None = Field(default=None, max_length=2000)
-    #: False for failures that cannot succeed on a retry, such as an
-    #: unsupported document. Those go straight to a terminal state instead of
+    #: A non-retryable failure goes straight to a terminal state instead of
     #: consuming the retry budget.
-    retryable: bool = True
+    disposition: FailureDisposition = FailureDisposition.RETRY
 
 
 class TransitionResult(WireModel):

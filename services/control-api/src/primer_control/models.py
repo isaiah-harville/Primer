@@ -214,6 +214,11 @@ class IngestionJob(Base):
     generation_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    #: A lease, not a boolean flag: a worker that dies mid-stage stops
+    #: renewing, and the stage becomes claimable again on its own rather than
+    #: staying stuck until an operator intervenes.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: Sanitized for display. Exception traces belong in logs, correlated by
     #: request ID, not in a field a user can read.
     error_code: Mapped[str | None] = mapped_column(String(64))
