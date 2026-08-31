@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from primer_contracts.base import WireModel
 from primer_contracts.identity import Principal
@@ -76,7 +76,15 @@ class MessageSummary(WireModel):
     Citations are stored with the message rather than recomputed, because
     what an answer cited is a fact about that answer. Re-retrieving later
     would produce today's passages for yesterday's words.
+
+    Content keeps its whitespace, like `MessageDelta`, so that concatenating
+    a stream's fragments yields exactly the stored answer. Trimming here
+    would make the two disagree for any answer that begins or ends with
+    space, and a client comparing them would be right to think it had lost
+    something.
     """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
 
     id: UUID
     conversation_id: UUID
@@ -106,6 +114,17 @@ class MessageStarted(StreamEvent):
 
 
 class MessageDelta(StreamEvent):
+    """A fragment of the answer, exactly as the model produced it.
+
+    Whitespace is deliberately not stripped here, unlike every other wire
+    string. Fragments are concatenated by the client, and the space between
+    two words routinely arrives as the leading or trailing character of a
+    fragment - stripping it silently welds words together in the reader's
+    copy while the stored answer looks fine.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
+
     type: Literal["message.delta"] = "message.delta"
     text: str
 
