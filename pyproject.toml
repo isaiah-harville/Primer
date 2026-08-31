@@ -12,6 +12,11 @@ dev = [
     "ruff",
     "ty",
 ]
+docs = [
+    "mkdocs<2",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+]
 
 [tool.uv.workspace]
 members = ["packages/*", "services/*"]

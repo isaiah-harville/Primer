@@ -1,0 +1,60 @@
+# Adding documents
+
+## What happens to an upload
+
+An upload is checked, stored, and queued before the response comes back.
+From there, work happens in the background:
+
+<div class="primer-diagram" markdown>
+![Ingestion pipeline states](../assets/diagrams/ingestion-pipeline.svg#only-light)
+![Ingestion pipeline states](../assets/diagrams/ingestion-pipeline-dark.svg#only-dark)
+</div>
+
+A document reports one of these states while you wait:
+
+| State | What it means |
+| --- | --- |
+| `queued` | Stored and waiting for a worker |
+| `parsing` | Being read and split into passages |
+| `chunking` | Read; waiting to be embedded |
+| `embedding` | Passages being turned into vectors |
+| `indexing` | Written to the index; being checked |
+| `ready` | Searchable |
+| `failed` | Something went wrong; see the detail |
+| `unsupported` | Nothing readable could be found |
+
+## Duplicate files
+
+If you upload the same bytes twice, Primer stores them once. Both documents
+exist independently — different names, different libraries if you like — but
+the file behind them is shared.
+
+This is invisible from the outside, deliberately. Primer never tells you
+that a file you uploaded already existed, because that would reveal
+something about content you cannot otherwise see.
+
+## Replacing a document
+
+Uploading a replacement adds a new **version** rather than overwriting the
+old one. Older versions stay readable, so a citation made last month still
+resolves to the text that was actually quoted, not to whatever the document
+says now.
+
+While a replacement is being indexed, the previous version keeps answering
+questions. The switch happens in one step when the new index is complete and
+verified — never halfway.
+
+## Deleting a document
+
+A deleted document stops being searchable at once. Its passages and stored
+file are removed afterwards.
+
+Deleting twice is not an error the second time in any way that matters: the
+document is gone either way.
+
+## Limits
+
+- Uploads are capped by a size limit the operator sets (100 MB by default).
+- Very large documents are refused rather than partially indexed, because a
+  document indexed halfway would answer questions from part of its content
+  with nothing to indicate the rest was dropped.

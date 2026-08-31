@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 620" width="1240" height="620" role="img" aria-label="Ingestion pipeline states">
+  <title>Ingestion pipeline states</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" class="edge-head"/>
+    </marker>
+  </defs>
+  <style>
+    .ink { fill: #0f172a; }
+    .ink-muted { fill: #475569; }
+    .edge { stroke: #94a3b8; }
+    .edge-head { fill: #94a3b8; }
+    .group { fill: none; stroke: #cbd5e1; }
+    .chip { fill: #ffffff; }
+    .node rect { fill-opacity: 1.0; }
+  </style>
+  <rect width="1240" height="620" fill="#ffffff" rx="14"/>
+  <g class="node"><rect x="46" y="190" width="158" height="64" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-state"/><text x="125.0" y="216.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">queued</text>
+  <text x="125.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">upload committed</text>
+  </g>
+  <g class="node"><rect x="242" y="190" width="158" height="64" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-state"/><text x="321.0" y="216.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">parsing</text>
+  <text x="321.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">Docling converts</text>
+  </g>
+  <g class="node"><rect x="438" y="190" width="158" height="64" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-state"/><text x="517.0" y="216.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">chunking</text>
+  <text x="517.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">awaiting embed</text>
+  </g>
+  <g class="node"><rect x="634" y="190" width="158" height="64" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-state"/><text x="713.0" y="216.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">embedding</text>
+  <text x="713.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">Retrieval embeds</text>
+  </g>
+  <g class="node"><rect x="830" y="190" width="158" height="64" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-state"/><text x="909.0" y="216.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">indexing</text>
+  <text x="909.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">verifying count</text>
+  </g>
+  <g class="node"><rect x="1026" y="190" width="158" height="64" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5" class="fill-terminal"/><text x="1105.0" y="216.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">ready</text>
+  <text x="1105.0" y="236.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">searchable</text>
+  </g>
+  <path d="M 46 150 L 46 164 M 46 150 L 400 150 M 400 150 L 400 164" fill="none" class="edge" stroke-width="1.2"/>
+  <text x="223.0" y="134" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" class="ink">stage: parse</text>
+  <path d="M 438 150 L 438 164 M 438 150 L 792 150 M 792 150 L 792 164" fill="none" class="edge" stroke-width="1.2"/>
+  <text x="615.0" y="134" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" class="ink">stage: embed</text>
+  <path d="M 830 150 L 830 164 M 830 150 L 1184 150 M 1184 150 L 1184 164" fill="none" class="edge" stroke-width="1.2"/>
+  <text x="1007.0" y="134" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" class="ink">stage: index</text>
+  <path d="M 204 222.0 L 242 222.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 400 222.0 L 438 222.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 596 222.0 L 634 222.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 792 222.0 L 830 222.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 988 222.0 L 1026 222.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <g class="node"><rect x="150" y="420" width="180" height="64" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5" class="fill-failure"/><text x="240.0" y="446.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">failed</text>
+  <text x="240.0" y="466.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">retries exhausted</text>
+  </g>
+  <g class="node"><rect x="420" y="420" width="200" height="64" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5" class="fill-failure"/><text x="520.0" y="446.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">unsupported</text>
+  <text x="520.0" y="466.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">nothing readable</text>
+  </g>
+  <g class="node"><rect x="710" y="420" width="180" height="64" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5" class="fill-failure"/><text x="800.0" y="446.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">cancelled</text>
+  <text x="800.0" y="466.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">superseded</text>
+  </g>
+  <path d="M 301.0 254 L 301.0 344 L 240.0 344 L 240.0 420" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)" stroke-linejoin="round"/>
+  <rect x="220.74" y="333.0" width="99.52" height="22" rx="7" class="chip"/>
+  <text x="270.5" y="344.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">budget spent</text>
+  <path d="M 355.0 254 L 355.0 386 L 520.0 390 L 520.0 420" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)" stroke-linejoin="round"/>
+  <path d="M 713.0 254 L 713.0 366 L 800.0 366 L 800.0 420" fill="none" class="edge" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#arrow)" stroke-linejoin="round"/>
+  <path d="M 266 254 L 266 292 L 125.0 292 L 125.0 254" fill="none" class="edge" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#arrow)" stroke-linejoin="round"/>
+  <rect x="170.1" y="281.0" width="50.8" height="22" rx="7" class="chip"/>
+  <text x="195.5" y="292.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">retry</text>
+  <text x="620" y="540" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">A redelivered message finds the job past its stage's entry state and does nothing.</text>
+  <text x="620" y="566" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">A worker that dies stops renewing its lease, and the stage becomes claimable again.</text>
+</svg>

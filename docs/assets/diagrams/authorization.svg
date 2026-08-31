@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 560" width="1180" height="560" role="img" aria-label="Identity and authorization">
+  <title>Identity and authorization</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" class="edge-head"/>
+    </marker>
+  </defs>
+  <style>
+    .ink { fill: #0f172a; }
+    .ink-muted { fill: #475569; }
+    .edge { stroke: #94a3b8; }
+    .edge-head { fill: #94a3b8; }
+    .group { fill: none; stroke: #cbd5e1; }
+    .chip { fill: #ffffff; }
+    .node rect { fill-opacity: 1.0; }
+  </style>
+  <rect width="1180" height="560" fill="#ffffff" rx="14"/>
+  <g><rect x="388" y="172" width="730" height="302" rx="16" class="group" stroke-dasharray="7 6" stroke-width="1.4"/><text x="406" y="194" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="0.08em" class="ink-muted">CONTROL API</text></g>
+  <g><rect x="28" y="44" width="272" height="430" rx="16" class="group" stroke-dasharray="7 6" stroke-width="1.4"/><text x="46" y="66" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="0.08em" class="ink-muted">OUTSIDE</text></g>
+  <g class="node"><rect x="56" y="76" width="220" height="68" rx="12" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5" class="fill-client"/><text x="166.0" y="104.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Request</text>
+  <text x="166.0" y="124.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">no identity of its own</text>
+  </g>
+  <g class="node"><rect x="56" y="208" width="220" height="82" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" class="fill-edge"/><text x="166.0" y="243.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">oauth2-proxy</text>
+  <text x="166.0" y="263.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">verifies with the IdP</text>
+  </g>
+  <g class="node"><rect x="56" y="356" width="220" height="82" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" class="fill-edge"/><text x="166.0" y="391.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="600" class="ink">X-Auth-Request-User</text>
+  <text x="166.0" y="411.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">trusted from the edge only</text>
+  </g>
+  <g class="node"><rect x="420" y="208" width="250" height="82" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-service"/><text x="545.0" y="243.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Principal</text>
+  <text x="545.0" y="263.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">user id from the subject</text>
+  </g>
+  <g class="node"><rect x="420" y="356" width="250" height="82" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" class="fill-service"/><text x="545.0" y="391.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">LibraryAccess</text>
+  <text x="545.0" y="411.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">returns a SQL predicate</text>
+  </g>
+  <g class="node"><rect x="790" y="356" width="300" height="82" rx="12" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" class="fill-store"/><text x="940.0" y="391.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">Every query</text>
+  <text x="940.0" y="411.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">filtered, not post-checked</text>
+  </g>
+  <g class="node"><rect x="790" y="208" width="300" height="82" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5" class="fill-terminal"/><text x="940.0" y="243.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" class="ink">404, never 403</text>
+  <text x="940.0" y="263.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" class="ink-muted">absence and denial look alike</text>
+  </g>
+  <path d="M 166.0 144 L 166.0 208" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 166.0 290 L 166.0 356" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 276 249.0 L 420 249.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="263.44" y="208.0" width="169.11999999999998" height="22" rx="7" class="chip"/>
+  <text x="348.0" y="219.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">subject, email, groups</text>
+  <path d="M 276 397.0 L 420 397.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 545.0 290 L 545.0 356" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 670 397.0 L 790 397.0" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M 940.0 356 L 940.0 290" fill="none" class="edge" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="907.64" y="312.0" width="64.72" height="22" rx="7" class="chip"/>
+  <text x="940.0" y="323.0" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">no rows</text>
+  <text x="573" y="512" text-anchor="middle" dominant-baseline="middle" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="500" class="ink-muted">Primer never validates tokens. With auth off, the edge is replaced by one fixed local user.</text>
+</svg>
