@@ -17,6 +17,7 @@ from primer_ingestion.chunking import DocumentContext, chunk_id_for
 from primer_ingestion.config import Settings
 from primer_ingestion.errors import PermanentStageError, UnsupportedDocument
 from primer_ingestion.parsing import DocumentParser, working_copy
+from primer_storage import PPTX_MEDIA_TYPE
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -44,8 +45,8 @@ def context() -> DocumentContext:
 
 @pytest.fixture
 def settings() -> Settings:
-    """No tokenizer: chunk by document structure, and touch no network."""
-    return Settings(chunk_tokenizer=None)
+    """No tokenizer and no OCR: chunk by structure, and touch no network."""
+    return Settings(chunk_tokenizer=None, enable_ocr=False)
 
 
 @pytest.fixture
@@ -207,13 +208,69 @@ def test_pdf_chunks_keep_page_and_scope(parser: DocumentParser, context: Documen
     assert any("Recall at rank ten" in chunk.content for chunk in chunks)
 
 
+def test_a_document_of_only_headings_still_indexes(
+    parser: DocumentParser, tmp_path: Path, context: DocumentContext
+) -> None:
+    """A title slide is not an empty document.
+
+    Chunkers treat a heading as context for the text beneath it, so a
+    document that is only headings chunks to nothing. Its text is plainly
+    there, and reporting it as unreadable would be wrong.
+    """
+    headings = tmp_path / "outline.md"
+    headings.write_text("# Quarterly Review\n\n## Revenue\n\n## Risks\n")
+
+    chunks = parser.parse_and_chunk(headings, context, media_type="text/markdown")
+
+    assert [chunk.content for chunk in chunks] == ["Quarterly Review", "Revenue", "Risks"]
+
+
 @pytest.mark.models
-def test_a_scanned_pdf_is_refused_rather_than_silently_empty(
+def test_slides_are_parsed_with_a_page_per_slide(
     parser: DocumentParser, context: DocumentContext
 ) -> None:
-    """OCR is out of scope, so a scan is refused with a code that says why."""
+    """Decks carry real content, and a citation needs to name the slide."""
+    chunks = parser.parse_and_chunk(FIXTURES / "slides.pptx", context, media_type=PPTX_MEDIA_TYPE)
+
+    assert [chunk.locator.page for chunk in chunks] == [1, 2]
+    assert any("unsupported claims" in chunk.content for chunk in chunks)
+    assert chunks[1].locator.section == "Evaluation"
+
+
+@pytest.mark.models
+def test_ocr_reads_a_page_that_is_only_an_image(context: DocumentContext) -> None:
+    """The point of enabling OCR: text that exists only as pixels."""
+    parser = DocumentParser(Settings(chunk_tokenizer=None, enable_ocr=True))
+
+    chunks = parser.parse_and_chunk(
+        FIXTURES / "scanned-with-text.pdf", context, media_type="application/pdf"
+    )
+
+    assert chunks
+    assert "SCANNED" in chunks[0].content
+
+
+@pytest.mark.models
+def test_the_same_scan_is_unreadable_without_ocr(
+    parser: DocumentParser, context: DocumentContext
+) -> None:
+    """The two codes exist because they call for different answers."""
+    with pytest.raises(UnsupportedDocument) as raised:
+        parser.parse_and_chunk(
+            FIXTURES / "scanned-with-text.pdf", context, media_type="application/pdf"
+        )
+    assert raised.value.code == "ocr_required"
+
+
+@pytest.mark.models
+def test_a_page_with_no_text_at_all_is_refused_even_with_ocr(
+    context: DocumentContext,
+) -> None:
+    """OCR ran and found nothing, which is a different answer to the user."""
+    parser = DocumentParser(Settings(chunk_tokenizer=None, enable_ocr=True))
+
     with pytest.raises(UnsupportedDocument) as raised:
         parser.parse_and_chunk(
             FIXTURES / "scanned-paper.pdf", context, media_type="application/pdf"
         )
-    assert raised.value.code == "ocr_required"
+    assert raised.value.code == "no_text_found"

@@ -18,6 +18,13 @@ dependencies = [
     "torchvision",
 ]
 
+[dependency-groups]
+dev = [
+    # Fixture generation only: a .pptx is a ZIP of related OOXML parts, and
+    # hand-assembling one would test the generator rather than the parser.
+    "python-pptx",
+]
+
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
 build-backend = "uv_build"

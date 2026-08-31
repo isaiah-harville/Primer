@@ -59,6 +59,11 @@ class Settings(BaseSettings):
         description="Chunks per index call; bounds embedding cost lost to one timeout",
     )
 
+    enable_ocr: bool = Field(
+        default=True,
+        description="Read text from images and slides; off makes parsing faster and offline",
+    )
+
     chunk_tokenizer: str | None = Field(
         default=None,
         description="Tokenizer of the embedding model, so chunks fit its context window",

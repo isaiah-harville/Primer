@@ -90,21 +90,65 @@ def chunk_id_for(context: DocumentContext, ordinal: int) -> UUID:
     )
 
 
+@dataclass(frozen=True)
+class Passage:
+    """One piece of retrievable text, before it is given an identity."""
+
+    content: str
+    embedding_text: str
+    locator: SourceLocator
+
+
+def _from_chunker(document: DoclingDocument, chunker: BaseChunker) -> Iterator[Passage]:
+    for chunk in chunker.chunk(document):
+        text = (chunk.text or "").strip()
+        if not text:
+            continue
+        yield Passage(
+            content=text,
+            embedding_text=chunker.contextualize(chunk).strip() or text,
+            locator=locator_for(chunk),
+        )
+
+
+def _from_text_items(document: DoclingDocument) -> Iterator[Passage]:
+    """Fall back to the document's own text items.
+
+    Chunkers treat a heading as context for the passage beneath it, so a
+    document that is *only* headings chunks to nothing: a title slide, a
+    one-line scan, an outline. Its text is plainly there, and reporting "no
+    text found" for it would be wrong, so the text items are used directly.
+    """
+    for item in getattr(document, "texts", []) or []:
+        text = (getattr(item, "text", "") or "").strip()
+        if not text:
+            continue
+        page: int | None = None
+        for provenance in getattr(item, "prov", []) or []:
+            page_no = getattr(provenance, "page_no", None)
+            if page_no is not None:
+                page = int(page_no) if page is None else min(page, int(page_no))
+        yield Passage(content=text, embedding_text=text, locator=SourceLocator(page=page))
+
+
 def to_chunks(
     document: DoclingDocument,
     chunker: BaseChunker,
     context: DocumentContext,
     *,
     max_chunks: int,
+    ocr_attempted: bool = True,
 ) -> list[DocumentChunk]:
-    """Convert Docling chunks into Primer's wire chunks.
+    """Convert a converted document into Primer's wire chunks.
 
     Exceeding the chunk ceiling fails the job rather than truncating it. A
     silently shortened document would answer questions from half its content
     and give no sign that the other half was dropped.
     """
+    passages = list(_from_chunker(document, chunker)) or list(_from_text_items(document))
+
     chunks: list[DocumentChunk] = []
-    for ordinal, chunk in enumerate(_non_empty(chunker.chunk(document))):
+    for ordinal, passage in enumerate(passages):
         if ordinal >= max_chunks:
             raise PermanentStageError(
                 "too_many_chunks",
@@ -119,25 +163,24 @@ def to_chunks(
                 document_version_id=context.document_version_id,
                 owner_user_id=context.owner_user_id,
                 generation_id=context.generation_id,
-                content=chunk.text.strip(),
-                embedding_text=chunker.contextualize(chunk).strip() or chunk.text.strip(),
-                locator=locator_for(chunk),
+                content=passage.content,
+                embedding_text=passage.embedding_text,
+                locator=passage.locator,
                 filename=context.filename,
             )
         )
 
     if not chunks:
-        # Reached for a PDF that is pages of images, and for a file that
-        # parsed but held no prose. Both are "nothing to retrieve", and OCR
-        # is the answer to the first, which is out of scope for the MVP.
+        # The two cases need different codes because they need different
+        # answers from the user: enable OCR, or supply a document that has
+        # text in it at all.
+        if ocr_attempted:
+            raise UnsupportedDocument(
+                "no_text_found",
+                "No readable text was found, even after examining images in the document.",
+            )
         raise UnsupportedDocument(
             "ocr_required",
-            "No extractable text was found. Scanned documents need OCR, which Primer does not do.",
+            "No extractable text was found. This document needs OCR, which is switched off.",
         )
     return chunks
-
-
-def _non_empty(chunks: Iterator[BaseChunk]) -> Iterator[BaseChunk]:
-    for chunk in chunks:
-        if chunk.text and chunk.text.strip():
-            yield chunk

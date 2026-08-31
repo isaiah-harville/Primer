@@ -6,6 +6,7 @@ import pytest
 from primer_storage import (
     DOCX_MEDIA_TYPE,
     PDF_MEDIA_TYPE,
+    PPTX_MEDIA_TYPE,
     UnsupportedContent,
     detect_media_type,
 )
@@ -16,6 +17,7 @@ from primer_storage import (
     [
         (b"%PDF-1.7\n%\xe2\xe3\xcf\xd3", "paper.pdf", PDF_MEDIA_TYPE),
         (b"PK\x03\x04\x14\x00", "report.DOCX", DOCX_MEDIA_TYPE),
+        (b"PK\x03\x04\x14\x00", "deck.pptx", PPTX_MEDIA_TYPE),
         (b"# Heading", "notes.md", "text/markdown"),
         (b"# Heading", "notes.markdown", "text/markdown"),
         (b"plain evidence", "quote.txt", "text/plain"),
@@ -31,6 +33,8 @@ def test_supported_formats_resolve(prefix: bytes, filename: str, expected: str) 
     [
         (b"%PDF-1.7", "disguised.txt", "content_mismatch"),
         (b"PK\x03\x04", "disguised.md", "content_mismatch"),
+        (b"just text", "claimed.pptx", "content_mismatch"),
+        (b"\xd0\xcf\x11\xe0", "legacy.ppt", "unsupported_extension"),
         (b"just text", "claimed.pdf", "content_mismatch"),
         (b"just text", "claimed.docx", "content_mismatch"),
         (b"\x00\x01\x02binary", "binary.txt", "content_mismatch"),
