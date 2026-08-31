@@ -48,3 +48,59 @@ class UserClient:
 
     async def delete(self, path: str) -> Response:
         return await self._http.delete(path, headers=self._headers)
+
+
+class ServiceClient:
+    """Acts as an ingestion worker on the cluster-internal API.
+
+    Like UserClient, this drives the real boundary: the credential travels in
+    the header a worker would send, so the guard itself stays under test.
+    """
+
+    def __init__(self, http: AsyncClient, token: str | None) -> None:
+        self._http = http
+        self._headers = {"X-Primer-Service-Token": token} if token is not None else {}
+
+    def _url(self, job_id: str, action: str) -> str:
+        return f"/internal/v1/ingestion/jobs/{job_id}/{action}"
+
+    async def claim(self, job_id: str, stage: str = "parse") -> Response:
+        return await self._http.post(
+            self._url(job_id, "claim"), json={"stage": stage}, headers=self._headers
+        )
+
+    async def heartbeat(self, job_id: str, generation_id: str, stage: str = "parse") -> Response:
+        return await self._http.post(
+            self._url(job_id, "heartbeat"),
+            json={"stage": stage, "generation_id": generation_id},
+            headers=self._headers,
+        )
+
+    async def complete(self, job_id: str, generation_id: str, stage: str = "parse") -> Response:
+        return await self._http.post(
+            self._url(job_id, "complete"),
+            json={"stage": stage, "generation_id": generation_id},
+            headers=self._headers,
+        )
+
+    async def fail(
+        self,
+        job_id: str,
+        generation_id: str,
+        *,
+        code: str = "stage_error",
+        detail: str | None = None,
+        disposition: str = "retry",
+        stage: str = "parse",
+    ) -> Response:
+        return await self._http.post(
+            self._url(job_id, "fail"),
+            json={
+                "stage": stage,
+                "generation_id": generation_id,
+                "code": code,
+                "detail": detail,
+                "disposition": disposition,
+            },
+            headers=self._headers,
+        )

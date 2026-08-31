@@ -14,6 +14,7 @@ from primer_control.middleware import RequestIDMiddleware
 from primer_control.routes import documents as document_routes
 from primer_control.routes import health as health_routes
 from primer_control.routes import identity as identity_routes
+from primer_control.routes import internal_ingestion as internal_ingestion_routes
 from primer_control.routes import libraries as library_routes
 from primer_control.source_store import SourceStore
 
@@ -57,4 +58,5 @@ def create_app(
     app.include_router(identity_routes.router)
     app.include_router(library_routes.router)
     app.include_router(document_routes.router)
+    app.include_router(internal_ingestion_routes.router)
     return app

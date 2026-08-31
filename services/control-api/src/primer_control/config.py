@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AuthMode = Literal["disabled", "oidc"]
@@ -41,6 +41,21 @@ class Settings(BaseSettings):
         default=1024 * 1024,
         ge=1,
         description="Read size for streaming uploads and downloads; bounds per-request memory",
+    )
+
+    internal_api_token: SecretStr | None = Field(
+        default=None,
+        description="Shared credential for the cluster-internal worker API; unset denies it",
+    )
+    job_lease_seconds: int = Field(
+        default=300,
+        ge=1,
+        description="How long a claimed stage is held before another worker may re-claim it",
+    )
+    max_job_attempts: int = Field(
+        default=5,
+        ge=1,
+        description="Hard retry bound, held here because a broker redelivery resets a worker's",
     )
 
     subject_header: str = Field(
