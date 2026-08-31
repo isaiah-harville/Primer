@@ -48,6 +48,15 @@ class Settings(BaseSettings):
         description="RabbitMQ URL for ingestion work; unset leaves uploaded jobs queued",
     )
 
+    chat_service_url: str | None = Field(
+        default=None,
+        description="Chat service URL; unset means this deployment has no chat",
+    )
+    tools_enabled: bool = Field(
+        default=False,
+        description="Deployment-wide switch for MCP tools; off is the safe default",
+    )
+
     internal_api_token: SecretStr | None = Field(
         default=None,
         description="Shared credential for the cluster-internal worker API; unset denies it",
