@@ -40,6 +40,19 @@ Activating it would drop the missing passages from every future answer, with
 nothing to show that anything was lost — so the index stage's whole job is
 to count, compare, and refuse.
 
+## Cleanup
+
+Retiring a superseded build and erasing a deleted document are the same
+operation with one parameter different, so they share a code path rather
+than two that must stay in agreement about what "gone" means.
+
+Cleanup addresses a *version* rather than a generation, because the builds a
+version has been through are not recorded anywhere and the point of cleanup
+is to leave nothing behind.
+
+Superseded generations are retired **after** activation, never before. Until
+Control has switched, the older generation is what searches are reading.
+
 ## No Primer vector adapter
 
 Haystack's `DocumentStore` protocol is already that abstraction. Wrapping it
