@@ -22,6 +22,7 @@ class IngestionStatus(StrEnum):
     READY = "ready"
     FAILED = "failed"
     UNSUPPORTED = "unsupported"
+    CANCELLED = "cancelled"
     DELETING = "deleting"
 
 

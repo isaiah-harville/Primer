@@ -7,9 +7,11 @@ dependencies = [
     "alembic",
     "asyncpg",
     "fastapi",
+    "fsspec",
     "primer-contracts",
     "psycopg[binary]",
     "pydantic-settings",
+    "python-multipart",
     "sqlalchemy[asyncio]",
 ]
 

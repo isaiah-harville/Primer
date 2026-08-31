@@ -28,6 +28,21 @@ class Settings(BaseSettings):
         description="PostgreSQL URL; migrations are applied out of band, never at startup",
     )
 
+    source_store_url: str = Field(
+        default="file:///var/lib/primer/sources",
+        description="fsspec URL for uploaded source bytes; a local path or an object store",
+    )
+    max_upload_bytes: int = Field(
+        default=100 * 1024 * 1024,
+        ge=1,
+        description="Largest single upload accepted, enforced while the stream is read",
+    )
+    upload_chunk_bytes: int = Field(
+        default=1024 * 1024,
+        ge=1,
+        description="Read size for streaming uploads and downloads; bounds per-request memory",
+    )
+
     subject_header: str = Field(
         default="X-Auth-Request-User",
         description="Edge-injected header carrying the stable OIDC subject",

@@ -25,6 +25,24 @@ class UserClient:
     async def post(self, path: str, payload: dict[str, Any]) -> Response:
         return await self._http.post(path, json=payload, headers=self._headers)
 
+    async def upload(
+        self, library_id: str, filename: str, content: bytes, *, document_id: str | None = None
+    ) -> Response:
+        """Upload as multipart, the way a browser does.
+
+        The part is deliberately labelled application/octet-stream: Primer
+        decides the media type from the bytes, and a test that announced the
+        real type would not exercise that.
+        """
+        path = f"/api/v1/libraries/{library_id}/documents"
+        if document_id is not None:
+            path += f"/{document_id}/versions"
+        return await self._http.post(
+            path,
+            files={"file": (filename, content, "application/octet-stream")},
+            headers=self._headers,
+        )
+
     async def patch(self, path: str, payload: dict[str, Any]) -> Response:
         return await self._http.patch(path, json=payload, headers=self._headers)
 
