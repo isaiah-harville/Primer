@@ -1,8 +1,9 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-	plugins: [sveltekit()],
+	plugins: [tailwindcss(), sveltekit()],
 	// Only under Vitest, and only there: without the browser condition Svelte
 	// resolves to its server build, where mounting a component does not
 	// exist. Applying it unconditionally would break server-side rendering.

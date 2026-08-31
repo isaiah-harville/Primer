@@ -1,51 +1,64 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { Alert, Badge, Button, Card, Input, Label } from '@sivir-ui/svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 </script>
 
-<h1>Libraries</h1>
+<h1 class="text-2xl font-bold">Libraries</h1>
 
-<p class="lead">
+<p class="mt-2 max-w-2xl text-muted-foreground">
 	A library is a private collection of sources. Only you can see it, and every question is
 	asked of one library at a time.
 </p>
 
-<form method="POST" action="?/create" use:enhance class="create">
-	<label for="library-name">New library</label>
-	<div class="row">
-		<input
-			id="library-name"
-			name="name"
-			required
-			maxlength="120"
-			placeholder="Papers on retrieval"
-			value={form?.name ?? ''}
-			aria-describedby={form?.error ? 'create-error' : undefined}
-			aria-invalid={form?.error ? 'true' : undefined}
-		/>
-		<button type="submit">Create</button>
-	</div>
-	{#if form?.error}
-		<p id="create-error" class="error" role="alert">{form.error}</p>
-	{/if}
-</form>
+<Card.Root class="mt-6">
+	<Card.Content>
+		<form method="POST" action="?/create" use:enhance class="flex flex-col gap-2">
+			<Label for="library-name">New library</Label>
+			<div class="flex gap-2">
+				<Input
+					id="library-name"
+					name="name"
+					required
+					maxlength={120}
+					placeholder="Papers on retrieval"
+					value={form?.name ?? ''}
+					aria-describedby={form?.error ? 'create-error' : undefined}
+					aria-invalid={form?.error ? 'true' : undefined}
+				/>
+				<Button type="submit">Create</Button>
+			</div>
+			{#if form?.error}
+				<div id="create-error">
+					<Alert.Root variant="error">
+						<Alert.Description>{form.error}</Alert.Description>
+					</Alert.Root>
+				</div>
+			{/if}
+		</form>
+	</Card.Content>
+</Card.Root>
 
 {#if data.libraries.length === 0}
-	<p class="empty">No libraries yet. Create one above to start adding documents.</p>
+	<p class="mt-8 text-muted-foreground">
+		No libraries yet. Create one above to start adding documents.
+	</p>
 {:else}
-	<ul class="libraries">
+	<ul class="mt-8 divide-y divide-border">
 		{#each data.libraries as library (library.id)}
-			<li>
-				<a href="/libraries/{library.id}">{library.name}</a>
-				<span class="count">
+			<li class="flex items-center gap-4 py-3">
+				<a href="/libraries/{library.id}" class="flex-1 font-semibold hover:underline">
+					{library.name}
+				</a>
+				<Badge variant="secondary">
 					{library.document_count}
 					{library.document_count === 1 ? 'document' : 'documents'}
-				</span>
+				</Badge>
 				<!--
-				  A confirm dialog, because deleting a library takes its
-				  documents with it and the button sits next to a link.
+				  A confirm step, because deleting a library takes its
+				  documents with it and the control sits beside a link.
 				-->
 				<form
 					method="POST"
@@ -55,76 +68,11 @@
 					}}
 				>
 					<input type="hidden" name="id" value={library.id} />
-					<button type="submit" class="danger">Delete<span class="visually-hidden"> {library.name}</span></button>
+					<Button type="submit" variant="destructive" size="sm">
+						Delete<span class="sr-only"> {library.name}</span>
+					</Button>
 				</form>
 			</li>
 		{/each}
 	</ul>
 {/if}
-
-<style>
-	.lead {
-		color: #475569;
-		max-width: 42rem;
-	}
-	.create {
-		margin: 1.5rem 0 2rem;
-	}
-	.row {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.375rem;
-	}
-	input {
-		flex: 1;
-		max-width: 26rem;
-		padding: 0.5rem 0.625rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 8px;
-		font: inherit;
-	}
-	button {
-		padding: 0.5rem 0.875rem;
-		border-radius: 8px;
-		border: 1px solid #cbd5e1;
-		background: #f8fafc;
-		font: inherit;
-		cursor: pointer;
-	}
-	.danger {
-		color: #b91c1c;
-	}
-	.error {
-		color: #b91c1c;
-		font-size: 0.875rem;
-	}
-	.empty {
-		color: #475569;
-	}
-	.libraries {
-		list-style: none;
-		padding: 0;
-	}
-	.libraries li {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		padding: 0.75rem 0;
-		border-top: 1px solid #e2e8f0;
-	}
-	.libraries a {
-		font-weight: 600;
-		flex: 1;
-	}
-	.count {
-		color: #475569;
-		font-size: 0.875rem;
-	}
-	.visually-hidden {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-	}
-</style>

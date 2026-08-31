@@ -4,8 +4,7 @@ import { TERMINAL_STATUSES } from './api/types';
 /**
  * Describing where a document has got to.
  *
- * Every status has words. Colour alone would leave the state invisible to a
- * screen reader and to anyone who cannot distinguish the colours, and
+ * Every status has words.
  * "processing" covers four distinct stages a user may need to tell apart
  * when something is slow.
  */

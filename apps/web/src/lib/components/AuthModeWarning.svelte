@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Alert } from '@sivir-ui/svelte';
+
 	interface Props {
 		authEnabled: boolean;
 	}
@@ -13,19 +15,11 @@
   on Friday, which is exactly when it matters.
 -->
 {#if !authEnabled}
-	<div class="warning" role="status">
-		<strong>Authentication is disabled.</strong>
-		Everyone who can reach this page shares one account and can read, change, and delete
-		every library here. Do not expose it beyond this machine.
-	</div>
+	<Alert.Root variant="warning" class="rounded-none border-x-0 border-t-0">
+		<Alert.Title>Authentication is disabled</Alert.Title>
+		<Alert.Description>
+			Everyone who can reach this page shares one account and can read, change, and delete
+			every library here. Do not expose it beyond this machine.
+		</Alert.Description>
+	</Alert.Root>
 {/if}
-
-<style>
-	.warning {
-		background: #fef3c7;
-		border-bottom: 1px solid #d97706;
-		color: #78350f;
-		font-size: 0.875rem;
-		padding: 0.625rem 1rem;
-	}
-</style>

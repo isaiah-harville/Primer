@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/pnpm/store pnpm install --frozen-lockfile
 
 COPY apps/web/ apps/web/
 RUN pnpm --filter @primer/web build \
-    && pnpm --filter @primer/web --prod deploy /app/bundle
+    && pnpm --filter @primer/web --prod --legacy deploy /app/bundle
 
 
 FROM node:24-bookworm-slim AS runtime
