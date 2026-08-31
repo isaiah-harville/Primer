@@ -28,17 +28,29 @@ PREFIX_BYTES = 8192
 
 PDF_MEDIA_TYPE = "application/pdf"
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+PPTX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
-#: The MVP scope: text PDF, DOCX, Markdown, and plain text. OCR is out of
-#: scope, so a scanned PDF is accepted here and rejected later by the parser,
-#: which is the first stage able to tell that it holds no extractable text.
+#: Text PDF, DOCX, PPTX, Markdown, and plain text. A document whose text can
+#: only be recovered by OCR is accepted here and resolved later by the
+#: parser, which is the first stage able to see whether anything readable
+#: came out.
+#:
+#: Only the OOXML formats. The legacy binary .doc and .ppt need a converter
+#: process Primer does not run, and accepting them would mean failing them
+#: after the upload rather than before it.
 SUPPORTED_EXTENSIONS = {
     ".pdf": PDF_MEDIA_TYPE,
     ".docx": DOCX_MEDIA_TYPE,
+    ".pptx": PPTX_MEDIA_TYPE,
     ".md": "text/markdown",
     ".markdown": "text/markdown",
     ".txt": "text/plain",
 }
+
+#: OOXML formats are ZIP containers and share a signature, so the extension
+#: is what distinguishes them. That is safe here only because the signature
+#: still has to agree: a text file named .pptx is rejected either way.
+OOXML_MEDIA_TYPES = frozenset({DOCX_MEDIA_TYPE, PPTX_MEDIA_TYPE})
 
 PDF_SIGNATURE = b"%PDF-"
 #: DOCX is a ZIP container; this is the local file header every one starts with.
@@ -115,9 +127,11 @@ def detect_media_type(prefix: bytes, filename: str) -> str:
             raise UnsupportedContent("content_mismatch", "The file is not a PDF.")
         return declared
 
-    if declared == DOCX_MEDIA_TYPE:
+    if declared in OOXML_MEDIA_TYPES:
         if not prefix.startswith(ZIP_SIGNATURE):
-            raise UnsupportedContent("content_mismatch", "The file is not a DOCX document.")
+            raise UnsupportedContent(
+                "content_mismatch", "The file is not an Office Open XML document."
+            )
         return declared
 
     if any(prefix.startswith(signature) for signature in BINARY_SIGNATURES) or not _looks_like_text(

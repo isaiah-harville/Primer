@@ -89,7 +89,76 @@ def scanned_paper() -> bytes:
     return build_pdf(objects)
 
 
+def scanned_with_text() -> bytes:
+    """A page that is a picture of words: only OCR can read it.
+
+    The text is rendered to an image and embedded as a JPEG, so the PDF
+    contains no character codes at all. A parser without OCR finds nothing
+    here, which is precisely what makes it a test of OCR rather than of PDF
+    text extraction.
+    """
+    from io import BytesIO
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (1240, 400), "white")
+    draw = ImageDraw.Draw(image)
+    draw.text((60, 140), "SCANNED EVIDENCE", fill="black", font=ImageFont.load_default(size=90))
+
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    jpeg = buffer.getvalue()
+
+    content = b"q 612 0 0 198 0 400 cm /Im0 Do Q\n"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /XObject << /Im0 5 0 R >> >> >>",
+        stream_object(content),
+        b"<< /Type /XObject /Subtype /Image /Width "
+        + str(image.width).encode()
+        + b" /Height "
+        + str(image.height).encode()
+        + b" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "
+        + str(len(jpeg)).encode()
+        + b" >>\nstream\n"
+        + jpeg
+        + b"\nendstream",
+    ]
+    return build_pdf(objects)
+
+
+def slide_deck() -> bytes:
+    """A two-slide deck with titles and body text.
+
+    Built with python-pptx rather than by hand: a .pptx is a ZIP of related
+    OOXML parts, and hand-assembling one would be testing the fixture
+    generator rather than the parser.
+    """
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    presentation = Presentation()
+    title_and_body = presentation.slide_layouts[1]
+
+    first = presentation.slides.add_slide(title_and_body)
+    first.shapes.title.text = "Retrieval Augmented Generation"
+    first.placeholders[1].text = "Grounding answers in cited sources reduces unsupported claims."
+
+    second = presentation.slides.add_slide(title_and_body)
+    second.shapes.title.text = "Evaluation"
+    second.placeholders[1].text = "Recall at rank ten was the decisive metric for this corpus."
+
+    buffer = BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
 if __name__ == "__main__":
     (HERE / "text-paper.pdf").write_bytes(text_paper())
     (HERE / "scanned-paper.pdf").write_bytes(scanned_paper())
-    print("wrote text-paper.pdf and scanned-paper.pdf")
+    (HERE / "scanned-with-text.pdf").write_bytes(scanned_with_text())
+    (HERE / "slides.pptx").write_bytes(slide_deck())
+    print("wrote text-paper.pdf, scanned-paper.pdf, scanned-with-text.pdf, and slides.pptx")

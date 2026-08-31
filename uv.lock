@@ -1777,6 +1777,11 @@ dependencies = [
     { name = "torchvision", version = "0.28.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "python-pptx" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "celery" },
@@ -1790,6 +1795,9 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform != 'linux'" },
     { name = "torchvision", marker = "sys_platform == 'linux'", index = "https://download.pytorch.org/whl/cpu" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "python-pptx" }]
 
 [[package]]
 name = "primer-retrieval"

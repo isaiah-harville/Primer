@@ -28,7 +28,7 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.transforms.chunker import BaseChunker
 from primer_contracts.chunks import DocumentChunk
-from primer_storage import DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE
+from primer_storage import DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, PPTX_MEDIA_TYPE
 
 from primer_ingestion.chunking import DocumentContext, build_chunker, to_chunks
 from primer_ingestion.config import Settings
@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 FORMATS_BY_MEDIA_TYPE: dict[str, InputFormat] = {
     PDF_MEDIA_TYPE: InputFormat.PDF,
     DOCX_MEDIA_TYPE: InputFormat.DOCX,
+    PPTX_MEDIA_TYPE: InputFormat.PPTX,
     "text/markdown": InputFormat.MD,
     "text/plain": InputFormat.MD,
 }
@@ -52,20 +53,25 @@ FORMATS_BY_MEDIA_TYPE: dict[str, InputFormat] = {
 EXTENSIONS: dict[InputFormat, str] = {
     InputFormat.PDF: ".pdf",
     InputFormat.DOCX: ".docx",
+    InputFormat.PPTX: ".pptx",
     InputFormat.MD: ".md",
 }
 
 
-def build_converter() -> DocumentConverter:
+def build_converter(*, enable_ocr: bool = True) -> DocumentConverter:
     """A converter matching what Primer claims to support.
 
-    OCR is off. It is out of scope for the MVP, and leaving Docling's default
-    on would quietly deliver it: a scanned page would come back as
-    recognized text of unstated accuracy, cited as though it were the
-    document. Refusing is the honest answer, and it is also what lets a
-    scanned PDF be detected as one.
+    OCR is on. Slide decks and reports carry much of their content inside
+    images and diagrams, so without it a PowerPoint or a scanned report is
+    accepted and then indexed as almost nothing - which reads to a user as
+    Primer being unable to find text that is plainly on the page.
+
+    The cost is real and worth stating: recognized text is a transcription,
+    not the document's own characters, so a citation drawn from it can be
+    subtly wrong in a way a reader cannot see. Chunks carry no marker for
+    this yet, which is the honest limitation of turning it on.
     """
-    pdf_options = PdfPipelineOptions(do_ocr=False, do_table_structure=True)
+    pdf_options = PdfPipelineOptions(do_ocr=enable_ocr, do_table_structure=True)
     return DocumentConverter(
         allowed_formats=sorted(set(FORMATS_BY_MEDIA_TYPE.values()), key=lambda f: f.value),
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_options)},
@@ -108,7 +114,7 @@ class DocumentParser:
         chunker: BaseChunker | None = None,
     ) -> None:
         self._settings = settings
-        self._converter = converter or build_converter()
+        self._converter = converter or build_converter(enable_ocr=settings.enable_ocr)
         self._chunker = chunker or build_chunker(settings)
 
     def format_for(self, media_type: str) -> InputFormat:
@@ -155,6 +161,7 @@ class DocumentParser:
                 self._chunker,
                 context,
                 max_chunks=self._settings.max_chunks_per_document,
+                ocr_attempted=self._settings.enable_ocr,
             )
             self._check_deadline(started, "chunking")
             return chunks
