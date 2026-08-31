@@ -1,0 +1,97 @@
+"""What Chat needs from the services it does not own.
+
+Chat decides nothing about access on its own. It asks Control what the
+principal may read, and Retrieval what that library contains. Both are
+protocols so a test can drive the real orchestration without a cluster.
+"""
+
+from __future__ import annotations
+
+from types import TracebackType
+from typing import Protocol
+from uuid import UUID
+
+import httpx2
+from primer_contracts.identity import Principal
+from primer_contracts.indexing import (
+    LibraryAccessRequest,
+    LibraryScope,
+    SearchRequest,
+    SearchResult,
+)
+
+from primer_chat.config import Settings
+
+SERVICE_TOKEN_HEADER = "X-Primer-Service-Token"  # noqa: S105 - a header name, not a secret
+
+
+class LibraryAuthority(Protocol):
+    """Control, which is the only place access is decided."""
+
+    async def library_scope(self, principal: Principal, library_id: UUID) -> LibraryScope: ...
+
+
+class PassageSource(Protocol):
+    """Retrieval, which is the only thing that touches a vector store."""
+
+    async def search(self, request: SearchRequest) -> SearchResult: ...
+
+
+class LibraryForbidden(Exception):
+    """The principal may not read this library, or it does not exist.
+
+    One exception for both, because the API must not distinguish them.
+    """
+
+
+class _Client:
+    def __init__(self, base_url: str, settings: Settings) -> None:
+        token = settings.service_token
+        self._client = httpx2.AsyncClient(
+            base_url=base_url.rstrip("/"),
+            timeout=settings.request_timeout_seconds,
+            headers=({SERVICE_TOKEN_HEADER: token.get_secret_value()} if token is not None else {}),
+        )
+
+    async def __aenter__(self) -> _Client:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        await self._client.aclose()
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
+class ControlClient(_Client):
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings.control_url, settings)
+
+    async def library_scope(self, principal: Principal, library_id: UUID) -> LibraryScope:
+        response = await self._client.post(
+            "/internal/v1/authz/library-scope",
+            json=LibraryAccessRequest(principal=principal, library_id=library_id).model_dump(
+                mode="json"
+            ),
+        )
+        if response.status_code == 404:
+            raise LibraryForbidden(str(library_id))
+        response.raise_for_status()
+        return LibraryScope.model_validate(response.json())
+
+
+class RetrievalClient(_Client):
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings.retrieval_url, settings)
+
+    async def search(self, request: SearchRequest) -> SearchResult:
+        response = await self._client.post(
+            "/internal/v1/search", json=request.model_dump(mode="json")
+        )
+        response.raise_for_status()
+        return SearchResult.model_validate(response.json())

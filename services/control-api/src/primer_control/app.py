@@ -16,6 +16,7 @@ from primer_control.publisher import JobPublisher, build_publisher
 from primer_control.routes import documents as document_routes
 from primer_control.routes import health as health_routes
 from primer_control.routes import identity as identity_routes
+from primer_control.routes import internal_authz as internal_authz_routes
 from primer_control.routes import internal_ingestion as internal_ingestion_routes
 from primer_control.routes import libraries as library_routes
 
@@ -62,4 +63,5 @@ def create_app(
     app.include_router(library_routes.router)
     app.include_router(document_routes.router)
     app.include_router(internal_ingestion_routes.router)
+    app.include_router(internal_authz_routes.router)
     return app

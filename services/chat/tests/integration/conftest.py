@@ -1,0 +1,130 @@
+"""Chat against a real PostgreSQL, with Control, Retrieval, and the model faked.
+
+The three are faked deliberately. What needs testing here is the ordering -
+authorize, then retrieve, then generate - and the persistence of what came
+out. None of that depends on those being real, and all of it is easier to
+assert when the fakes can record exactly what they were asked.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Iterator
+
+import pytest
+import pytest_asyncio
+from chat_support import FakeControl, FakeGenerator, FakeRetrieval
+from httpx2 import ASGITransport, AsyncClient
+from primer_chat.app import create_app
+from primer_chat.config import Settings
+from primer_chat.db import Database
+from primer_chat.migrations import upgrade_to_head
+from sqlalchemy.ext.asyncio import AsyncEngine
+from testcontainers.community.postgres import PostgresContainer
+
+POSTGRES_IMAGE = "pgvector/pgvector:pg17"
+
+
+@pytest.fixture(scope="session")
+def postgres_url() -> Iterator[str]:
+    with PostgresContainer(POSTGRES_IMAGE, driver="asyncpg") as container:
+        yield container.get_connection_url()
+
+
+@pytest.fixture(scope="session")
+def migrated_url(postgres_url: str) -> str:
+    upgrade_to_head(postgres_url)
+    return postgres_url
+
+
+@pytest.fixture
+def scratch_db_url(postgres_url: str) -> Iterator[str]:
+    """A throwaway database in the same container, for destructive tests."""
+    from primer_chat.db import as_sync_url
+    from sqlalchemy import create_engine, text
+
+    admin = create_engine(as_sync_url(postgres_url), isolation_level="AUTOCOMMIT")
+    name = "primer_chat_scratch"
+    try:
+        with admin.connect() as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+            connection.execute(text(f'CREATE DATABASE "{name}"'))
+        yield postgres_url.rsplit("/", 1)[0] + f"/{name}"
+        with admin.connect() as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    finally:
+        admin.dispose()
+
+
+@pytest_asyncio.fixture
+async def database(migrated_url: str) -> AsyncIterator[Database]:
+    db = Database(migrated_url)
+    yield db
+    await db.dispose()
+
+
+@pytest_asyncio.fixture
+async def clean_tables(database: Database) -> AsyncIterator[AsyncEngine]:
+    from sqlalchemy import text
+
+    async with database.engine.begin() as connection:
+        await connection.execute(text("TRUNCATE chat.conversations RESTART IDENTITY CASCADE"))
+    yield database.engine
+
+
+@pytest.fixture
+def control() -> FakeControl:
+    return FakeControl()
+
+
+@pytest.fixture
+def retrieval() -> FakeRetrieval:
+    return FakeRetrieval()
+
+
+@pytest.fixture
+def generator() -> FakeGenerator:
+    return FakeGenerator()
+
+
+@pytest.fixture
+def make_client(database: Database, clean_tables: AsyncEngine):
+    """Build a client over chosen fakes, for the cases that need their own.
+
+    Returned as a factory rather than more fixtures because the variations
+    are one-offs: a generator that fails partway, a Control that forbids.
+    """
+
+    def build(
+        control: FakeControl | None = None,
+        retrieval: FakeRetrieval | None = None,
+        generator: FakeGenerator | None = None,
+    ) -> AsyncClient:
+        app = create_app(
+            Settings(auth_mode="oidc"),
+            database=database,
+            control=control or FakeControl(),
+            retrieval=retrieval or FakeRetrieval(),
+            generator=generator or FakeGenerator(),
+        )
+        return AsyncClient(transport=ASGITransport(app=app), base_url="http://chat")
+
+    return build
+
+
+@pytest_asyncio.fixture
+async def client(
+    database: Database,
+    clean_tables: AsyncEngine,
+    control: FakeControl,
+    retrieval: FakeRetrieval,
+    generator: FakeGenerator,
+) -> AsyncIterator[AsyncClient]:
+    app = create_app(
+        Settings(auth_mode="oidc"),
+        database=database,
+        control=control,
+        retrieval=retrieval,
+        generator=generator,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://chat") as http:
+        yield http

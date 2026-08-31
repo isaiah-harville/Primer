@@ -17,6 +17,7 @@ resolution-markers = [
 [manifest]
 members = [
     "primer",
+    "primer-chat",
     "primer-contracts",
     "primer-control",
     "primer-ingestion",
@@ -1918,6 +1919,47 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extras = ["python"] },
 ]
+
+[[package]]
+name = "primer-chat"
+version = "0.1.0"
+source = { editable = "services/chat" }
+dependencies = [
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "haystack-ai" },
+    { name = "httpx2" },
+    { name = "primer-contracts" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "testcontainers" },
+]
+server = [
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "haystack-ai" },
+    { name = "httpx2" },
+    { name = "primer-contracts", editable = "packages/contracts" },
+    { name = "psycopg", extras = ["binary"] },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy", extras = ["asyncio"] },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "testcontainers", extras = ["postgres"] }]
+server = [{ name = "uvicorn", extras = ["standard"] }]
 
 [[package]]
 name = "primer-contracts"
