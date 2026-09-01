@@ -79,6 +79,12 @@ class Responder:
         conversation = turn.conversation
         event_id = 0
 
+        # Read before this turn's own messages are written, so the question
+        # being asked is not also in the history behind it.
+        history = await repository.history_for(
+            conversation.id, limit=self._settings.chat_history_messages
+        )
+
         def next_id() -> int:
             nonlocal event_id
             current = event_id
@@ -167,7 +173,9 @@ class Responder:
 
         text = ""
         try:
-            async for fragment in self._generator.stream(system_prompt, prompt, model=turn.model):
+            async for fragment in self._generator.stream(
+                system_prompt, prompt, history=history, model=turn.model
+            ):
                 text += fragment
                 yield MessageDelta(id=next_id(), text=fragment)
         except Exception:

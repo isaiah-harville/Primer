@@ -18,10 +18,11 @@ from primer_contracts.chat import (
     MessageSummary,
 )
 from primer_contracts.retrieval import SourceLocator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.models import Conversation, Message, MessageCitation
+from primer_chat.rag import HistoryTurn
 
 #: A conversation is titled from its opening question, which is what a person
 #: recognises it by. Long questions are cut rather than summarised: a
@@ -85,6 +86,7 @@ class ChatRepository:
         message = Message(
             id=uuid.uuid4(),
             conversation_id=conversation.id,
+            ordinal=await self._next_ordinal(conversation.id),
             role=role.value,
             state=state.value,
             content=content,
@@ -94,6 +96,20 @@ class ChatRepository:
         await self._session.flush()
         await self._session.refresh(message)
         return message
+
+    async def _next_ordinal(self, conversation_id: UUID) -> int:
+        """The next position in a conversation.
+
+        Read rather than counted from what this session has added, because a
+        turn is written across two calls and a conversation can be resumed by
+        a process that has never seen its earlier ones.
+        """
+        result = await self._session.execute(
+            select(func.coalesce(func.max(Message.ordinal), -1)).where(
+                Message.conversation_id == conversation_id
+            )
+        )
+        return int(result.scalar_one()) + 1
 
     async def finish_message(
         self,
@@ -131,11 +147,40 @@ class ChatRepository:
         await self._session.refresh(message)
         return message
 
+    async def history_for(self, conversation_id: UUID, *, limit: int) -> tuple[HistoryTurn, ...]:
+        """The recent turns of a conversation, oldest first.
+
+        Only completed messages with text. A message still streaming is the
+        one being written right now, and a failed one is a fragment that
+        stops mid-sentence - replaying either teaches the model that
+        half-finished answers are what this conversation looks like.
+
+        The bound is applied newest-first and the result reversed, so a long
+        conversation keeps its recent turns rather than its opening ones.
+        """
+        if limit <= 0:
+            return ()
+        result = await self._session.execute(
+            select(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.state == MessageState.COMPLETED.value,
+                Message.content != "",
+            )
+            .order_by(Message.ordinal.desc())
+            .limit(limit)
+        )
+        recent = list(result.scalars())[::-1]
+        return tuple(
+            HistoryTurn(role=MessageRole(message.role), content=message.content)
+            for message in recent
+        )
+
     async def messages_for(self, conversation_id: UUID) -> list[MessageSummary]:
         result = await self._session.execute(
             select(Message)
             .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at, Message.id)
+            .order_by(Message.ordinal)
         )
         messages = list(result.scalars())
         citations = await self._citations_for([message.id for message in messages])

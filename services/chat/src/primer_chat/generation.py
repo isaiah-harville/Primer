@@ -16,15 +16,22 @@ import anyio.to_thread
 from haystack.components.generators.chat import OpenAIChatGenerator
 from haystack.dataclasses import ChatMessage
 from haystack.utils import Secret
+from primer_contracts.chat import MessageRole
 
 from primer_chat.config import Settings
+from primer_chat.rag import HistoryTurn
 
 
 class ChatGenerator(Protocol):
     """Yields text fragments as the model produces them."""
 
     def stream(
-        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        history: tuple[HistoryTurn, ...] = (),
+        model: str | None = None,
     ) -> AsyncIterator[str]: ...
 
 
@@ -63,7 +70,12 @@ class HaystackChatGenerator:
         return self._generators[name]
 
     async def stream(
-        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        history: tuple[HistoryTurn, ...] = (),
+        model: str | None = None,
     ) -> AsyncIterator[str]:
         """Bridge Haystack's synchronous callback into an async iterator.
 
@@ -81,7 +93,7 @@ class HaystackChatGenerator:
         async def produce() -> None:
             try:
                 await anyio.to_thread.run_sync(
-                    lambda: self._run(system_prompt, user_prompt, on_chunk, model)
+                    lambda: self._run(system_prompt, user_prompt, history, on_chunk, model)
                 )
             finally:
                 await send.send(None)
@@ -95,15 +107,37 @@ class HaystackChatGenerator:
                     yield item
 
     def _run(
-        self, system_prompt: str, user_prompt: str, on_chunk: object, model: str | None
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: tuple[HistoryTurn, ...],
+        on_chunk: object,
+        model: str | None,
     ) -> None:
         self._for(model).run(
             messages=[
                 ChatMessage.from_system(system_prompt),
+                *_replay(history),
                 ChatMessage.from_user(user_prompt),
             ],
             streaming_callback=on_chunk,  # ty: ignore[invalid-argument-type]
         )
+
+
+def _replay(history: tuple[HistoryTurn, ...]) -> list[ChatMessage]:
+    """Earlier turns, as messages between the system prompt and the question.
+
+    The system prompt is not replayed with them. It describes how to answer
+    the question being asked now - which passages are in front of the model,
+    and how they may be numbered - and an older copy of those instructions
+    would be describing passages that are no longer there.
+    """
+    return [
+        ChatMessage.from_user(turn.content)
+        if turn.role is MessageRole.USER
+        else ChatMessage.from_assistant(turn.content)
+        for turn in history
+    ]
 
 
 class StaticGenerator:
@@ -114,7 +148,12 @@ class StaticGenerator:
         self.model = model
 
     async def stream(
-        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        history: tuple[HistoryTurn, ...] = (),
+        model: str | None = None,
     ) -> AsyncIterator[str]:
         for fragment in self._fragments:
             yield fragment

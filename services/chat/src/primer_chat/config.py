@@ -47,6 +47,17 @@ class Settings(BaseSettings):
         le=50,
         description="Passages retrieved per question; bounds prompt size and cost",
     )
+    #: How much of a conversation the model is shown when answering the next
+    #: question. Counted in messages rather than exchanges because that is
+    #: what is sent, and bounded because every prior turn is paid for again
+    #: on every turn after it. The oldest are dropped first: a conversation
+    #: is understood from its recent turns, not its first ones.
+    chat_history_messages: int = Field(
+        default=20,
+        ge=0,
+        le=200,
+        description="Prior messages replayed to the model; 0 answers each question alone",
+    )
     heartbeat_seconds: float = Field(
         default=15.0,
         gt=0,

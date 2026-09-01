@@ -16,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     String,
@@ -94,6 +95,10 @@ class Message(Base):
         CheckConstraint(
             "state IN (" + ", ".join(f"'{state}'" for state in STATES) + ")", name="state_known"
         ),
+        # Every read of this table is one conversation in order, so the
+        # index is the conversation and the order together. It replaces a
+        # plain index on the conversation, which it already covers.
+        Index("ix_messages_conversation_id_ordinal", "conversation_id", "ordinal"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -103,8 +108,12 @@ class Message(Base):
         PGUUID(as_uuid=True),
         ForeignKey(f"{CHAT_SCHEMA}.conversations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
+    #: Position within the conversation, from zero. The order of a
+    #: conversation, and not derivable from `created_at`: a question and its
+    #: answer are written in one transaction and share that timestamp to the
+    #: microsecond.
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     state: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
