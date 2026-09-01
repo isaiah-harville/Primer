@@ -33,9 +33,13 @@ Responding = Annotated[Responder, Depends(get_responder)]
 
 
 class AskRequest(WireModel):
-    """A question, and the library it is asked of."""
+    """A question, and the library it is asked of, if any.
 
-    library_id: UUID
+    Without a library the question is answered by the model rather than from
+    the user's documents, and the answer carries no citations.
+    """
+
+    library_id: UUID | None = None
     message: Message
 
 

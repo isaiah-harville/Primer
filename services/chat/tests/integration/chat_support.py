@@ -106,11 +106,17 @@ class ChatUser:
         self._http = http
         self._headers = {"X-Auth-Request-User": subject}
 
-    async def ask(self, library_id: str, message: str) -> list[dict[str, Any]]:
+    async def ask(self, library_id: str | None, message: str) -> list[dict[str, Any]]:
+        """Ask a question, of a library or of nothing.
+
+        `None` omits the field rather than sending null, which is how a
+        client that has no library selected actually behaves.
+        """
+        payload: dict[str, Any] = {"message": message}
+        if library_id is not None:
+            payload["library_id"] = library_id
         response = await self._http.post(
-            "/api/v1/conversations",
-            json={"library_id": library_id, "message": message},
-            headers=self._headers,
+            "/api/v1/conversations", json=payload, headers=self._headers
         )
         return parse_events(response.text)
 

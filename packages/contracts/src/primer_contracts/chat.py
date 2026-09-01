@@ -31,10 +31,17 @@ class Citation(WireModel):
 
 
 class ChatRequest(WireModel):
-    """A user turn scoped to one of the principal's libraries."""
+    """A user turn, optionally scoped to one of the principal's libraries.
+
+    Without a library there is nothing to retrieve, so the answer comes from
+    the model alone and carries no citations. That is a different kind of
+    answer rather than a lesser one, and the absence of `library_id` is what
+    says so: a caller cannot ask for an ungrounded answer and a cited one at
+    the same time.
+    """
 
     principal: Principal
-    library_id: UUID
+    library_id: UUID | None = None
     message: Message
     conversation_id: UUID | None = None
     tools_enabled: bool = False
@@ -60,10 +67,15 @@ class MessageState(StrEnum):
 
 
 class ConversationSummary(WireModel):
-    """A conversation, which belongs to one library and one person."""
+    """A conversation, which belongs to one person and at most one library.
+
+    A conversation with no library is ungrounded for its whole length: the
+    library is fixed when it starts, so citations in one turn and none in the
+    next cannot happen within a single thread.
+    """
 
     id: UUID
-    library_id: UUID
+    library_id: UUID | None = None
     owner_user_id: UUID
     title: str = Field(max_length=200)
     created_at: datetime

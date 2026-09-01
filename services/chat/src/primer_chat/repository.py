@@ -39,7 +39,7 @@ class ChatRepository:
         self._session = session
 
     async def create_conversation(
-        self, *, library_id: UUID, owner_user_id: UUID, question: str
+        self, *, library_id: UUID | None, owner_user_id: UUID, question: str
     ) -> Conversation:
         conversation = Conversation(
             id=uuid.uuid4(),

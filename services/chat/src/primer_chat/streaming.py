@@ -30,7 +30,13 @@ from primer_chat.clients import LibraryAuthority, LibraryForbidden, PassageSourc
 from primer_chat.config import Settings
 from primer_chat.generation import ChatGenerator
 from primer_chat.models import Conversation
-from primer_chat.rag import NO_CONTEXT_REPLY, SYSTEM_PROMPT, build_context, build_prompt
+from primer_chat.rag import (
+    NO_CONTEXT_REPLY,
+    SYSTEM_PROMPT,
+    UNGROUNDED_SYSTEM_PROMPT,
+    build_context,
+    build_prompt,
+)
 from primer_chat.repository import ChatRepository, summarize_message
 
 logger = logging.getLogger(__name__)
@@ -92,56 +98,70 @@ class Responder:
 
         yield MessageStarted(id=next_id(), message_id=message.id, conversation_id=conversation.id)
 
-        # Authorization before retrieval, and retrieval before generation:
-        # a question the principal may not ask reaches neither.
-        try:
-            scope = await self._control.library_scope(turn.principal, conversation.library_id)
-        except LibraryForbidden:
-            await repository.finish_message(
-                message, state=MessageState.FAILED, content="", error_code="library_unavailable"
-            )
-            await session.commit()
-            yield StreamError(
-                id=next_id(),
-                code="library_unavailable",
-                detail="That library is no longer available to you.",
-            )
-            return
+        # A conversation with no library is answered by the model alone. There
+        # is nothing to authorize and nothing to retrieve, and the prompt says
+        # outright that the answer is unsourced.
+        grounded = conversation.library_id is not None
+        context = build_context(())
 
-        chunks = ()
-        if scope.generation_ids:
-            result = await self._retrieval.search(
-                SearchRequest(
-                    principal=turn.principal,
-                    library_id=conversation.library_id,
-                    generation_ids=scope.generation_ids,
-                    query=turn.question,
-                    limit=self._settings.retrieval_limit,
+        if grounded:
+            # Authorization before retrieval, and retrieval before
+            # generation: a question the principal may not ask reaches
+            # neither.
+            try:
+                scope = await self._control.library_scope(turn.principal, conversation.library_id)
+            except LibraryForbidden:
+                await repository.finish_message(
+                    message,
+                    state=MessageState.FAILED,
+                    content="",
+                    error_code="library_unavailable",
                 )
-            )
-            chunks = result.chunks
+                await session.commit()
+                yield StreamError(
+                    id=next_id(),
+                    code="library_unavailable",
+                    detail="That library is no longer available to you.",
+                )
+                return
 
-        context = build_context(chunks)
-        for index, citation in enumerate(context.citations, start=1):
-            yield CitationEvent(id=next_id(), index=index, citation=citation)
+            chunks = ()
+            if scope.generation_ids:
+                result = await self._retrieval.search(
+                    SearchRequest(
+                        principal=turn.principal,
+                        library_id=conversation.library_id,
+                        generation_ids=scope.generation_ids,
+                        query=turn.question,
+                        limit=self._settings.retrieval_limit,
+                    )
+                )
+                chunks = result.chunks
 
-        if context.is_empty:
-            # Nothing to ground an answer in. Saying so is the answer; asking
-            # a model anyway would produce exactly the unsourced prose Primer
-            # exists to avoid.
-            completed = await repository.finish_message(
-                message, state=MessageState.COMPLETED, content=NO_CONTEXT_REPLY
-            )
-            await session.commit()
-            yield MessageDelta(id=next_id(), text=NO_CONTEXT_REPLY)
-            yield MessageCompleted(id=next_id(), message=summarize_message(completed))
-            return
+            context = build_context(chunks)
+            for index, citation in enumerate(context.citations, start=1):
+                yield CitationEvent(id=next_id(), index=index, citation=citation)
+
+            if context.is_empty:
+                # Nothing to ground an answer in. Saying so is the answer;
+                # asking a model anyway would produce exactly the unsourced
+                # prose a library was chosen to avoid. An ungrounded
+                # conversation is the case where the user asked for that
+                # instead, and it does not come through here.
+                completed = await repository.finish_message(
+                    message, state=MessageState.COMPLETED, content=NO_CONTEXT_REPLY
+                )
+                await session.commit()
+                yield MessageDelta(id=next_id(), text=NO_CONTEXT_REPLY)
+                yield MessageCompleted(id=next_id(), message=summarize_message(completed))
+                return
+
+        system_prompt = SYSTEM_PROMPT if grounded else UNGROUNDED_SYSTEM_PROMPT
+        prompt = build_prompt(turn.question, context) if grounded else turn.question
 
         text = ""
         try:
-            async for fragment in self._generator.stream(
-                SYSTEM_PROMPT, build_prompt(turn.question, context)
-            ):
+            async for fragment in self._generator.stream(system_prompt, prompt):
                 text += fragment
                 yield MessageDelta(id=next_id(), text=fragment)
         except Exception:
