@@ -4,13 +4,16 @@ version = "0.1.0"
 description = "Primer retrieval: the exclusive owner of Primer's vector stores"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic",
     "fastapi",
     "haystack-ai",
     "pgvector-haystack",
     "primer-contracts",
     "primer-observability",
+    "psycopg[binary]",
     "pydantic-settings",
     "qdrant-haystack",
+    "sqlalchemy",
 ]
 
 [dependency-groups]

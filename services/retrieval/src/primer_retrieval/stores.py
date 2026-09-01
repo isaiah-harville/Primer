@@ -43,7 +43,11 @@ def build_document_store(settings: Settings) -> DocumentStore:
         embedding_dimension=settings.embedding_dimensions,
         vector_function="cosine_similarity",
         search_strategy="hnsw",
-        create_extension=True,
+        # The migration creates the extension, with the privileges that
+        # needs. An application role should not hold them, and asking for
+        # them on the first search fails in a deployment that is correctly
+        # locked down.
+        create_extension=False,
         recreate_table=False,
         # Derived from the table, because the integration's defaults are
         # fixed names: two Primer tables in one schema would otherwise try to

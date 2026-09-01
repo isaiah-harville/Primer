@@ -157,7 +157,7 @@ def test_migrations_run_once_per_release_not_once_per_pod(
 ) -> None:
     """Three replicas racing to alter one schema is what a hook avoids."""
     jobs = of_kind(manifests, "Job")
-    assert len(jobs) == 2
+    assert len(jobs) == 3
 
     for job in jobs:
         annotations = job["metadata"]["annotations"]
@@ -166,6 +166,25 @@ def test_migrations_run_once_per_release_not_once_per_pod(
 
     for deployment in of_kind(manifests, "Deployment"):
         assert "initContainers" not in deployment["spec"]["template"]["spec"]
+
+
+def test_every_schema_the_deployment_needs_is_migrated(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """Including the vector schema, which has no Primer-defined tables.
+
+    The vector integration creates its own table but nothing creates the
+    schema to put it in, or the extension its embedding column needs. Without
+    this job the retrieval service never becomes ready, and it fails as an
+    unhealthy container rather than as a missing migration.
+    """
+    directories = {containers(job)[0]["workingDir"] for job in of_kind(manifests, "Job")}
+
+    assert directories == {
+        "/app/services/control-api",
+        "/app/services/chat",
+        "/app/services/retrieval",
+    }
 
 
 def test_parsing_and_indexing_scale_separately(manifests: list[dict[str, Any]]) -> None:

@@ -14,18 +14,27 @@ from sqlalchemy.ext.asyncio import (
 )
 
 
-def as_async_url(url: str) -> str:
-    if url.startswith("postgresql+"):
+def _with_driver(url: str, driver: str) -> str:
+    """Rewrite only the scheme.
+
+    A password may contain anything, a driver name included, so replacing
+    across the whole string would corrupt it into an authentication failure
+    with nothing on the surface to explain why.
+    """
+    scheme, separator, rest = url.partition("://")
+    if not separator or not scheme.startswith("postgresql"):
         return url
-    return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return f"postgresql+{driver}{separator}{rest}"
+
+
+def as_async_url(url: str) -> str:
+    """The driver the application serves requests over."""
+    return _with_driver(url, "asyncpg")
 
 
 def as_sync_url(url: str) -> str:
     """Alembic runs synchronously; the application serves over asyncpg."""
-    url = url.replace("+asyncpg", "")
-    if url.startswith("postgresql+"):
-        return url
-    return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return _with_driver(url, "psycopg")
 
 
 class Database:

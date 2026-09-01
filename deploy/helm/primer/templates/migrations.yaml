@@ -6,7 +6,13 @@ An init container runs once per pod, so a three-replica rollout would have
 three processes racing to alter the same schema. A hook runs once per
 release and everything else waits for it to succeed.
 */}}
-{{- range $service := list "control" "chat" }}
+{{/*
+Keyed by the directory each service's alembic.ini lives in. The vector
+schema has no Primer-defined tables - the vector integration creates its
+own - but nothing else creates the schema to put them in, or the extension
+its embedding column needs.
+*/}}
+{{- range $service, $directory := dict "control" "control-api" "chat" "chat" "vectors" "retrieval" }}
 ---
 apiVersion: batch/v1
 kind: Job
@@ -36,7 +42,7 @@ spec:
           image: {{ include "primer.image" (dict "root" $ "component" "api") }}
           securityContext:
             {{- toYaml $.Values.securityContext | nindent 12 }}
-          workingDir: /app/services/{{ if eq $service "control" }}control-api{{ else }}chat{{ end }}
+          workingDir: /app/services/{{ $directory }}
           command: ["alembic", "upgrade", "head"]
           env:
             {{- include "primer.commonEnv" $ | nindent 12 }}

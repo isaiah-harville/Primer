@@ -12,6 +12,7 @@ repeating that decision here without Control's data would mean guessing.
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, Request
@@ -46,6 +47,8 @@ from primer_retrieval.pipelines import (
 )
 from primer_retrieval.security import require_service_credential
 from primer_retrieval.stores import build_document_store
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/internal/v1",
@@ -108,7 +111,13 @@ def ready(state: State) -> JSONResponse:
     """
     try:
         state.store.count_documents()
-    except Exception:  # noqa: BLE001 - any failure to reach the store means unready
+    except Exception:
+        # Logged, because the response deliberately says nothing: a readiness
+        # probe is reachable to anyone who can reach the port, and the reason
+        # a store is unreachable names hosts and schemas. An operator with a
+        # container stuck unhealthy needs that reason somewhere, and the log
+        # is where they are allowed to have it.
+        logger.exception("Readiness check failed: the document store is unreachable")
         return JSONResponse(status_code=503, content={"status": "unready"})
     return JSONResponse(status_code=200, content={"status": "ok"})
 
