@@ -67,7 +67,9 @@ async def clean_tables(database: Database) -> AsyncIterator[AsyncEngine]:
     from sqlalchemy import text
 
     async with database.engine.begin() as connection:
-        await connection.execute(text("TRUNCATE chat.conversations RESTART IDENTITY CASCADE"))
+        await connection.execute(
+            text("TRUNCATE chat.conversations, chat.tool_calls RESTART IDENTITY CASCADE")
+        )
     yield database.engine
 
 
