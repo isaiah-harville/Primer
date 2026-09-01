@@ -3,6 +3,7 @@
 	import { Library, MessageSquare, Search } from '@lucide/svelte';
 	import { Shortcut } from '@sivir-ui/svelte';
 	import type { DeploymentCapabilities, LibrarySummary } from '$lib/api/types';
+	import AuthModeWarning from '$lib/components/AuthModeWarning.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
 	interface Props {
@@ -131,10 +132,16 @@
 		<div class="flex-1"></div>
 	{/if}
 
-	<div class="flex items-center justify-between border-t border-border px-1 pt-3">
-		<span class="px-1.5 font-mono text-[10px] uppercase tracking-[0.09em] text-muted-foreground">
-			{capabilities.auth_enabled ? 'Signed in' : 'No auth'}
-		</span>
-		<ThemeToggle />
+	<div class="flex flex-col gap-2 border-t border-border px-1 pt-3">
+		<AuthModeWarning authEnabled={capabilities.auth_enabled} />
+
+		<div class="flex items-center justify-between">
+			<span
+				class="px-1.5 font-mono text-[10px] uppercase tracking-[0.09em] text-muted-foreground"
+			>
+				{capabilities.auth_enabled ? 'Signed in' : 'Local only'}
+			</span>
+			<ThemeToggle />
+		</div>
 	</div>
 </div>

@@ -89,7 +89,13 @@ def generator() -> FakeGenerator:
 
 
 @pytest.fixture
-def make_client(database: Database, clean_tables: AsyncEngine):
+def settings() -> Settings:
+    """The deployment under test. Overridden by tests that need a different one."""
+    return Settings(auth_mode="oidc")
+
+
+@pytest.fixture
+def make_client(database: Database, clean_tables: AsyncEngine, settings: Settings):
     """Build a client over chosen fakes, for the cases that need their own.
 
     Returned as a factory rather than more fixtures because the variations
@@ -102,7 +108,7 @@ def make_client(database: Database, clean_tables: AsyncEngine):
         generator: FakeGenerator | None = None,
     ) -> AsyncClient:
         app = create_app(
-            Settings(auth_mode="oidc"),
+            settings,
             database=database,
             control=control or FakeControl(),
             retrieval=retrieval or FakeRetrieval(),
@@ -120,9 +126,10 @@ async def client(
     control: FakeControl,
     retrieval: FakeRetrieval,
     generator: FakeGenerator,
+    settings: Settings,
 ) -> AsyncIterator[AsyncClient]:
     app = create_app(
-        Settings(auth_mode="oidc"),
+        settings,
         database=database,
         control=control,
         retrieval=retrieval,

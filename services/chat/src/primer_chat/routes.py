@@ -6,12 +6,20 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from primer_contracts.base import WireModel
-from primer_contracts.chat import ConversationSummary, Message, MessageSummary
+from primer_contracts.chat import (
+    ChatModel,
+    ChatModelList,
+    ConversationSummary,
+    Message,
+    MessageSummary,
+)
+from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from primer_chat.config import Settings
 from primer_chat.db import get_session
 from primer_chat.errors import not_found
 from primer_chat.identity import CurrentPrincipal
@@ -40,10 +48,13 @@ class AskRequest(WireModel):
     """
 
     library_id: UUID | None = None
+    #: One of the models this deployment offers, or none for its default.
+    model: str | None = Field(default=None, max_length=200)
     message: Message
 
 
 class FollowUpRequest(WireModel):
+    model: str | None = Field(default=None, max_length=200)
     message: Message
 
 
@@ -82,6 +93,23 @@ async def list_messages(
     return await repository.messages_for(conversation.id)
 
 
+@router.get("/models", summary="Models this deployment offers")
+def list_models(request: Request) -> ChatModelList:
+    """What a user may choose between.
+
+    The operator's list, not the endpoint's. An OpenAI-compatible server
+    often serves models nobody meant to expose here, and finding one of them
+    in a dropdown is not how an operator should learn that.
+    """
+    settings: Settings = request.app.state.settings
+    return ChatModelList(
+        models=tuple(
+            ChatModel(id=name, default=name == settings.chat_model)
+            for name in settings.selectable_models
+        )
+    )
+
+
 @router.post(
     "/conversations",
     status_code=status.HTTP_200_OK,
@@ -90,6 +118,7 @@ async def list_messages(
 )
 async def ask(
     payload: AskRequest,
+    request: Request,
     principal: CurrentPrincipal,
     session: Session,
     responder: Responding,
@@ -101,12 +130,18 @@ async def ask(
     404 here would be equally correct; the stream is chosen so a client has
     exactly one place to handle failures.
     """
+    model = resolve_model(request, payload.model)
     conversation = await ChatRepository(session).create_conversation(
         library_id=payload.library_id,
         owner_user_id=principal.user_id,
         question=payload.message,
     )
-    turn = Answering(principal=principal, conversation=conversation, question=payload.message)
+    turn = Answering(
+        principal=principal,
+        conversation=conversation,
+        question=payload.message,
+        model=model,
+    )
     return stream_response(responder, session, turn)
 
 
@@ -118,6 +153,7 @@ async def ask(
 async def follow_up(
     conversation_id: UUID,
     payload: FollowUpRequest,
+    request: Request,
     principal: CurrentPrincipal,
     session: Session,
     responder: Responding,
@@ -133,8 +169,31 @@ async def follow_up(
     )
     if conversation is None:
         raise not_found("Conversation")
-    turn = Answering(principal=principal, conversation=conversation, question=payload.message)
+    turn = Answering(
+        principal=principal,
+        conversation=conversation,
+        question=payload.message,
+        model=resolve_model(request, payload.model),
+    )
     return stream_response(responder, session, turn)
+
+
+def resolve_model(request: Request, requested: str | None) -> str | None:
+    """Check a requested model against what this deployment offers.
+
+    Refused rather than quietly replaced with the default. A user who chose a
+    model and received an answer from a different one has been misled about
+    where it came from, and Primer records the model against the message as
+    provenance. It is also the boundary that stops a caller naming any model
+    the endpoint happens to serve.
+    """
+    resolved = request.app.state.settings.resolve_model(requested)
+    if resolved is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"This deployment does not offer a model called {requested!r}.",
+        )
+    return resolved
 
 
 def stream_response(

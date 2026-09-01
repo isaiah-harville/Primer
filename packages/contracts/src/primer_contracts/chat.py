@@ -42,9 +42,29 @@ class ChatRequest(WireModel):
 
     principal: Principal
     library_id: UUID | None = None
+    #: Which model to answer with. One the deployment offers, or none for its
+    #: default. Never an arbitrary name: what an endpoint happens to serve is
+    #: not the same as what an operator chose to expose here.
+    model: str | None = Field(default=None, max_length=200)
     message: Message
     conversation_id: UUID | None = None
     tools_enabled: bool = False
+
+
+class ChatModel(WireModel):
+    """One model a user may pick between.
+
+    Named separately from the provider's own listing: an endpoint serves what
+    it serves, and this is the subset an operator decided to offer.
+    """
+
+    id: str = Field(min_length=1, max_length=200)
+    #: True for the one used when a request expresses no preference.
+    default: bool = False
+
+
+class ChatModelList(WireModel):
+    models: tuple[ChatModel, ...] = ()
 
 
 class MessageRole(StrEnum):
@@ -104,6 +124,10 @@ class MessageSummary(WireModel):
     state: MessageState
     content: str
     citations: tuple[Citation, ...] = ()
+    #: Which model produced this, recorded per message. A deployment can
+    #: offer several and a user can switch between turns, so this is part of
+    #: the answer rather than a property of the deployment as it is today.
+    provider_model: str | None = Field(default=None, max_length=200)
     error_code: str | None = Field(default=None, max_length=64)
     created_at: datetime
 

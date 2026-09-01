@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Plus, Trash2 } from '@lucide/svelte';
+	import { Copy, Plus, Trash2 } from '@lucide/svelte';
 	import { Alert, Button, Input } from '@sivir-ui/svelte';
 	import type { ActionData, PageData } from './$types';
 
@@ -97,25 +97,41 @@
 				  Always present, not revealed on hover: a destructive action
 				  that appears only under a pointer is unreachable by touch.
 				-->
-				<form
-					method="POST"
-					action="?/delete"
-					class="absolute right-2 top-2"
-					use:enhance={({ cancel }) => {
-						if (!confirm(`Delete "${library.name}" and everything in it?`)) cancel();
-					}}
-				>
-					<input type="hidden" name="id" value={library.id} />
-					<Button
-						type="submit"
-						variant="ghost"
-						size="icon"
-						class="text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+				<div class="absolute right-2 top-2 flex items-center">
+					<form method="POST" action="?/duplicate" use:enhance>
+						<input type="hidden" name="id" value={library.id} />
+						<Button
+							type="submit"
+							variant="ghost"
+							size="icon"
+							title="Duplicate"
+							class="text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+						>
+							<Copy size={14} aria-hidden="true" />
+							<span class="sr-only">Duplicate {library.name}</span>
+						</Button>
+					</form>
+
+					<form
+						method="POST"
+						action="?/delete"
+						use:enhance={({ cancel }) => {
+							if (!confirm(`Delete "${library.name}" and everything in it?`)) cancel();
+						}}
 					>
-						<Trash2 size={14} aria-hidden="true" />
-						<span class="sr-only">Delete {library.name}</span>
-					</Button>
-				</form>
+						<input type="hidden" name="id" value={library.id} />
+						<Button
+							type="submit"
+							variant="ghost"
+							size="icon"
+							title="Delete"
+							class="text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+						>
+							<Trash2 size={14} aria-hidden="true" />
+							<span class="sr-only">Delete {library.name}</span>
+						</Button>
+					</form>
+				</div>
 			</li>
 		{/each}
 	</ul>
