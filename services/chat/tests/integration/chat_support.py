@@ -121,5 +121,8 @@ class ChatUser:
             headers=self._headers,
         )
 
+    async def post(self, path: str, payload: dict[str, Any] | None = None) -> Response:
+        return await self._http.post(path, json=payload or {}, headers=self._headers)
+
     async def get(self, path: str) -> Response:
         return await self._http.get(path, headers=self._headers)

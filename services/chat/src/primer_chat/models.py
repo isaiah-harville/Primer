@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from primer_contracts.chat import MessageRole, MessageState
+from primer_contracts.chat import MessageRole, MessageState, ToolPhase
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -21,6 +22,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -147,3 +149,57 @@ class MessageCitation(Base):
     section: Mapped[str | None] = mapped_column(String(500))
     filename: Mapped[str | None] = mapped_column(String(255))
     excerpt: Mapped[str | None] = mapped_column(String(2000))
+
+
+#: Persisted phases, taken from the wire enum so a stored value and a
+#: streamed one cannot drift apart.
+TOOL_PHASES = tuple(phase.value for phase in ToolPhase)
+
+
+class ToolCall(Base):
+    """The audit row for one tool call.
+
+    Written when a model asks, not when a person approves, so a denied or
+    expired request is recorded too. A tool that was refused is exactly the
+    kind of thing someone will later want to know was refused.
+    """
+
+    __tablename__ = "tool_calls"
+    __table_args__ = (
+        CheckConstraint(
+            "phase IN (" + ", ".join(f"'{phase}'" for phase in TOOL_PHASES) + ")",
+            name="phase_known",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{CHAT_SCHEMA}.conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+
+    tool_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    server_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: Sanitized before storage. These are shown back to the user, because
+    #: approving "run a command" without seeing the command is not consent.
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    phase: Mapped[str] = mapped_column(String(16), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    #: Consent to one action at one moment, so it has an end.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The subject who decided, not a user id: an audit row is read by people
+    #: and should name the account they recognise.
+    decided_by: Mapped[str | None] = mapped_column(String(255))
+
+    #: Bounded. Tool output is untrusted text from a process Primer does not
+    #: control, and an unbounded column is a way to fill the disk.
+    output: Mapped[str | None] = mapped_column(String(8000))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)

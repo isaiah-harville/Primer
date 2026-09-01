@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import ConfigDict, Field
@@ -162,3 +162,79 @@ class Heartbeat(StreamEvent):
     """Keeps an idle connection open through proxies that time it out."""
 
     type: Literal["heartbeat"] = "heartbeat"
+
+
+class ToolPhase(StrEnum):
+    """The stages a tool call passes through, as a client sees them."""
+
+    REQUESTED = "requested"
+    APPROVED = "approved"
+    DENIED = "denied"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    EXPIRED = "expired"
+
+
+class ToolCallSummary(WireModel):
+    """One tool call, and what was decided about it.
+
+    Arguments are shown to the user because they are what is being consented
+    to: approving "run a command" without seeing the command is not consent.
+    They are sanitized before they get here.
+    """
+
+    id: UUID
+    conversation_id: UUID
+    tool_name: str = Field(min_length=1, max_length=200)
+    server_name: str = Field(min_length=1, max_length=64)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    phase: ToolPhase
+    requested_at: datetime
+    expires_at: datetime
+    decided_at: datetime | None = None
+    decided_by: str | None = None
+    #: Bounded and redacted. A tool's output is untrusted text from a process
+    #: Primer does not control, so it is stored truncated and never executed.
+    output: str | None = Field(default=None, max_length=8000)
+    error_code: str | None = Field(default=None, max_length=64)
+    duration_ms: int | None = Field(default=None, ge=0)
+
+
+class ToolRequested(StreamEvent):
+    """A model asked for a tool. Nothing has run."""
+
+    type: Literal["tool.requested"] = "tool.requested"
+    call: ToolCallSummary
+
+
+class ToolDecided(StreamEvent):
+    """A person approved or denied it."""
+
+    type: Literal["tool.decided"] = "tool.decided"
+    call: ToolCallSummary
+
+
+class ToolRunning(StreamEvent):
+    type: Literal["tool.running"] = "tool.running"
+    call_id: UUID
+
+
+class ToolOutput(StreamEvent):
+    """What the tool returned, bounded.
+
+    Whitespace is preserved for the same reason as message deltas: tool
+    output is frequently indented or tabular, and stripping it makes the
+    result unreadable.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
+
+    type: Literal["tool.output"] = "tool.output"
+    call_id: UUID
+    text: str
+
+
+class ToolCompleted(StreamEvent):
+    type: Literal["tool.completed"] = "tool.completed"
+    call: ToolCallSummary

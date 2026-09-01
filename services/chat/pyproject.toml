@@ -16,6 +16,12 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Only needed when a deployment switches tools on. Kept out of the default
+# install so a Chat service with tools off does not carry an MCP client, and
+# so a missing optional dependency cannot stop it starting.
+tools = [
+    "mcp-haystack",
+]
 dev = [
     "testcontainers[postgres]",
 ]

@@ -12,6 +12,7 @@ from primer_chat.db import Database
 from primer_chat.errors import ProblemError, problem_response
 from primer_chat.generation import ChatGenerator, HaystackChatGenerator
 from primer_chat.routes import router
+from primer_chat.routes_tools import router as tool_router
 from primer_chat.streaming import Responder
 
 
@@ -61,4 +62,5 @@ def create_app(
         )
 
     app.include_router(router)
+    app.include_router(tool_router)
     return app
