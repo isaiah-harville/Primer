@@ -33,7 +33,7 @@
 	>
 		{#if linked}
 			<Library size={14} aria-hidden="true" />
-			<span class="max-w-[16rem] truncate">{linked.name}</span>
+			<span class="max-w-[16rem] truncate" title={linked.name}>{linked.name}</span>
 		{:else}
 			<Link2Off size={14} aria-hidden="true" />
 			<span>No library linked</span>

@@ -38,6 +38,11 @@ def build_queues() -> tuple[Queue, ...]:
     A message the broker gives up on lands somewhere an operator can inspect
     it. Dropping it instead would leave a document stuck in a non-terminal
     state with nothing to explain why.
+
+    Quorum queues, because an ingestion job is work that must survive the
+    broker restarting under it. They also settle a second question: RabbitMQ
+    has deprecated channel-wide prefetch, and Celery only stops asking for it
+    once it sees a queue declared this way.
     """
     exchange = Exchange("ingestion", type="direct")
     dead_exchange = Exchange(DEAD_LETTER_EXCHANGE, type="direct")
@@ -47,6 +52,7 @@ def build_queues() -> tuple[Queue, ...]:
             exchange,
             routing_key=name,
             queue_arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE,
                 "x-dead-letter-routing-key": DEAD_LETTER_ROUTING_KEY,
             },
@@ -55,7 +61,12 @@ def build_queues() -> tuple[Queue, ...]:
     ]
     return (
         *stage_queues,
-        Queue(DEAD_LETTER_QUEUE, dead_exchange, routing_key=DEAD_LETTER_ROUTING_KEY),
+        Queue(
+            DEAD_LETTER_QUEUE,
+            dead_exchange,
+            routing_key=DEAD_LETTER_ROUTING_KEY,
+            queue_arguments={"x-queue-type": "quorum"},
+        ),
     )
 
 

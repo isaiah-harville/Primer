@@ -116,7 +116,9 @@
 								? 'bg-secondary font-medium text-foreground'
 								: 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
 						>
-							<span class="min-w-0 flex-1 truncate">{library.name}</span>
+							<span class="min-w-0 flex-1 truncate" title={library.name}>
+								{library.name}
+							</span>
 							<span class="font-mono text-[11px] tabular-nums text-muted-foreground">
 								{library.document_count}
 							</span>

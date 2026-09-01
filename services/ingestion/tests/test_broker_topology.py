@@ -12,6 +12,7 @@ directly rather than against the settings that happen to produce it.
 from __future__ import annotations
 
 from celery.events.receiver import EventReceiver
+from celery.utils.quorum_queues import detect_quorum_queues
 from kombu import Queue
 from primer_ingestion.celery_app import create_celery
 
@@ -51,6 +52,22 @@ def test_every_declared_queue_is_durable_or_exclusive() -> None:
     )
 
 
+def test_the_worker_does_not_ask_for_channel_wide_prefetch() -> None:
+    """RabbitMQ has deprecated global QoS and logs an error for every use.
+
+    Celery decides this from the queues rather than from a setting: it stops
+    asking once it sees a quorum queue. So the property worth testing is the
+    decision itself, which is what would silently revert if the queue type
+    were changed back.
+    """
+    app = create_celery()
+
+    using_quorum, _ = detect_quorum_queues(app, "amqp")
+
+    assert using_quorum, "Celery only disables global QoS when it sees a quorum queue"
+    assert app.conf.worker_detect_quorum_queues, "detection is what acts on the queue type"
+
+
 def test_the_work_queues_survive_a_broker_restart() -> None:
     """Stage queues are durable, which is a stronger claim than declarable.
 
@@ -62,3 +79,7 @@ def test_the_work_queues_survive_a_broker_restart() -> None:
     for queue in app.conf.task_queues:
         assert queue.durable, f"{queue.name} would lose queued work on a broker restart"
         assert not queue.exclusive, f"{queue.name} must be consumable by any worker"
+        arguments = queue.queue_arguments or {}
+        assert arguments.get("x-queue-type") == "quorum", (
+            f"{queue.name} should be a quorum queue: ingestion work must outlive the broker"
+        )
