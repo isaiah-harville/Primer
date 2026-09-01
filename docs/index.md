@@ -1,8 +1,8 @@
 # Primer
 
-Primer is a self-hosted research assistant. You upload your own sources into
-private libraries, and it answers questions from them with citations back to
-the passages it used.
+Primer answers questions about your own documents. You upload sources into
+private libraries, and it answers from them alone, with citations back to the
+passages it used.
 
 It is built for people who cannot or will not send their documents to a
 hosted service: everything runs on your infrastructure, against your own
