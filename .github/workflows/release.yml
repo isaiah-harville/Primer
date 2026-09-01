@@ -1,0 +1,186 @@
+# Publishing a release.
+#
+# Everything a release produces is named by the release's own tag: the three
+# images and the chart, all with one version, so an operator installing
+# `primer 1.4.0` gets the images that were built from the commit tagged
+# v1.4.0 and not whatever `latest` happens to mean today.
+#
+# This does not re-run the test suite. The tag names a commit that CI already
+# checked on main; tagging something that never passed is the one way to
+# publish broken images from here.
+name: Release
+
+on:
+  release:
+    types: [published]
+  # For re-publishing a tag whose run failed part way, which otherwise leaves
+  # images pushed and no chart pointing at them.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish, for example v1.4.0
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      minor: ${{ steps.resolve.outputs.minor }}
+      stable: ${{ steps.resolve.outputs.stable }}
+    steps:
+      - name: Resolve the version
+        id: resolve
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          PRERELEASE: ${{ github.event.release.prerelease || false }}
+        run: |
+          set -euo pipefail
+
+          # Helm chart versions must be SemVer, so a tag that is not one
+          # cannot be released at all. Failing here says so, rather than
+          # letting three images publish and the chart fail afterwards.
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a version this can release. Tag as v1.2.3 or v1.2.3-rc.1." >&2
+            # Build metadata is rejected on purpose rather than stripped: `+`
+            # is not a legal character in an image tag, so `v1.2.3+build.5`
+            # has no valid name to publish under and quietly renaming it
+            # would produce a release nobody asked for.
+            exit 1
+          fi
+          # From the captured numbers, not by trimming the string: trimming
+          # `2.0.0-rc.1` yields `2.0.0-rc`, which is not a minor of anything.
+          minor="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+
+          # A prerelease keeps its exact version and nothing else. Moving
+          # `latest` or a minor alias onto it would hand it to everyone who
+          # asked for the stable line.
+          stable=true
+          if [[ "$PRERELEASE" == "true" || "$version" == *-* ]]; then
+            stable=false
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "minor=$minor"
+            echo "stable=$stable"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Releasing $TAG as $version (stable: $stable)"
+
+  images:
+    name: Images
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: primer-api
+            dockerfile: deploy/images/Dockerfile.python
+          - name: primer-worker
+            dockerfile: deploy/images/Dockerfile.worker
+          - name: primer-web
+            dockerfile: deploy/images/Dockerfile.gui
+    steps:
+      # The tag, explicitly. A release event's ref is already the tag, but a
+      # manual re-run's is not, and building the wrong commit under a release
+      # version is not a mistake that shows up later.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.minor }},enable=${{ needs.version.outputs.stable == 'true' }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.stable == 'true' }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=${{ matrix.name }}
+
+  chart:
+    name: Chart
+    # After the images, never beside them. The chart's appVersion is what
+    # picks an image tag, so publishing it first would offer an install that
+    # pulls tags nothing has pushed yet.
+    needs: [version, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: helm lint deploy/helm/primer
+
+      # `--app-version` is the part that matters: every image tag in the
+      # chart defaults to it, so one flag points the whole release at the
+      # images this run just built.
+      - name: Package
+        run: |
+          helm package deploy/helm/primer \
+            --version "${{ needs.version.outputs.version }}" \
+            --app-version "${{ needs.version.outputs.version }}" \
+            --destination dist
+
+      - name: Check the packaged chart renders
+        run: |
+          helm template primer "dist/primer-${{ needs.version.outputs.version }}.tgz" \
+            --set postgresql.existingSecret=primer-postgres \
+            --set rabbitmq.existingSecret=primer-rabbitmq \
+            --set auth.oidc.issuerUrl=https://idp.example.com/ \
+            --set auth.oidc.clientId=primer \
+            --set auth.oidc.existingSecret=primer-oidc \
+            --set inference.chat.baseUrl=http://model/v1 \
+            --set inference.chat.model=chat-model \
+            --set inference.embeddings.baseUrl=http://model/v1 \
+            --set inference.embeddings.model=embed-model \
+            | grep -q "primer-api:${{ needs.version.outputs.version }}"
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push
+        run: |
+          helm push "dist/primer-${{ needs.version.outputs.version }}.tgz" \
+            oci://ghcr.io/${{ github.repository_owner }}/charts
