@@ -73,6 +73,18 @@ def create_celery(settings: Settings | None = None) -> Celery:
         # prefetching would let one worker sit on jobs another could run.
         worker_prefetch_multiplier=1,
         broker_transport_options={"confirm_publish": True},
+        # Celery's own control and event queues are transient and, by
+        # default, not exclusive. RabbitMQ 4.1 deprecated that combination
+        # and 4.2 refuses it outright, so a worker cannot finish connecting:
+        # it fails declaring its mailbox, restarts, and trips the restart
+        # limiter within a second.
+        #
+        # Exclusive is what these queues already are in spirit - a worker's
+        # private mailbox, which should vanish with the connection that owns
+        # it. Making them durable instead would leave a dead worker's mailbox
+        # behind for the broker to keep forever.
+        control_queue_exclusive=True,
+        event_queue_exclusive=True,
         task_time_limit=settings.task_time_limit_seconds,
         task_soft_time_limit=settings.task_soft_time_limit_seconds,
         task_queues=build_queues(),
