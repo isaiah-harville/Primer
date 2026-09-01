@@ -62,7 +62,10 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    library_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
+    #: Nullable: a conversation with no library is answered by the model
+    #: alone, without retrieval and without citations. Fixed for the life of
+    #: the thread, so an answer's kind cannot change between turns.
+    library_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
     owner_user_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), nullable=False, index=True
     )
