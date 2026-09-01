@@ -104,3 +104,26 @@ No PostgreSQL, RabbitMQ, or model server. A chart that shipped its own
 database is one people run in production by accident, and Primer's whole
 premise is that you already have the infrastructure you want to keep your
 documents on.
+
+## Object storage
+
+`sourceStore.url` points at the bucket, and `sourceStore.existingSecret`
+holds the credentials for it:
+
+```bash
+kubectl create secret generic primer-object-store \
+  --from-literal=AWS_ACCESS_KEY_ID=... \
+  --from-literal=AWS_SECRET_ACCESS_KEY=... \
+  --from-literal=FSSPEC_S3_ENDPOINT_URL=https://minio.internal   # non-AWS only
+```
+
+Every key in that Secret is passed through, because the names belong to the
+storage backend rather than to Primer, and enumerating them here would mean
+a chart release each time a provider wanted one this chart had not heard of.
+
+It is mounted into Control and the ingestion workers only. Retrieval, Chat
+and the web app never open a source object, and giving them the bucket's
+credentials would widen what a compromise of any of them reaches.
+
+For anything else this chart does not model, `extraEnv` is added to every
+Primer workload.

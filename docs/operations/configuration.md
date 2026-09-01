@@ -10,7 +10,7 @@ instead of silently keeping a default.
 | --- | --- | --- |
 | `PRIMER_AUTH_MODE` | `disabled` | `disabled` or `oidc` |
 | `PRIMER_DATABASE_URL` | local PostgreSQL | Migrations are applied out of band |
-| `PRIMER_SOURCE_STORE_URL` | `file:///var/lib/primer/sources` | Any fsspec URL |
+| `PRIMER_SOURCE_STORE_URL` | `file:///var/lib/primer/sources` | `file://` or `s3://`; see below |
 | `PRIMER_MAX_UPLOAD_BYTES` | `104857600` | Enforced while reading |
 | `PRIMER_BROKER_URL` | unset | Unset leaves uploads queued |
 | `PRIMER_INTERNAL_API_TOKEN` | unset | **Unset denies the internal API** |
@@ -47,6 +47,30 @@ instead of silently keeping a default.
 | `PRIMER_EMBEDDING_BASE_URL` | unset | Any OpenAI-compatible endpoint |
 | `PRIMER_EMBEDDING_API_KEY` | unset | |
 | `PRIMER_INTERNAL_API_TOKEN` | unset | **Unset denies the internal API** |
+
+## Source storage
+
+Uploaded files go wherever `PRIMER_SOURCE_STORE_URL` points, through
+`fsspec`. Two schemes are usable, because those are the backends Primer
+installs:
+
+| Scheme | For |
+| --- | --- |
+| `file://` | One machine. A `ReadWriteOnce` volume cannot be shared between nodes, so this does not survive a second replica. |
+| `s3://` | Anything with more than one replica: S3, MinIO, Ceph, R2. |
+
+`fsspec` imports a backend on first use rather than at startup, so a scheme
+whose package is not installed fails on somebody's first upload rather than
+when the service starts. Adding another one means adding its package to
+`primer-storage` and rebuilding the images; naming it in a URL is not
+enough.
+
+Credentials are the backend's own environment rather than Primer settings —
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `FSSPEC_S3_ENDPOINT_URL`
+for anything that is not AWS. In Kubernetes they come from
+`sourceStore.existingSecret`, mounted whole into Control and the ingestion
+workers and nothing else: those are the only processes that open a source
+object.
 
 ## Settings that fail at startup
 

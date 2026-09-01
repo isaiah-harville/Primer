@@ -48,6 +48,7 @@ spec:
             {{- else }}
             - ingestion.embed,ingestion.index,ingestion.delete
             {{- end }}
+          {{- include "primer.sourceStoreEnvFrom" $ | nindent 10 }}
           env:
             {{- include "primer.commonEnv" $ | nindent 12 }}
             {{- include "primer.brokerEnv" $ | nindent 12 }}

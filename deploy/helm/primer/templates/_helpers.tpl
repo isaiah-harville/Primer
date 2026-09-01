@@ -62,6 +62,40 @@ with read access to the namespace has it.
     secretKeyRef:
       name: {{ include "primer.fullname" . }}-internal
       key: internal-token
+{{- include "primer.extraEnv" . }}
+{{- end -}}
+
+{{/*
+Credentials for the source store, and anywhere else an operator needs to
+reach past this chart.
+
+Object storage is configured through the backend's own environment -
+`AWS_ACCESS_KEY_ID`, `FSSPEC_S3_ENDPOINT_URL` and whatever else the provider
+wants - and those names belong to the provider rather than to Primer. The
+whole Secret is mounted rather than named key by key: enumerating them here
+would mean a chart release every time a backend wanted a variable this chart
+had not heard of.
+
+Only the workloads that touch the store get it. Retrieval, Chat and the web
+app never open a source object, and handing them object-storage credentials
+would widen what a compromise of any of them reaches.
+*/}}
+{{- define "primer.sourceStoreEnvFrom" -}}
+{{- if .Values.sourceStore.existingSecret }}
+envFrom:
+  - secretRef:
+      name: {{ .Values.sourceStore.existingSecret }}
+{{- end }}
+{{- end -}}
+
+{{/*
+An escape hatch. Settings this chart does not model, without a fork or a
+post-renderer.
+*/}}
+{{- define "primer.extraEnv" -}}
+{{- with .Values.extraEnv }}
+{{ toYaml . | trim }}
+{{- end }}
 {{- end -}}
 
 {{- define "primer.brokerEnv" -}}
