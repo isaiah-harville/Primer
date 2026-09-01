@@ -1,75 +1,109 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Alert, Badge, Button, Card, Input, Label } from '@sivir-ui/svelte';
+	import { Plus, Trash2 } from '@lucide/svelte';
+	import { Alert, Button, Input } from '@sivir-ui/svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	let total = $derived(data.libraries.reduce((sum, library) => sum + library.document_count, 0));
 </script>
 
-<h1 class="text-2xl font-bold">Libraries</h1>
+<!--
+  Title and the one action on this page share a line. The create field is
+  inline rather than behind a dialog: naming a library is the whole of it,
+  and a modal to type one word is ceremony.
+-->
+<div class="flex flex-wrap items-end justify-between gap-4">
+	<div>
+		<h1 class="text-xl font-semibold tracking-[-0.02em]">Libraries</h1>
+		<p class="mt-1 font-mono text-[11px] uppercase tracking-[0.09em] text-muted-foreground">
+			{data.libraries.length}
+			{data.libraries.length === 1 ? 'library' : 'libraries'} · {total}
+			{total === 1 ? 'document' : 'documents'}
+		</p>
+	</div>
 
-<p class="mt-2 max-w-2xl text-muted-foreground">
-	A library is a private collection of sources. Only you can see it, and every question is
-	asked of one library at a time.
-</p>
+	<form method="POST" action="?/create" use:enhance class="flex items-center gap-2">
+		<Input
+			name="name"
+			required
+			maxlength={120}
+			placeholder="New library…"
+			value={form?.name ?? ''}
+			aria-label="New library name"
+			class="w-56"
+			aria-describedby={form?.error ? 'create-error' : undefined}
+			aria-invalid={form?.error ? 'true' : undefined}
+		/>
+		<Button type="submit">
+			<Plus size={15} aria-hidden="true" />
+			Create
+		</Button>
+	</form>
+</div>
 
-<Card.Root class="mt-6">
-	<Card.Content>
-		<form method="POST" action="?/create" use:enhance class="flex flex-col gap-2">
-			<Label for="library-name">New library</Label>
-			<div class="flex gap-2">
-				<Input
-					id="library-name"
-					name="name"
-					required
-					maxlength={120}
-					placeholder="Papers on retrieval"
-					value={form?.name ?? ''}
-					aria-describedby={form?.error ? 'create-error' : undefined}
-					aria-invalid={form?.error ? 'true' : undefined}
-				/>
-				<Button type="submit">Create</Button>
-			</div>
-			{#if form?.error}
-				<div id="create-error">
-					<Alert.Root variant="error">
-						<Alert.Description>{form.error}</Alert.Description>
-					</Alert.Root>
-				</div>
-			{/if}
-		</form>
-	</Card.Content>
-</Card.Root>
+{#if form?.error}
+	<div id="create-error" class="mt-4">
+		<Alert.Root variant="error">
+			<Alert.Description>{form.error}</Alert.Description>
+		</Alert.Root>
+	</div>
+{/if}
 
 {#if data.libraries.length === 0}
-	<p class="mt-8 text-muted-foreground">
-		No libraries yet. Create one above to start adding documents.
-	</p>
+	<div class="mt-16 text-center">
+		<p class="font-medium">No libraries yet</p>
+		<p class="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">
+			A library is a private collection of sources. Name one above, add documents to it, and
+			answers will be drawn from it alone — always citing the passages they used.
+		</p>
+	</div>
 {:else}
-	<ul class="mt-8 divide-y divide-border">
+	<!--
+	  A grid, not a list. These are things you pick between rather than read
+	  down, and on a wide screen a single column of names leaves the page
+	  mostly empty while hiding the ones below the fold.
+	-->
+	<ul class="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
 		{#each data.libraries as library (library.id)}
-			<li class="flex items-center gap-4 py-3">
-				<a href="/libraries/{library.id}" class="flex-1 font-semibold hover:underline">
-					{library.name}
+			<li class="group relative">
+				<a
+					href="/libraries/{library.id}"
+					class="flex h-full flex-col justify-between gap-6 rounded-lg border border-border
+						bg-card p-4 transition-colors hover:border-border-strong
+						focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+				>
+					<span class="truncate pr-8 font-medium">{library.name}</span>
+					<span class="font-mono text-[11px] uppercase tracking-[0.09em] text-muted-foreground">
+						{library.document_count}
+						{library.document_count === 1 ? 'document' : 'documents'}
+					</span>
 				</a>
-				<Badge variant="secondary">
-					{library.document_count}
-					{library.document_count === 1 ? 'document' : 'documents'}
-				</Badge>
+
 				<!--
-				  A confirm step, because deleting a library takes its
-				  documents with it and the control sits beside a link.
+				  Positioned over the card rather than inside it, because a
+				  button nested in a link is not a valid control anywhere.
+				  Always present, not revealed on hover: a destructive action
+				  that appears only under a pointer is unreachable by touch.
 				-->
 				<form
 					method="POST"
 					action="?/delete"
+					class="absolute right-2 top-2"
 					use:enhance={({ cancel }) => {
 						if (!confirm(`Delete "${library.name}" and everything in it?`)) cancel();
 					}}
 				>
 					<input type="hidden" name="id" value={library.id} />
-					<Button type="submit" variant="destructive" size="sm">
-						Delete<span class="sr-only"> {library.name}</span>
+					<Button
+						type="submit"
+						variant="ghost"
+						size="icon"
+						class="text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+					>
+						<Trash2 size={14} aria-hidden="true" />
+						<span class="sr-only">Delete {library.name}</span>
 					</Button>
 				</form>
 			</li>
