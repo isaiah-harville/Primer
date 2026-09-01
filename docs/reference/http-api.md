@@ -10,7 +10,7 @@ edge proxy must not route them.
 
 ## Control API
 
-Everything a user's browser talks to: libraries, documents, and identity.
+Libraries, documents, and identity.
 
 ### `GET /api/v1/capabilities`
 
@@ -191,6 +191,134 @@ Liveness probe.
 ### `GET /health/ready`
 
 Readiness probe.
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+
+## Chat
+
+Asking questions and streaming the answers, and the models a deployment offers.
+
+### `GET /api/v1/conversations`
+
+List the caller's conversations.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `library_id` | query | no |
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `POST /api/v1/conversations`
+
+Ask a question and stream the answer.
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `GET /api/v1/conversations/{conversation_id}`
+
+Read one conversation.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `conversation_id` | path | yes |
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `GET /api/v1/conversations/{conversation_id}/messages`
+
+Read a conversation's turns.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `conversation_id` | path | yes |
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `POST /api/v1/conversations/{conversation_id}/messages`
+
+Continue a conversation.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `conversation_id` | path | yes |
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `GET /api/v1/models`
+
+Models this deployment offers.
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+
+### `GET /api/v1/tool-requests`
+
+List pending tool requests.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `conversation_id` | query | no |
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `POST /api/v1/tool-requests/{request_id}/approve`
+
+Approve a tool call.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `request_id` | path | yes |
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `POST /api/v1/tool-requests/{request_id}/deny`
+
+Deny a tool call.
+
+| Parameter | In | Required |
+| --- | --- | --- |
+| `request_id` | path | yes |
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+| `422` | Validation Error |
+
+### `GET /health/live`
+
+Process liveness.
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+
+### `GET /health/ready`
+
+Readiness.
 
 | Status | Meaning |
 | --- | --- |

@@ -2,7 +2,6 @@
 	import { Menu } from '@lucide/svelte';
 	import { Button, Sheet } from '@sivir-ui/svelte';
 	import '../app.css';
-	import AuthModeWarning from '$lib/components/AuthModeWarning.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import type { LayoutData } from './$types';
@@ -13,8 +12,6 @@
 	let searchOpen = $state(false);
 </script>
 
-<AuthModeWarning authEnabled={data.capabilities.auth_enabled} />
-
 <a
 	href="#main"
 	class="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50
@@ -23,15 +20,19 @@
 	Skip to content
 </a>
 
-<div class="flex min-h-screen">
+<!--
+  Exactly the height of the window, and no taller. The page itself never
+  scrolls; the content region does. Anything that added height out here - a
+  banner across the top, say - gave every screen a scrollbar whether or not
+  it had anything to scroll.
+-->
+<div class="flex h-screen overflow-hidden">
 	<!--
-	  A fixed rail, not a column in the page flow: the navigation and the
-	  library list stay put while a document list or a conversation scrolls
-	  past them.
+	  A rail, not a column in the page flow: the navigation and the library
+	  list stay put while a document list or a conversation scrolls past them.
 	-->
 	<aside
-		class="sticky top-0 hidden h-screen w-60 shrink-0 border-r border-border bg-muted/40
-			lg:block"
+		class="hidden h-full w-60 shrink-0 border-r border-border bg-muted/40 lg:block"
 	>
 		<Sidebar
 			libraries={data.libraries}
@@ -59,7 +60,7 @@
 		</Sheet.Content>
 	</Sheet.Root>
 
-	<div class="flex min-w-0 flex-1 flex-col">
+	<div class="flex min-w-0 flex-1 flex-col overflow-hidden">
 		<div class="flex items-center gap-3 border-b border-border px-4 py-2 lg:hidden">
 			<Button variant="ghost" size="icon" onclick={() => (drawerOpen = true)}>
 				<Menu size={16} aria-hidden="true" />
@@ -73,7 +74,17 @@
 		  with flex-1 instead of subtracting this frame's own padding from
 		  100vh and going wrong whenever the padding changes.
 		-->
-		<main id="main" class="flex min-w-0 flex-1 flex-col px-6 py-8 lg:px-10">
+		<!--
+		  Ordinary block flow, and the only thing in the frame that scrolls.
+		  Not a flex column: most pages are a document that should simply run
+		  on and scroll, and making every one of them a flex item means each
+		  has to think about shrinking. A page that wants the full height
+		  instead asks with `h-full`, which works because this has one.
+		-->
+		<main
+			id="main"
+			class="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-8 lg:px-10"
+		>
 			{@render children()}
 		</main>
 	</div>

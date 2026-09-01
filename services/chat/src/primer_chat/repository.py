@@ -182,6 +182,7 @@ def summarize_message(message: Message, citations: tuple[Citation, ...] = ()) ->
         state=MessageState(message.state),
         content=message.content,
         citations=citations,
+        provider_model=message.provider_model,
         error_code=message.error_code,
         created_at=message.created_at,
     )

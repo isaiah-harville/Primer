@@ -23,27 +23,48 @@ from primer_chat.config import Settings
 class ChatGenerator(Protocol):
     """Yields text fragments as the model produces them."""
 
-    def stream(self, system_prompt: str, user_prompt: str) -> AsyncIterator[str]: ...
+    def stream(
+        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+    ) -> AsyncIterator[str]: ...
 
 
 class HaystackChatGenerator:
-    """Streams from an OpenAI-compatible endpoint through Haystack."""
+    """Streams from an OpenAI-compatible endpoint through Haystack.
+
+    One client per model, made on first use and kept. They are cheap to hold
+    and not free to build, and a deployment offering several models will use
+    each of them repeatedly.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        key = settings.chat_api_key
-        self._generator = OpenAIChatGenerator(
-            api_key=Secret.from_token(key.get_secret_value() if key else "none"),
-            model=settings.chat_model,
-            api_base_url=settings.chat_base_url,
-            timeout=settings.chat_timeout_seconds,
-        )
+        self._generators: dict[str, OpenAIChatGenerator] = {}
 
     @property
     def model(self) -> str:
         return self._settings.chat_model
 
-    async def stream(self, system_prompt: str, user_prompt: str) -> AsyncIterator[str]:
+    def _for(self, model: str | None) -> OpenAIChatGenerator:
+        """A client for one model.
+
+        The name is not validated here. Whether a user may ask for a model is
+        a question about the request, answered where the request is handled;
+        by this point it has been.
+        """
+        name = model or self._settings.chat_model
+        if name not in self._generators:
+            key = self._settings.chat_api_key
+            self._generators[name] = OpenAIChatGenerator(
+                api_key=Secret.from_token(key.get_secret_value() if key else "none"),
+                model=name,
+                api_base_url=self._settings.chat_base_url,
+                timeout=self._settings.chat_timeout_seconds,
+            )
+        return self._generators[name]
+
+    async def stream(
+        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+    ) -> AsyncIterator[str]:
         """Bridge Haystack's synchronous callback into an async iterator.
 
         Haystack streams by invoking a callback on a worker thread. The
@@ -60,7 +81,7 @@ class HaystackChatGenerator:
         async def produce() -> None:
             try:
                 await anyio.to_thread.run_sync(
-                    lambda: self._run(system_prompt, user_prompt, on_chunk)
+                    lambda: self._run(system_prompt, user_prompt, on_chunk, model)
                 )
             finally:
                 await send.send(None)
@@ -73,8 +94,10 @@ class HaystackChatGenerator:
                         break
                     yield item
 
-    def _run(self, system_prompt: str, user_prompt: str, on_chunk: object) -> None:
-        self._generator.run(
+    def _run(
+        self, system_prompt: str, user_prompt: str, on_chunk: object, model: str | None
+    ) -> None:
+        self._for(model).run(
             messages=[
                 ChatMessage.from_system(system_prompt),
                 ChatMessage.from_user(user_prompt),
@@ -90,6 +113,8 @@ class StaticGenerator:
         self._fragments = list(fragments)
         self.model = model
 
-    async def stream(self, system_prompt: str, user_prompt: str) -> AsyncIterator[str]:
+    async def stream(
+        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+    ) -> AsyncIterator[str]:
         for fragment in self._fragments:
             yield fragment

@@ -75,9 +75,15 @@ class FakeGenerator:
         self.fragments = fragments if fragments is not None else ["Grounded ", "answer [1]."]
         self.fail = fail
         self.prompts: list[tuple[str, str]] = []
+        #: Which model each call asked for, so a test can prove the choice
+        #: reached the provider rather than stopping at the request.
+        self.models: list[str | None] = []
 
-    async def stream(self, system_prompt: str, user_prompt: str) -> AsyncIterator[str]:
+    async def stream(
+        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+    ) -> AsyncIterator[str]:
         self.prompts.append((system_prompt, user_prompt))
+        self.models.append(model)
         for index, fragment in enumerate(self.fragments):
             if self.fail and index == 1:
                 raise RuntimeError("the endpoint went away")
@@ -106,19 +112,26 @@ class ChatUser:
         self._http = http
         self._headers = {"X-Auth-Request-User": subject}
 
-    async def ask(self, library_id: str | None, message: str) -> list[dict[str, Any]]:
+    async def ask(
+        self, library_id: str | None, message: str, *, model: str | None = None
+    ) -> list[dict[str, Any]]:
         """Ask a question, of a library or of nothing.
 
-        `None` omits the field rather than sending null, which is how a
-        client that has no library selected actually behaves.
+        `None` omits a field rather than sending null, which is how a client
+        with nothing selected actually behaves.
         """
+        return parse_events((await self.post_ask(message, library_id, model)).text)
+
+    async def post_ask(
+        self, message: str, library_id: str | None = None, model: str | None = None
+    ) -> Response:
+        """The raw response, for the cases where it is not a stream."""
         payload: dict[str, Any] = {"message": message}
         if library_id is not None:
             payload["library_id"] = library_id
-        response = await self._http.post(
-            "/api/v1/conversations", json=payload, headers=self._headers
-        )
-        return parse_events(response.text)
+        if model is not None:
+            payload["model"] = model
+        return await self._http.post("/api/v1/conversations", json=payload, headers=self._headers)
 
     async def follow_up(self, conversation_id: str, message: str) -> Response:
         return await self._http.post(
