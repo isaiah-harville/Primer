@@ -1,0 +1,92 @@
+{{- if eq .Values.auth.mode "oidc" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "primer.fullname" . }}-auth
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth
+spec:
+  replicas: {{ .Values.auth.proxy.replicas }}
+  selector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: auth
+  template:
+    metadata:
+      labels:
+        {{- include "primer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: auth
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: oauth2-proxy
+          image: {{ .Values.auth.proxy.image }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url={{ required "auth.oidc.issuerUrl is required" .Values.auth.oidc.issuerUrl }}
+            - --client-id={{ required "auth.oidc.clientId is required" .Values.auth.oidc.clientId }}
+            - --redirect-url=https://{{ .Values.ingress.host }}/oauth2/callback
+            - --http-address=0.0.0.0:4180
+            - --upstream=http://{{ include "primer.fullname" . }}-web:3000
+            - --reverse-proxy=true
+            - --skip-provider-button=true
+            # PKCE, because a public redirect and a leaked authorization code
+            # are otherwise enough to complete someone else's sign-in.
+            - --code-challenge-method=S256
+            - --cookie-secure=true
+            - --cookie-httponly=true
+            - --cookie-samesite=lax
+            - --scope={{ .Values.auth.oidc.scopes }}
+            {{- range .Values.auth.oidc.emailDomains }}
+            - --email-domain={{ . }}
+            {{- end }}
+            # The headers Primer reads. Set by the proxy from the verified
+            # session, and overwritten rather than appended - a request that
+            # arrived with its own X-Auth-Request-User must not keep it.
+            - --set-xauthrequest=true
+            - --pass-user-headers=true
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auth.oidc.existingSecret is required" .Values.auth.oidc.existingSecret }}
+                  key: {{ .Values.auth.oidc.clientSecretKey }}
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.oidc.existingSecret }}
+                  key: {{ .Values.auth.oidc.cookieSecretKey }}
+          ports:
+            - name: http
+              containerPort: 4180
+          livenessProbe:
+            httpGet: { path: /ping, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /ping, port: http }
+            periodSeconds: 10
+          volumeMounts:
+            {{- include "primer.scratchMounts" . | nindent 12 }}
+      volumes:
+        {{- include "primer.scratchVolumes" . | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "primer.fullname" . }}-auth
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4180
+      targetPort: http
+      name: http
+  selector:
+    {{- include "primer.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: auth
+{{- end }}

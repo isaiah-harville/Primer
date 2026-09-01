@@ -25,10 +25,10 @@ deploy/compose/scripts/smoke.sh
     user, so anyone who can reach the published ports *is* that user. Ports
     are bound to `127.0.0.1` for that reason.
 
-    Multi-user Primer is the Kubernetes deployment, which is where the
-    ingress and the identity provider live. A proxy bolted onto Compose
-    would look multi-user while one forgotten published port made the
-    authentication decorative.
+    Multi-user Primer is the [Kubernetes deployment](kubernetes.md), which
+    is where the ingress and the identity provider live. A proxy bolted onto
+    Compose would look multi-user while one forgotten published port made
+    the authentication decorative.
 
 !!! warning "Changing a password later needs the volume gone"
     PostgreSQL reads `POSTGRES_PASSWORD` only when it first initialises its

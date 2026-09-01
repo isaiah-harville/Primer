@@ -83,6 +83,7 @@ nav:
   - Operations:
       - Configuration: operations/configuration.md
       - Deploying: operations/deploying.md
+      - Kubernetes: operations/kubernetes.md
       - Migrations: operations/migrations.md
   - Reference:
       - HTTP API: reference/http-api.md

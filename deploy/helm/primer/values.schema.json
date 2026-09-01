@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Primer Helm values",
+  "description": "Validated at install time, so a wrong value fails before anything is created rather than after a pod starts.",
+  "type": "object",
+  "required": ["auth", "ingress", "postgresql", "rabbitmq", "inference", "vectorStore"],
+  "properties": {
+    "auth": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "description": "oidc for any deployment other people use. disabled makes every request one fixed local user.",
+          "enum": ["oidc", "disabled"]
+        },
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "issuerUrl": { "type": "string" },
+            "clientId": { "type": "string" },
+            "existingSecret": {
+              "description": "A secret you manage. The chart never generates or inlines OIDC credentials.",
+              "type": "string"
+            },
+            "clientSecretKey": { "type": "string" },
+            "cookieSecretKey": { "type": "string" },
+            "emailDomains": { "type": "array", "items": { "type": "string" } },
+            "scopes": { "type": "string" }
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "properties": {
+            "image": { "type": "string" },
+            "replicas": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string", "minLength": 1 },
+        "tlsSecret": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "urlKey": { "type": "string" }
+      }
+    },
+    "rabbitmq": {
+      "type": "object",
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "urlKey": { "type": "string" }
+      }
+    },
+    "sourceStore": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "An fsspec URL. Object storage for more than one replica: a ReadWriteOnce volume cannot be shared between nodes.",
+          "type": "string",
+          "minLength": 1
+        },
+        "existingSecret": { "type": "string" }
+      }
+    },
+    "inference": {
+      "type": "object",
+      "properties": {
+        "chat": {
+          "type": "object",
+          "properties": {
+            "baseUrl": { "type": "string" },
+            "model": { "type": "string" },
+            "existingSecret": { "type": "string" },
+            "apiKeyKey": { "type": "string" }
+          }
+        },
+        "embeddings": {
+          "type": "object",
+          "properties": {
+            "baseUrl": { "type": "string" },
+            "model": { "type": "string" },
+            "dimensions": {
+              "description": "Must match the model. Changing it invalidates every stored vector.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "existingSecret": { "type": "string" },
+            "apiKeyKey": { "type": "string" }
+          }
+        }
+      }
+    },
+    "vectorStore": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["pgvector", "qdrant"] },
+        "qdrantUrl": { "type": "string" }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "servers": { "type": "array" }
+      }
+    },
+    "migrations": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "backoffLimit": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "workers": {
+      "type": "object",
+      "properties": {
+        "parse": { "type": "object" },
+        "index": { "type": "object" }
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "primer.fullname" . }}-retrieval
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: retrieval
+spec:
+  replicas: {{ .Values.retrieval.replicas }}
+  selector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: retrieval
+  template:
+    metadata:
+      labels:
+        {{- include "primer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: retrieval
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: retrieval
+          image: {{ include "primer.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command:
+            - uvicorn
+            - primer_retrieval.app:create_app
+            - --factory
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+          env:
+            {{- include "primer.commonEnv" . | nindent 12 }}
+            {{- include "primer.embeddingEnv" . | nindent 12 }}
+            - name: PRIMER_VECTOR_STORE
+              value: {{ .Values.vectorStore.kind | quote }}
+            {{- if eq .Values.vectorStore.kind "qdrant" }}
+            - name: PRIMER_QDRANT_URL
+              value: {{ required "vectorStore.qdrantUrl is required for qdrant" .Values.vectorStore.qdrantUrl | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8000
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.retrieval.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "primer.scratchMounts" . | nindent 12 }}
+      volumes:
+        {{- include "primer.scratchVolumes" . | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "primer.fullname" . }}-retrieval
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # Cluster-internal only: Retrieval's API takes a library and a generation
+  # and trusts that Control already authorized them.
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      name: http
+  selector:
+    {{- include "primer.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: retrieval
