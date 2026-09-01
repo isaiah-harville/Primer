@@ -144,7 +144,13 @@
 	}
 </script>
 
-<h1 class="text-xl font-semibold tracking-[-0.02em]">Chat</h1>
+<!--
+  The chat fills the height it is given, so the composer sits at the bottom
+  of the frame rather than under the conversation wherever that happens to
+  end.
+-->
+<div class="flex h-full flex-col">
+	<h1 class="shrink-0 text-xl font-semibold tracking-[-0.02em]">Chat</h1>
 
 <!--
   Constrained here rather than in the frame. Answers are prose, and prose set
@@ -318,6 +324,8 @@
 			</div>
 		</div>
 	{/if}
+</div>
+
 </div>
 
 {#if sourcesFor}
