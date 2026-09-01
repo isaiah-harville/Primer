@@ -21,18 +21,36 @@ helm install primer deploy/helm/primer \
 
 ## Installing from the registry
 
-Each push to `main` publishes the chart to GHCR, so an install does not need
-a checkout:
+Releases publish the chart to GHCR, so an install does not need a checkout:
 
 ```bash
 helm install primer oci://ghcr.io/isaiah-harville/charts/primer \
-  --version 0.1.0 \
+  --version 1.4.0 \
   --set ingress.host=primer.example.com \
   ...
 ```
 
-Publishing happens only from `main`. A chart pushed from a pull request
-would let anyone who can open one publish under this repository's name.
+Only a release publishes a chart. Nothing is pushed from `main` or from a
+pull request: a chart is how someone installs Primer, and there is no
+version number that honestly describes "whatever landed this morning".
+
+Images are different. Each push to `main` publishes `latest`, which is for
+trying things rather than running them, alongside a `sha-<commit>` tag for
+pinning one exact build. A release publishes its own version - `1.4.0`, and
+`1.4` for the newest patch of that line - and moves no alias, so `latest`
+never quietly becomes a release.
+
+Installing the chart from a checkout therefore needs an image tag, because
+the tag defaults to the chart's `appVersion` and a development `appVersion`
+names nothing published:
+
+```bash
+helm install primer deploy/helm/primer \
+  --set image.api.tag=latest \
+  --set image.worker.tag=latest \
+  --set image.web.tag=latest \
+  ...
+```
 
 ## Secrets you provide
 
