@@ -93,6 +93,17 @@ services:
     command: ["alembic", "upgrade", "head"]
     restart: "no"
 
+  migrate-vectors:
+    <<: [*python-image, *hardening]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PRIMER_DATABASE_URL: postgresql://primer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/primer
+    working_dir: /app/services/retrieval
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
   control:
     <<: [*python-image, *hardening]
     depends_on:
@@ -126,8 +137,8 @@ services:
   retrieval:
     <<: [*python-image, *hardening]
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate-vectors:
+        condition: service_completed_successfully
     environment:
       <<: *service-env
       # Retrieval reads pgvector synchronously; it does not use asyncpg.

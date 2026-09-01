@@ -13,6 +13,7 @@ import pytest
 from conformance_support import DIMENSIONS
 from haystack.document_stores.types import DocumentStore
 from primer_retrieval.config import Settings
+from primer_retrieval.migrations import upgrade_to_head
 from primer_retrieval.stores import build_document_store
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.qdrant import QdrantContainer
@@ -25,8 +26,15 @@ BACKENDS = ["pgvector", "qdrant"]
 
 @pytest.fixture(scope="session")
 def pgvector_url() -> Iterator[str]:
+    """Prepared by the migration, the way a deployment prepares one.
+
+    Installing the vector extension is the migration's job. Doing it inline
+    here would let these keep passing on the day the migration stopped.
+    """
     with PostgresContainer(POSTGRES_IMAGE) as container:
-        yield container.get_connection_url(driver=None)
+        url = container.get_connection_url(driver=None)
+        upgrade_to_head(url)
+        yield url
 
 
 @pytest.fixture(scope="session")

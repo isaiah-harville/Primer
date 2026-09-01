@@ -2372,13 +2372,16 @@ name = "primer-retrieval"
 version = "0.1.0"
 source = { editable = "services/retrieval" }
 dependencies = [
+    { name = "alembic" },
     { name = "fastapi" },
     { name = "haystack-ai" },
     { name = "pgvector-haystack" },
     { name = "primer-contracts" },
     { name = "primer-observability" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "qdrant-haystack" },
+    { name = "sqlalchemy" },
 ]
 
 [package.dev-dependencies]
@@ -2392,13 +2395,16 @@ server = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alembic" },
     { name = "fastapi" },
     { name = "haystack-ai" },
     { name = "pgvector-haystack" },
     { name = "primer-contracts", editable = "packages/contracts" },
     { name = "primer-observability", editable = "packages/observability" },
+    { name = "psycopg", extras = ["binary"] },
     { name = "pydantic-settings" },
     { name = "qdrant-haystack" },
+    { name = "sqlalchemy" },
 ]
 
 [package.metadata.requires-dev]

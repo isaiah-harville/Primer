@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from haystack import Document
 from primer_retrieval.app import create_app
 from primer_retrieval.config import Settings
+from primer_retrieval.migrations import upgrade_to_head
 from testcontainers.community.postgres import PostgresContainer
 
 POSTGRES_IMAGE = "pgvector/pgvector:pg17"
@@ -51,8 +52,17 @@ class StubTextEmbedder:
 
 @pytest.fixture(scope="session")
 def pgvector_url() -> Iterator[str]:
+    """A database prepared the way a deployment prepares one.
+
+    The migration runs here rather than the extension being created inline,
+    because installing it is exactly what the migration is for: a test that
+    set the database up its own way would keep passing on the day the
+    migration stopped doing it.
+    """
     with PostgresContainer(POSTGRES_IMAGE) as container:
-        yield container.get_connection_url(driver=None)
+        url = container.get_connection_url(driver=None)
+        upgrade_to_head(url)
+        yield url
 
 
 @pytest.fixture
