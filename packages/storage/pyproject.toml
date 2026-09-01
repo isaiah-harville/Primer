@@ -6,6 +6,11 @@ requires-python = ">=3.13"
 dependencies = [
     "anyio",
     "fsspec",
+    # fsspec dispatches on the URL scheme and imports the backend lazily, so
+    # an `s3://` store without this raises ImportError on the first upload
+    # rather than at startup. The Kubernetes chart defaults to S3, which made
+    # that the default deployment's first upload.
+    "s3fs",
 ]
 
 [build-system]

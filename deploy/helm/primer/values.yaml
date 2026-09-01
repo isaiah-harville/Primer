@@ -73,7 +73,21 @@ sourceStore:
   # An fsspec URL. Object storage for more than one replica: a
   # ReadWriteOnce volume cannot be shared between nodes.
   url: s3://primer-sources
+  # A Secret holding the backend's own environment - AWS_ACCESS_KEY_ID,
+  # AWS_SECRET_ACCESS_KEY, FSSPEC_S3_ENDPOINT_URL for a non-AWS endpoint, and
+  # anything else it wants. Every key is passed through, because those names
+  # belong to the storage backend rather than to Primer.
+  #
+  # Mounted only into Control and the ingestion workers: nothing else opens a
+  # source object.
   existingSecret: ""
+
+# Settings this chart does not model, added to every Primer workload. An
+# escape hatch, so a deployment that needs one variable does not need a fork
+# or a post-renderer.
+extraEnv: []
+#  - name: HTTPS_PROXY
+#    value: http://proxy.internal:3128
 
 # --- Inference ----------------------------------------------------------
 #

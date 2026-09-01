@@ -274,3 +274,71 @@ def test_the_internal_token_is_generated_not_configured(
     secrets = of_kind(manifests, "Secret")
     assert len(secrets) == 1
     assert "internal-token" in secrets[0]["data"]
+
+
+def workloads(manifests: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Every pod-bearing manifest, by name, whatever kind it is."""
+    found: dict[str, dict[str, Any]] = {}
+    for doc in manifests:
+        if doc.get("kind") in ("Deployment", "Job"):
+            found[doc["metadata"]["name"]] = doc
+    return found
+
+
+def secrets_mounted(workload: dict[str, Any]) -> set[str]:
+    names = set()
+    for container in containers(workload):
+        for source in container.get("envFrom") or []:
+            name = source.get("secretRef", {}).get("name")
+            if name:
+                names.add(name)
+    return names
+
+
+def test_object_storage_credentials_reach_only_what_opens_a_file() -> None:
+    """Control and the ingestion workers, and nothing else.
+
+    Retrieval, Chat and the web app never open a source object. Handing them
+    the object store's credentials would widen what a compromise of any of
+    them reaches, for no capability they use.
+    """
+    rendered = render("sourceStore.existingSecret=primer-object-store")
+
+    holders = {
+        name
+        for name, workload in workloads(rendered).items()
+        if "primer-object-store" in secrets_mounted(workload)
+    }
+
+    assert holders, "the source store secret reached nothing at all"
+    assert all(name.endswith("-control") or "-worker-" in name for name in holders), (
+        f"object storage credentials reached something that does not read the store: {holders}"
+    )
+    assert any(name.endswith("-control") for name in holders)
+    assert sum("-worker-" in name for name in holders) >= 2, (
+        "both ingestion workers open source objects: parse reads them and embed writes artifacts"
+    )
+
+
+def test_object_storage_credentials_are_absent_until_configured(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """No secret named, nothing mounted: the default chart references none."""
+    for name, workload in workloads(manifests).items():
+        assert secrets_mounted(workload) == set(), f"{name} mounts a secret nothing configured"
+
+
+def test_extra_environment_reaches_primer_workloads() -> None:
+    """The escape hatch, so a missing setting does not need a fork."""
+    rendered = render(
+        "extraEnv[0].name=HTTPS_PROXY", "extraEnv[0].value=http://proxy.internal:3128"
+    )
+
+    carrying = {
+        name
+        for name, workload in workloads(rendered).items()
+        for container in containers(workload)
+        if any(entry.get("name") == "HTTPS_PROXY" for entry in container.get("env") or [])
+    }
+
+    assert {"control", "chat", "retrieval"} <= {name.rsplit("-", 1)[-1] for name in carrying}
