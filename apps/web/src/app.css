@@ -9,5 +9,92 @@
  */
 @import '@sivir-ui/svelte/ui.css';
 
+/*
+https://github.com/aidan-neel/sivir-ui/issues/140
+ */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
 /* Sivir scans its own package for classes; this points it at ours too. */
 @source '../src/**/*.{svelte,ts}';
+
+/*
+ * Ink on paper.
+ *
+ * Primer is a reading tool, so the interface is built to disappear behind
+ * the documents: warm paper, near-black ink, and no decorative colour at
+ * all. Colour is spent only where it carries meaning - a document failed, a
+ * deployment is unauthenticated - which is what makes those things
+ * noticeable. A blue button on every screen would spend it on nothing and
+ * leave a warning looking like more furniture.
+ */
+@theme {
+	--font-sans: 'Inter Variable', 'Inter', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+
+	/* Warm, and a shade deeper than the cards that sit on it, so a panel
+	   reads as a sheet resting on a surface rather than merging with it. */
+	--color-background: hsl(40 24% 97%);
+
+	/* Near-black with a faint indigo cast: black at a glance, but it stays a
+	   colour on the large surfaces (a filled button, a selected row) where a
+	   true black goes flat. */
+	--color-primary: hsl(232 20% 15%);
+	--color-primary-hover: hsl(232 18% 26%);
+	--color-on-primary: hsl(40 24% 97%);
+
+	/* Set explicitly rather than derived from the primary: an ink primary
+	   thinned out becomes an indistinct grey, and focus is the one state a
+	   keyboard user has to rely on. */
+	--color-ring: hsl(232 20% 15% / 0.35);
+	--color-accent-tint: hsl(40 30% 92%);
+
+	/* Tight. Looser radii read friendly; this is a tool people work in for
+	   hours, and precise suits it better. */
+	--radius-sm: 4px;
+	--radius-md: 6px;
+	--radius-lg: 8px;
+	--radius-xl: 12px;
+
+	--tracking-header: -0.02em;
+}
+
+/*
+ * Dark is not the light theme inverted: the primary swaps ends, so a filled
+ * button stays the brightest thing on screen in both.
+ */
+.dark {
+	--color-background: hsl(232 12% 7%);
+	--color-primary: hsl(40 22% 92%);
+	--color-primary-hover: hsl(40 18% 82%);
+	--color-on-primary: hsl(232 20% 12%);
+	--color-ring: hsl(40 22% 92% / 0.35);
+	--color-accent-tint: hsl(232 14% 18%);
+}
+
+/*
+ * The page itself. Without this the tokens above only reach components, and
+ * the surface they sit on stays the browser's default white - which is not
+ * the paper the rest of the theme is mixed against.
+ *
+ * `color-scheme` is set from the same class rather than left to the OS, so
+ * the controls the browser draws itself - native selects, scrollbars, form
+ * fields - follow the theme a reader chose here instead of the one their
+ * system is in.
+ */
+@layer base {
+	:root {
+		color-scheme: light;
+	}
+
+	.dark {
+		color-scheme: dark;
+	}
+
+	body {
+		background-color: var(--color-background);
+		color: var(--color-foreground);
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+	}
+}

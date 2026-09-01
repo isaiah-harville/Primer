@@ -3,12 +3,13 @@ import { ApiError } from '$lib/api/client';
 import { apiFor } from '$lib/server/api';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, request, fetch }) => {
-	const api = apiFor(request, fetch);
+export const load: PageServerLoad = async ({ params, parent, request, fetch }) => {
 	try {
-		const [libraries, documents] = await Promise.all([
-			api.libraries(),
-			api.documents(params.libraryId),
+		// The library comes from the list the layout already fetched, so
+		// opening a document list does not re-fetch every library to name one.
+		const [{ libraries }, documents] = await Promise.all([
+			parent(),
+			apiFor(request, fetch).documents(params.libraryId),
 		]);
 		const library = libraries.find((candidate) => candidate.id === params.libraryId);
 		// The server already answered 404 for a library that is not ours;

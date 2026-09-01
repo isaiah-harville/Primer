@@ -38,7 +38,7 @@
   Space and the whole flow works without a pointer.
 -->
 <div
-	class="rounded-lg border-2 border-dashed p-6 text-center transition-colors
+	class="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2 transition-colors
 		{dragging ? 'border-primary bg-primary/5' : 'border-border'}"
 	ondragover={(event) => {
 		event.preventDefault();
@@ -52,12 +52,12 @@
 	}}
 	role="presentation"
 >
-	<Button variant="secondary" onclick={() => input?.click()} aria-describedby="upload-hint">
-		Drop files here, or choose files
+	<Button variant="secondary" size="sm" onclick={() => input?.click()} aria-describedby="upload-hint">
+		Add documents
 	</Button>
 
-	<p id="upload-hint" class="mt-2 text-sm text-muted-foreground">
-		{describeAccepted(capabilities)} files.
+	<p id="upload-hint" class="text-xs text-muted-foreground">
+		or drop {describeAccepted(capabilities)} files here
 	</p>
 
 	<input
