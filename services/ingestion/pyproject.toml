@@ -8,6 +8,7 @@ dependencies = [
     "docling",
     "httpx2",
     "primer-contracts",
+    "primer-observability",
     "primer-storage",
     "pydantic-settings",
     # Declared directly, though Docling is what needs them, so the workspace
@@ -31,4 +32,5 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 primer-contracts = { workspace = true }
+primer-observability = { workspace = true }
 primer-storage = { workspace = true }

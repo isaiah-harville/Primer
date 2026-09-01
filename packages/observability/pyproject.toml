@@ -1,0 +1,15 @@
+[project]
+name = "primer-observability"
+version = "0.1.0"
+description = "Primer structured logging, tracing, and metrics"
+requires-python = ">=3.13"
+dependencies = [
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-http",
+    "prometheus-client",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

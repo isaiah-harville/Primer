@@ -30,6 +30,11 @@ jobs:
       - name: Install Python
         run: uv python install
 
+      # The chart policy tests render the chart with `helm template` and read
+      # the result. Without helm on the runner they skip, and a skipped
+      # security test guards nothing while still reporting green.
+      - uses: azure/setup-helm@v4
+
       # The MCP tool integration lives in the optional `tools` group, so a
       # type check without it cannot resolve the import and fails on code
       # that is fine. Tests need it for the same reason.
@@ -118,33 +123,98 @@ jobs:
         uses: actions/deploy-pages@v4
 
   chart:
-    name: Chart (lint, render, policy)
+    name: Chart (lint, render, publish)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v5
 
       - uses: azure/setup-helm@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
-      - name: Install Python
-        run: uv python install
-
-      - name: Sync workspace
-        run: uv sync --all-packages --locked
-
-      - name: Helm lint
+      - name: Lint
         run: helm lint deploy/helm/primer
 
-      # The policy tests render the chart and read the result, so they catch
-      # a service exposed outside the cluster or an identity header that
-      # stopped being stripped.
-      - name: Chart policy
-        run: uv run pytest tests/helm -v
+      # Rendering with the values a real install needs, so a template error
+      # or a missing `required` fails here rather than at install time.
+      - name: Render
+        run: |
+          helm template primer deploy/helm/primer \
+            --set postgresql.existingSecret=primer-postgres \
+            --set rabbitmq.existingSecret=primer-rabbitmq \
+            --set auth.oidc.issuerUrl=https://idp.example.com/ \
+            --set auth.oidc.clientId=primer \
+            --set auth.oidc.existingSecret=primer-oidc \
+            --set inference.chat.baseUrl=http://model/v1 \
+            --set inference.chat.model=chat-model \
+            --set inference.embeddings.baseUrl=http://model/v1 \
+            --set inference.embeddings.model=embed-model \
+            > /dev/null
+
+      - name: Package
+        run: helm package deploy/helm/primer --destination dist
+
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push to GHCR
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          helm push dist/primer-*.tgz \
+            oci://ghcr.io/${{ github.repository_owner }}/charts
+
+  images:
+    name: Images (build, publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: primer-api
+            dockerfile: deploy/images/Dockerfile.python
+          - name: primer-worker
+            dockerfile: deploy/images/Dockerfile.worker
+          - name: primer-web
+            dockerfile: deploy/images/Dockerfile.gui
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
   web:
     name: Web (lint, types, tests)
