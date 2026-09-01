@@ -10,8 +10,9 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 from primer_contracts.errors import ErrorCode
+from primer_contracts.ingestion import StageName
 from primer_contracts.libraries import LibrarySummary
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,13 +21,23 @@ from primer_control.db import get_session
 from primer_control.errors import ProblemError
 from primer_control.identity import CurrentPrincipal
 from primer_control.models import Library
+from primer_control.publisher import JobPublisher
 from primer_control.repositories.libraries import LibraryRepository
 from primer_control.repositories.users import UserRepository
+from primer_control.services.duplication import LibraryDuplicator, copy_name
 from primer_control.services.library_access import LibraryAccess
 
 router = APIRouter(prefix="/api/v1/libraries", tags=["libraries"])
 
 Session = Annotated[AsyncSession, Depends(get_session)]
+
+
+def get_publisher(request: Request) -> JobPublisher:
+    publisher: JobPublisher = request.app.state.publisher
+    return publisher
+
+
+Publisher = Annotated[JobPublisher, Depends(get_publisher)]
 access = LibraryAccess()
 
 
@@ -84,6 +95,54 @@ async def create_library(
         name=payload.name, owner_user_id=principal.user_id
     )
     return summarize(library)
+
+
+class LibraryDuplicate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    #: Optional. Left out, the copy is named after the original.
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+@router.post(
+    "/{library_id}/duplicate",
+    status_code=status.HTTP_201_CREATED,
+    summary="Copy a library into a new one",
+)
+async def duplicate_library(
+    library_id: UUID,
+    payload: LibraryDuplicate,
+    background: BackgroundTasks,
+    principal: CurrentPrincipal,
+    session: Session,
+    publisher: Publisher,
+) -> LibrarySummary:
+    """Copy a library so the two can diverge.
+
+    The copy is owned by whoever asked for it, not by whoever owned the
+    original: a copy of something you were allowed to read is yours, and
+    leaving it owned by someone else would make it unmanageable by the only
+    person who knows it exists.
+
+    Its documents are queued for indexing like any upload, so the copy is
+    browsable immediately and answerable once they finish. Nothing is
+    published to the broker until the transaction commits.
+    """
+    await UserRepository(session).ensure(principal)
+    readable = access.readable(principal.user_id)
+    source = await LibraryRepository(session).get(library_id, where=readable)
+    if source is None:
+        raise not_found()
+
+    duplication = await LibraryDuplicator(session).duplicate(
+        source,
+        name=payload.name or copy_name(source.name),
+        owner_user_id=principal.user_id,
+        where=readable,
+    )
+    for job in duplication.jobs:
+        background.add_task(publisher.publish, StageName.PARSE, job.id)
+    return summarize(duplication.library)
 
 
 @router.get("/{library_id}", summary="Read one library")

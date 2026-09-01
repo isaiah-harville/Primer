@@ -87,6 +87,15 @@ export class PrimerApi {
 		});
 	}
 
+	/** Copy a library into a new one the caller owns. */
+	duplicateLibrary(libraryId: string, name?: string): Promise<LibrarySummary> {
+		return this.request(`/api/v1/libraries/${libraryId}/duplicate`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(name ? { name } : {}),
+		});
+	}
+
 	deleteLibrary(libraryId: string): Promise<void> {
 		return this.request(`/api/v1/libraries/${libraryId}`, { method: 'DELETE' });
 	}
