@@ -85,6 +85,7 @@ nav:
       - Deploying: operations/deploying.md
       - Kubernetes: operations/kubernetes.md
       - Migrations: operations/migrations.md
+      - Upgrading: operations/upgrading.md
   - Reference:
       - HTTP API: reference/http-api.md
       - Contracts: reference/contracts.md

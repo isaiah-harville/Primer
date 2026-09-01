@@ -164,7 +164,14 @@
 	  possible, and it is why this is not the list of cards the libraries
 	  themselves get.
 	-->
-	<div class="mt-8 overflow-x-auto">
+	<!--
+	  `relative` is load-bearing. The screen-reader labels on the row actions
+	  are absolutely positioned, so without a positioned ancestor their
+	  containing block is the viewport: they escape the scroll container,
+	  land at the far edge of the table, and drag the whole page sideways on
+	  a phone. Giving the scroll container a position keeps them inside it.
+	-->
+	<div class="relative mt-8 overflow-x-auto">
 		<!--
 		  Fixed layout, so the columns keep the widths set below instead of
 		  being sized by whatever happens to be in them. Filenames are long
@@ -207,8 +214,13 @@
 				{#each data.documents as document (document.id)}
 					<tr class="group border-b border-border transition-colors hover:bg-muted/60">
 						<td class="px-3 py-2.5">
+							<!--
+							  Titled, because the name is truncated and a filename
+							  is often told apart by its end, not its start.
+							-->
 							<a
 								href="/libraries/{data.library.id}/documents/{document.id}/content"
+								title={document.filename}
 								class="block truncate font-mono hover:underline focus-visible:outline-none
 									focus-visible:shadow-[var(--focus-ring)]"
 							>
