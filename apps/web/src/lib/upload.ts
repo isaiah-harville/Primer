@@ -60,3 +60,38 @@ export function rejectionFor(file: File, capabilities: DeploymentCapabilities): 
 	}
 	return null;
 }
+
+/** The longest a library name may be, matching what Control accepts. */
+const MAX_LIBRARY_NAME = 120;
+
+/**
+ * A library name for a file dropped into a conversation with nowhere to put
+ * it.
+ *
+ * Derived from the filename rather than generic, because the user is about to
+ * be asked whether to keep this library and "Untitled" tells them nothing
+ * about what is in it. It is a starting point, not a decision: the name is
+ * theirs to change.
+ */
+export function libraryNameFor(filename: string): string {
+	const dot = filename.lastIndexOf('.');
+	const stem = dot > 0 ? filename.slice(0, dot) : filename;
+
+	const words = stem
+		// Separators people actually use in filenames, including the runs of
+		// them left behind by tools that already substituted one for another.
+		.replace(/[_\-.]+/g, ' ')
+		// `ReportFinal` and `HTTPServer` both read badly as one word.
+		.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+		.replace(/\s+/g, ' ')
+		.trim();
+
+	if (!words) {
+		// A file named only with separators, or `.gitignore`. Rare, and still
+		// needs a name that Control will accept.
+		return 'New library';
+	}
+
+	const name = words.charAt(0).toUpperCase() + words.slice(1);
+	return name.length > MAX_LIBRARY_NAME ? name.slice(0, MAX_LIBRARY_NAME).trimEnd() : name;
+}
