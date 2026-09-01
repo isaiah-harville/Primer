@@ -96,8 +96,8 @@ for what the chart expects.
 | Helm chart | `oci://ghcr.io/isaiah-harville/charts/primer` |
 
 Releases publish all four under one version, so a chart at `1.4.0` pulls the
-images built from the commit tagged `v1.4.0`. `latest` follows `main` and is
-for trying things, not for running them.
+images built from the commit tagged `v1.4.0`. Charts come only from releases.
+`latest` follows `main` and is for trying things, not for running them.
 
 ## How it fits together
 

@@ -3,7 +3,13 @@
 # Everything a release produces is named by the release's own tag: the three
 # images and the chart, all with one version, so an operator installing
 # `primer 1.4.0` gets the images that were built from the commit tagged
-# v1.4.0 and not whatever `latest` happens to mean today.
+# v1.4.0.
+#
+# `latest` is not touched here. It is published by CI from main and means
+# exactly that - the tip of the branch - so nobody can install a release by
+# accident, or a development build by asking for the newest release. The
+# chart is published only from here for the same reason: there is no such
+# thing as an unversioned install.
 #
 # This does not re-run the test suite. The tag names a commit that CI already
 # checked on main; tagging something that never passed is the one way to
@@ -59,8 +65,8 @@ jobs:
           minor="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 
           # A prerelease keeps its exact version and nothing else. Moving
-          # `latest` or a minor alias onto it would hand it to everyone who
-          # asked for the stable line.
+          # the minor alias onto it would hand it to everyone who asked for
+          # the stable line.
           stable=true
           if [[ "$PRERELEASE" == "true" || "$version" == *-* ]]; then
             stable=false
@@ -113,10 +119,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          # The version, and the minor line it is the newest of. Not
+          # `latest`: that belongs to main, and moving it here would make the
+          # newest build of Primer and the newest release of Primer the same
+          # name for two different things.
           tags: |
             type=raw,value=${{ needs.version.outputs.version }}
             type=raw,value=${{ needs.version.outputs.minor }},enable=${{ needs.version.outputs.stable == 'true' }}
-            type=raw,value=latest,enable=${{ needs.version.outputs.stable == 'true' }}
           labels: |
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
 

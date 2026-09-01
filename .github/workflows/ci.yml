@@ -122,11 +122,8 @@ jobs:
         uses: actions/deploy-pages@v4
 
   chart:
-    name: Chart (lint, render, publish)
+    name: Chart (lint, render, package)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v5
 
@@ -154,20 +151,11 @@ jobs:
       - name: Package
         run: helm package deploy/helm/primer --destination dist
 
-      - name: Log in to GHCR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Push to GHCR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          helm push dist/primer-*.tgz \
-            oci://ghcr.io/${{ github.repository_owner }}/charts
-
   images:
-    name: Images (build, publish)
+    # `latest` is main, and only main. A release publishes its own version
+    # and moves no alias, so `latest` never silently becomes a release and a
+    # release never silently becomes `latest`.
+    name: Images (build, publish latest)
     runs-on: ubuntu-latest
     permissions:
       contents: read
