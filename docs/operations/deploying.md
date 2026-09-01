@@ -43,7 +43,28 @@ deploy/compose/scripts/smoke.sh
     That deletes the database along with the volume, so only do it on a stack
     you can recreate.
 
+## Published images
+
+Each push to `main` publishes three images to GHCR, so nothing has to be
+built locally:
+
+| Image | Contains |
+| --- | --- |
+| `ghcr.io/isaiah-harville/primer-api` | Control, Chat, Retrieval |
+| `ghcr.io/isaiah-harville/primer-worker` | The ingestion worker |
+| `ghcr.io/isaiah-harville/primer-web` | The web app |
+
+Tagged `latest` and by commit SHA. Pull requests build them but do not push:
+a broken Dockerfile fails review rather than after merge, and an image
+pushed from a pull request would let anyone who can open one publish under
+this repository's name.
+
+The Compose profile builds from source rather than pulling, because a local
+checkout is usually one you are changing.
+
 ## The images
+
+
 
 Two Python images, not one.
 

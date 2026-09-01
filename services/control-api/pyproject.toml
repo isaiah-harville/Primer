@@ -9,6 +9,7 @@ dependencies = [
     "celery",
     "fastapi",
     "primer-contracts",
+    "primer-observability",
     "primer-storage",
     "psycopg[binary]",
     "pydantic-settings",
@@ -31,4 +32,5 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 primer-contracts = { workspace = true }
+primer-observability = { workspace = true }
 primer-storage = { workspace = true }

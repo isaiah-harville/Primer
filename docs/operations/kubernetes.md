@@ -19,6 +19,21 @@ helm install primer deploy/helm/primer \
   --set inference.embeddings.dimensions=1024
 ```
 
+## Installing from the registry
+
+Each push to `main` publishes the chart to GHCR, so an install does not need
+a checkout:
+
+```bash
+helm install primer oci://ghcr.io/isaiah-harville/charts/primer \
+  --version 0.1.0 \
+  --set ingress.host=primer.example.com \
+  ...
+```
+
+Publishing happens only from `main`. A chart pushed from a pull request
+would let anyone who can open one publish under this repository's name.
+
 ## Secrets you provide
 
 The chart creates exactly one secret and references the rest. A chart that

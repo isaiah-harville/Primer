@@ -10,6 +10,7 @@ dependencies = [
     "haystack-ai",
     "httpx2",
     "primer-contracts",
+    "primer-observability",
     "psycopg[binary]",
     "pydantic-settings",
     "sqlalchemy[asyncio]",
@@ -35,3 +36,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 primer-contracts = { workspace = true }
+primer-observability = { workspace = true }
