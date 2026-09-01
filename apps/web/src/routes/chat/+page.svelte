@@ -11,6 +11,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import CitationPanel from '$lib/components/CitationPanel.svelte';
 	import LibraryLink from '$lib/components/LibraryLink.svelte';
+	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
 	import type { MessageSummary } from '$lib/api/types';
@@ -25,6 +26,11 @@
 	// because silently attaching the first library would make an answer look
 	// grounded in something the user never picked.
 	let libraryId = $state('');
+	// Empty means the deployment's default, which is also what a request that
+	// names no model gets. Not defaulted to a name here: the server decides
+	// what its default is, and copying that choice into the client would let
+	// the two disagree.
+	let model = $state('');
 	let question = $state('');
 	let turns = $state<{ question: string; stream: StreamState }[]>([]);
 	let streaming = $state(false);
@@ -102,9 +108,13 @@
 				headers: { 'Content-Type': 'application/json' },
 				// Omitted rather than sent empty when nothing is linked: the
 				// absence of a library is what asks for an uncited answer.
-				body: JSON.stringify(
-					libraryId ? { library_id: libraryId, message: asked } : { message: asked }
-				)
+				// Fields are omitted rather than sent empty: no library asks for
+				// an uncited answer, and no model asks for the default.
+				body: JSON.stringify({
+					message: asked,
+					...(libraryId ? { library_id: libraryId } : {}),
+					...(model ? { model } : {})
+				})
 			});
 			if (!response.body) throw new Error('The server sent no response body.');
 
@@ -268,8 +278,9 @@
 	  documents belongs with asking it rather than with the page around it.
 	-->
 	<div class="mt-2 flex flex-wrap items-center justify-between gap-3">
-		<div class="flex items-center gap-3">
+		<div class="flex flex-wrap items-center gap-2">
 			<LibraryLink libraries={data.libraries} bind:value={libraryId} />
+			<ModelPicker models={data.models} bind:value={model} />
 			{#each uploading as name (name)}
 				<span class="flex items-center gap-2 text-xs text-muted-foreground">
 					<Spinner size={12} aria-hidden="true" />
