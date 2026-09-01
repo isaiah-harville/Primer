@@ -17,9 +17,7 @@ const ALL: IngestionStatus[] = [
 ];
 
 describe('status descriptions', () => {
-	it('gives every status words, not just a colour', () => {
-		// Colour alone is invisible to a screen reader and ambiguous to
-		// anyone who cannot distinguish the shades.
+	it('gives every status word', () => {
 		for (const status of ALL) {
 			const described = describeStatus(status);
 			expect(described.label.length).toBeGreaterThan(0);

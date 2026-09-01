@@ -106,12 +106,14 @@ describe('UploadDropzone', () => {
 		expect(clicked).toHaveBeenCalled();
 	});
 
-	it('announces rejections politely enough to be heard', async () => {
+	it('announces rejections as an assertive live region', async () => {
+		// role="alert" is an assertive live region by definition, so a user
+		// who dropped a file elsewhere on the page hears why it was refused.
 		render(UploadDropzone, { capabilities });
+		expect(screen.queryByRole('alert')).toBeNull();
 
 		await choose(new File(['x'], 'nope.exe'));
 
-		const alert = screen.getByRole('alert');
-		expect(alert).toHaveAttribute('aria-live', 'assertive');
+		expect(screen.getByRole('alert')).toBeInTheDocument();
 	});
 });

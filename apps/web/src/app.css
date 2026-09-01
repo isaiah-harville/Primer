@@ -1,0 +1,13 @@
+/*
+ * Sivir brings Tailwind with it: its stylesheet imports Tailwind and then
+ * declares the theme tokens every component reads. Importing Tailwind
+ * separately here would load it twice.
+ *
+ * Primer restyles by overriding tokens rather than by overriding component
+ * classes, which is what the library is built for - a fork of a component
+ * stops receiving its fixes.
+ */
+@import '@sivir-ui/svelte/ui.css';
+
+/* Sivir scans its own package for classes; this points it at ours too. */
+@source '../src/**/*.{svelte,ts}';

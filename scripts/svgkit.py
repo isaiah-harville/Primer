@@ -2,7 +2,7 @@
 
 Hand-written SVG rather than a diagramming library: the docs build then has
 no system dependency on Graphviz, the output is a crisp vector at any zoom,
-and the colours can follow the reader's light or dark theme, which a
+and the colors can follow the reader's light or dark theme, which a
 rasterised diagram cannot.
 """
 
@@ -18,7 +18,7 @@ FONT = (
 )
 MONO = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
 
-#: One accent per kind of thing, so the same colour always means the same
+#: One accent per kind of thing, so the same color always means the same
 #: role across every diagram in the documentation.
 KINDS: dict[str, tuple[str, str]] = {
     "client": ("#eef2ff", "#6366f1"),

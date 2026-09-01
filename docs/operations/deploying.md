@@ -30,6 +30,19 @@ deploy/compose/scripts/smoke.sh
     would look multi-user while one forgotten published port made the
     authentication decorative.
 
+!!! warning "Changing a password later needs the volume gone"
+    PostgreSQL reads `POSTGRES_PASSWORD` only when it first initialises its
+    data directory. Editing it afterwards leaves the stored password
+    unchanged, and every service then fails with `password authentication
+    failed for user "primer"`.
+
+    ```bash
+    docker compose -f deploy/compose/compose.yaml down -v
+    ```
+
+    That deletes the database along with the volume, so only do it on a stack
+    you can recreate.
+
 ## The images
 
 Two Python images, not one.

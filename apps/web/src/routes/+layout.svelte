@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '../app.css';
 	import AuthModeWarning from '$lib/components/AuthModeWarning.svelte';
 	import type { LayoutData } from './$types';
 
@@ -11,59 +12,24 @@
   A skip link first, because the navigation is on every page and a keyboard
   user should not have to tab through it to reach the content each time.
 -->
-<a class="skip" href="#main">Skip to content</a>
+<a
+	href="#main"
+	class="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50
+		focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:shadow"
+>
+	Skip to content
+</a>
 
-<header>
-	<a class="brand" href="/libraries">Primer</a>
-	<nav aria-label="Main">
-		<a href="/libraries">Libraries</a>
+<header class="flex items-baseline gap-6 border-b border-border px-5 py-3.5">
+	<a href="/libraries" class="text-lg font-bold">Primer</a>
+	<nav aria-label="Main" class="flex gap-4 text-sm">
+		<a href="/libraries" class="hover:underline">Libraries</a>
 		{#if data.capabilities.chat_available}
-			<a href="/chat">Chat</a>
+			<a href="/chat" class="hover:underline">Chat</a>
 		{/if}
 	</nav>
 </header>
 
-<main id="main">
+<main id="main" class="mx-auto max-w-4xl px-5 pb-16 pt-6">
 	{@render children()}
 </main>
-
-<style>
-	:global(body) {
-		margin: 0;
-		font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-		color: #0f172a;
-	}
-	.skip {
-		position: absolute;
-		left: -9999px;
-	}
-	.skip:focus {
-		left: 0.5rem;
-		top: 0.5rem;
-		background: #fff;
-		padding: 0.5rem 0.75rem;
-		z-index: 10;
-	}
-	header {
-		display: flex;
-		align-items: baseline;
-		gap: 1.5rem;
-		padding: 0.875rem 1.25rem;
-		border-bottom: 1px solid #e2e8f0;
-	}
-	.brand {
-		font-weight: 700;
-		font-size: 1.125rem;
-		text-decoration: none;
-		color: inherit;
-	}
-	nav {
-		display: flex;
-		gap: 1rem;
-	}
-	main {
-		max-width: 60rem;
-		margin: 0 auto;
-		padding: 1.5rem 1.25rem 4rem;
-	}
-</style>

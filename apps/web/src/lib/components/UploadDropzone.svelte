@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Alert, Button } from '@sivir-ui/svelte';
 	import type { DeploymentCapabilities } from '$lib/api/types';
 	import { describeAccepted, rejectionFor } from '$lib/upload';
 
@@ -29,36 +30,33 @@
 		errors = rejected;
 		if (accepted.length > 0) onupload?.(accepted);
 	}
-
-	function onDrop(event: DragEvent) {
-		event.preventDefault();
-		dragging = false;
-		accept(event.dataTransfer?.files ?? null);
-	}
 </script>
 
 <!--
   A button, not just a drop target. Dragging is a mouse gesture with no
-  keyboard equivalent, so the same element opens a file picker on Enter or
+  keyboard equivalent, so the same control opens a file picker on Enter or
   Space and the whole flow works without a pointer.
 -->
-<div class="dropzone" class:dragging>
-	<button
-		type="button"
-		class="target"
-		aria-describedby="upload-hint"
-		onclick={() => input?.click()}
-		ondragover={(event) => {
-			event.preventDefault();
-			dragging = true;
-		}}
-		ondragleave={() => (dragging = false)}
-		ondrop={onDrop}
-	>
-		<strong>Drop files here, or choose files</strong>
-	</button>
+<div
+	class="rounded-lg border-2 border-dashed p-6 text-center transition-colors
+		{dragging ? 'border-primary bg-primary/5' : 'border-border'}"
+	ondragover={(event) => {
+		event.preventDefault();
+		dragging = true;
+	}}
+	ondragleave={() => (dragging = false)}
+	ondrop={(event) => {
+		event.preventDefault();
+		dragging = false;
+		accept(event.dataTransfer?.files ?? null);
+	}}
+	role="presentation"
+>
+	<Button variant="secondary" onclick={() => input?.click()} aria-describedby="upload-hint">
+		Drop files here, or choose files
+	</Button>
 
-	<p id="upload-hint" class="hint">
+	<p id="upload-hint" class="mt-2 text-sm text-muted-foreground">
 		{describeAccepted(capabilities)} files.
 	</p>
 
@@ -66,7 +64,7 @@
 		bind:this={input}
 		type="file"
 		multiple
-		class="visually-hidden"
+		class="sr-only"
 		accept={capabilities.supported_extensions.join(',')}
 		data-testid="file-input"
 		onchange={(event) => {
@@ -76,53 +74,21 @@
 			event.currentTarget.value = '';
 		}}
 	/>
-
-	<!--
-	  aria-live, because a rejection is the result of an action the user just
-	  took somewhere else on the page. Without it a screen reader user drops a
-	  file and hears nothing at all.
-	-->
-	<div role="alert" aria-live="assertive" class="errors">
-		{#each errors as message (message)}
-			<p>{message}</p>
-		{/each}
-	</div>
 </div>
 
-<style>
-	.dropzone {
-		border: 2px dashed #cbd5e1;
-		border-radius: 12px;
-		padding: 1.5rem;
-		text-align: center;
-	}
-	.dropzone.dragging {
-		border-color: #6366f1;
-		background: #eef2ff;
-	}
-	.target {
-		background: none;
-		border: 0;
-		cursor: pointer;
-		font: inherit;
-		padding: 0.5rem 1rem;
-	}
-	.hint {
-		color: #475569;
-		font-size: 0.875rem;
-		margin: 0.25rem 0 0;
-	}
-	.errors p {
-		color: #b91c1c;
-		font-size: 0.875rem;
-		margin: 0.5rem 0 0;
-	}
-	.visually-hidden {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-		white-space: nowrap;
-	}
-</style>
+<!--
+  One alert listing every rejection, not one per file. Alert.Root carries
+  role="alert", which is an assertive live region by definition, so a
+  screen reader announces this the moment it appears - a user who dropped a
+  file somewhere else on the page would otherwise hear nothing at all.
+-->
+{#if errors.length > 0}
+	<Alert.Root variant="error" class="mt-3">
+		<Alert.Title>
+			{errors.length === 1 ? 'That file was not accepted' : 'Some files were not accepted'}
+		</Alert.Title>
+		{#each errors as message (message)}
+			<Alert.Description>{message}</Alert.Description>
+		{/each}
+	</Alert.Root>
+{/if}

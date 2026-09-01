@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Badge } from '@sivir-ui/svelte';
 	import type { IngestionStatus } from '$lib/api/types';
 	import { describeStatus } from '$lib/status';
 
@@ -9,39 +10,15 @@
 
 	let { status, detail = null }: Props = $props();
 	let described = $derived(describeStatus(status, detail));
+
+	const variants = {
+		ready: 'success',
+		problem: 'destructive',
+		pending: 'warning'
+	} as const;
 </script>
 
-<!--
-  The status is words first and colour second. Colour alone would be
-  invisible to a screen reader and ambiguous to anyone who cannot
-  distinguish the shades, and these states differ in what the user should do
-  about them, not just in severity.
--->
-<span class="status" data-tone={described.tone} data-status={status}>
-	<span class="label">{described.label}</span>
-	<span class="detail">{described.detail}</span>
-</span>
-
-<style>
-	.status {
-		display: inline-flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-	.label {
-		font-weight: 600;
-	}
-	.detail {
-		color: #475569;
-		font-size: 0.8125rem;
-	}
-	.status[data-tone='ready'] .label {
-		color: #15803d;
-	}
-	.status[data-tone='problem'] .label {
-		color: #b91c1c;
-	}
-	.status[data-tone='pending'] .label {
-		color: #b45309;
-	}
-</style>
+<div class="flex flex-col items-start gap-1">
+	<Badge variant={variants[described.tone]}>{described.label}</Badge>
+	<span class="text-xs text-muted-foreground">{described.detail}</span>
+</div>
