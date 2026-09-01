@@ -3,7 +3,30 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
 		<title>Primer</title>
+		<!--
+		  Applied before the first paint, and deliberately not a module: the
+		  theme has to be decided while the browser is still parsing head, or
+		  a dark-mode reader gets a full-page white flash on every load.
+		  Duplicates the small amount of logic in $lib/theme/mode.ts because
+		  importing it here would mean waiting for the bundle, which is the
+		  one thing this cannot do.
+		-->
+		<script>
+			(() => {
+				try {
+					const stored = localStorage.getItem('primer:theme');
+					const dark =
+						stored === 'dark' ||
+						((!stored || stored === 'system') &&
+							matchMedia('(prefers-color-scheme: dark)').matches);
+					if (dark) document.documentElement.classList.add('dark');
+				} catch {
+					// Blocked site data. Light is a working default, not a failure.
+				}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
