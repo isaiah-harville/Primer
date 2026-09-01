@@ -35,3 +35,19 @@ not part of the deletion the user asked for.
     Every library today belongs to exactly one person. The authorization
     layer was written so that adding shared libraries later is a change in
     one place rather than in every route, but that feature does not exist.
+
+## Duplicating a library
+
+Copying a library gives you a second one you can change without touching the
+first. Add to one, delete from the other; they share nothing that either can
+edit.
+
+What they do share is the stored files themselves, which are identical bytes
+and never change, so a copy costs almost nothing to keep.
+
+The passages behind a copy are rebuilt rather than copied over, so its
+documents arrive queued and become searchable as they finish indexing — the
+same as documents you have just uploaded. Browsing it works immediately.
+
+The copy belongs to you, even if you copied a library someone shared with
+you, and it is named after the original unless you give it a name.

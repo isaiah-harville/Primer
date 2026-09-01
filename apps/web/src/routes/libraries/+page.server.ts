@@ -21,6 +21,18 @@ export const actions: Actions = {
 		return { created: true };
 	},
 
+	duplicate: async ({ request, fetch }) => {
+		const form = await request.formData();
+		const id = String(form.get('id') ?? '');
+		try {
+			await apiFor(request, fetch).duplicateLibrary(id);
+		} catch (error) {
+			if (error instanceof ApiError) return fail(error.status, { error: error.message });
+			throw error;
+		}
+		return { duplicated: true };
+	},
+
 	delete: async ({ request, fetch }) => {
 		const form = await request.formData();
 		const id = String(form.get('id') ?? '');
