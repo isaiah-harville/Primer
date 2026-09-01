@@ -30,8 +30,11 @@ jobs:
       - name: Install Python
         run: uv python install
 
+      # The MCP tool integration lives in the optional `tools` group, so a
+      # type check without it cannot resolve the import and fails on code
+      # that is fine. Tests need it for the same reason.
       - name: Sync workspace
-        run: uv sync --all-packages --locked
+        run: uv sync --all-packages --locked --group tools
 
       # Docling downloads its layout models on first conversion. Caching them
       # on the lock file keeps PDF parsing tested on every run without half a
