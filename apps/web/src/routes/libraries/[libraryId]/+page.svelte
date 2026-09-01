@@ -3,17 +3,16 @@
 	import { invalidateAll } from '$app/navigation';
 	import { RefreshCw, Trash2 } from '@lucide/svelte';
 	import { Alert, Breadcrumb, Button, Spinner } from '@sivir-ui/svelte';
-	import { PrimerApi } from '$lib/api/client';
 	import type { DocumentSummary } from '$lib/api/types';
 	import DocumentStatus from '$lib/components/DocumentStatus.svelte';
 	import UploadDropzone from '$lib/components/UploadDropzone.svelte';
 	import { isTerminal, pollDelayMs } from '$lib/status';
 	import { formatBytes } from '$lib/upload';
+	import { uploadDocument } from '$lib/upload-client';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
-	const api = new PrimerApi();
 	let uploading = $state<string[]>([]);
 	let announcement = $state('');
 	let uploadError = $state('');
@@ -33,7 +32,7 @@
 			uploading = [...uploading, file.name];
 			announcement = `Uploading ${file.name}.`;
 			try {
-				await api.upload(data.library.id, file);
+				await uploadDocument(file, data.library.id);
 				announcement = `${file.name} uploaded and queued.`;
 			} catch (error) {
 				uploadError = error instanceof Error ? error.message : `${file.name} could not be uploaded.`;
