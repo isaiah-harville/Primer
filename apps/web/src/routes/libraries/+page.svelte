@@ -24,7 +24,17 @@
 		</p>
 	</div>
 
-	<form method="POST" action="?/create" use:enhance class="flex items-center gap-2">
+	<!--
+	  Full width on a narrow screen, sized to its content once there is room.
+	  A fixed-width field beside a button is wider than a small phone, and the
+	  overflow moves the whole page rather than just this row.
+	-->
+	<form
+		method="POST"
+		action="?/create"
+		use:enhance
+		class="flex w-full items-center gap-2 sm:w-auto"
+	>
 		<Input
 			name="name"
 			required
@@ -32,7 +42,7 @@
 			placeholder="New library…"
 			value={form?.name ?? ''}
 			aria-label="New library name"
-			class="w-56"
+			class="min-w-0 flex-1 sm:w-56 sm:flex-none"
 			aria-describedby={form?.error ? 'create-error' : undefined}
 			aria-invalid={form?.error ? 'true' : undefined}
 		/>
@@ -74,7 +84,7 @@
 						bg-card p-4 transition-colors hover:border-border-strong
 						focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
 				>
-					<span class="truncate pr-8 font-medium">{library.name}</span>
+					<span class="truncate pr-8 font-medium" title={library.name}>{library.name}</span>
 					<span class="font-mono text-[11px] uppercase tracking-[0.09em] text-muted-foreground">
 						{library.document_count}
 						{library.document_count === 1 ? 'document' : 'documents'}
