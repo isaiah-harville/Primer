@@ -49,6 +49,9 @@ class Answering:
     principal: Principal
     conversation: Conversation
     question: str
+    #: Already checked against what this deployment offers. None means its
+    #: default, which is the same thing a request with no preference gets.
+    model: str | None = None
 
 
 class Responder:
@@ -92,7 +95,10 @@ class Responder:
             conversation,
             role=MessageRole.ASSISTANT,
             state=MessageState.STREAMING,
-            provider_model=getattr(self._generator, "model", None),
+            # The model that will answer, recorded on the message. A
+            # deployment can offer several and a user can switch between
+            # turns, so which one wrote an answer is part of the answer.
+            provider_model=turn.model or getattr(self._generator, "model", None),
         )
         await session.commit()
 
@@ -161,7 +167,7 @@ class Responder:
 
         text = ""
         try:
-            async for fragment in self._generator.stream(system_prompt, prompt):
+            async for fragment in self._generator.stream(system_prompt, prompt, model=turn.model):
                 text += fragment
                 yield MessageDelta(id=next_id(), text=fragment)
         except Exception:

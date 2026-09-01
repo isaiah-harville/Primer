@@ -48,6 +48,42 @@ instead of silently keeping a default.
 | `PRIMER_EMBEDDING_API_KEY` | unset | |
 | `PRIMER_INTERNAL_API_TOKEN` | unset | **Unset denies the internal API** |
 
+## Chat
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `PRIMER_CHAT_BASE_URL` | unset | Any OpenAI-compatible endpoint |
+| `PRIMER_CHAT_MODEL` | `gpt-4o-mini` | The default a question gets |
+| `PRIMER_CHAT_MODELS` | unset | Further models a user may choose |
+| `PRIMER_CHAT_API_KEY` | unset | Many local servers ignore it |
+| `PRIMER_CHAT_TIMEOUT_SECONDS` | `120` | Per request to the model |
+| `PRIMER_CONTROL_URL` | `http://control-api:8000` | Cluster-internal |
+| `PRIMER_RETRIEVAL_URL` | `http://retrieval:8000` | Cluster-internal |
+| `PRIMER_RETRIEVAL_LIMIT` | `8` | Passages per question; bounds prompt size |
+| `PRIMER_SERVICE_TOKEN` | unset | Must match the services' tokens |
+
+### Offering more than one model
+
+`PRIMER_CHAT_MODELS` is a JSON list of further model names on the same
+endpoint, and it is what a user picks between:
+
+```bash
+PRIMER_CHAT_MODEL=llama3.1:70b
+PRIMER_CHAT_MODELS='["qwen2.5-coder:32b", "mistral-small"]'
+```
+
+The list is yours rather than the endpoint's. An OpenAI-compatible server
+usually serves models nobody meant to offer here, and one of them being
+expensive or unreviewed is not something to find out from a dropdown, so
+Primer offers only what you name. A request for anything else is refused
+rather than quietly answered by the default: a user who chose a model and
+received an answer from another one has been misled about where it came
+from, and Primer records the model against the message.
+
+They share one endpoint, one API key, and one `PRIMER_RETRIEVAL_LIMIT`.
+Primer does not model per-model context windows, so size that limit for the
+smallest context you offer.
+
 ## Settings that fail at startup
 
 Some combinations are refused rather than accepted and worked around later:
