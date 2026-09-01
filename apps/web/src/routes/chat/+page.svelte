@@ -33,6 +33,11 @@
 	let model = $state('');
 	let question = $state('');
 	let turns = $state<{ question: string; stream: StreamState }[]>([]);
+	// Set by the first answer and sent with every question after it. Without
+	// it each question opened its own conversation, so the model never saw
+	// the turn before - and a follow-up like "and the second one?" had
+	// nothing to resolve against.
+	let conversationId = $state<string | null>(null);
 	let streaming = $state(false);
 	let sourcesOpen = $state(false);
 	let sourcesFor = $state<StreamState | null>(null);
@@ -112,11 +117,12 @@
 				// an uncited answer, and no model asks for the default.
 				body: JSON.stringify({
 					message: asked,
+					...(conversationId ? { conversation_id: conversationId } : {}),
 					...(libraryId ? { library_id: libraryId } : {}),
 					...(model ? { model } : {})
 				})
 			});
-			if (!response.body) throw new Error('The server sent no response body.');
+			if (!response.ok || !response.body) throw new Error('The server refused the question.');
 
 			for await (const event of parseEvents(response.body)) {
 				// Reassigning the array is what makes Svelte see the change;
@@ -124,6 +130,9 @@
 				turn.stream = reduce(turn.stream, event);
 				turns = [...turns];
 			}
+			// Taken from the answer rather than assumed, so the next question
+			// continues the conversation the server actually opened.
+			conversationId = turn.stream.conversationId ?? conversationId;
 		} catch {
 			turn.stream = {
 				...turn.stream,
@@ -134,6 +143,13 @@
 		} finally {
 			streaming = false;
 		}
+	}
+
+	function startOver() {
+		turns = [];
+		conversationId = null;
+		question = '';
+		sourcesFor = null;
 	}
 
 	function completed(stream: StreamState): MessageSummary | null {
