@@ -18,7 +18,12 @@
 	} as const;
 </script>
 
-<div class="flex flex-col items-start gap-1">
+<!--
+  Badge and explanation on one line. The badge is the scannable part and the
+  detail is the part you read once something looks wrong, so they belong
+  next to each other rather than stacked into double-height rows.
+-->
+<span class="flex items-center gap-2">
 	<Badge variant={variants[described.tone]}>{described.label}</Badge>
-	<span class="text-xs text-muted-foreground">{described.detail}</span>
-</div>
+	<span class="truncate text-xs text-muted-foreground">{described.detail}</span>
+</span>

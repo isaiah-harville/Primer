@@ -95,7 +95,7 @@ describe('UploadDropzone', () => {
 		// open a file picker on Enter.
 		render(UploadDropzone, { capabilities });
 
-		const target = screen.getByRole('button', { name: /choose files/i });
+		const target = screen.getByRole('button', { name: /add documents/i });
 		const clicked = vi.fn();
 		fileInput().addEventListener('click', clicked);
 

@@ -1,11 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { ApiError } from '$lib/api/client';
 import { apiFor } from '$lib/server/api';
-import type { Actions, PageServerLoad } from './$types';
-
-export const load: PageServerLoad = async ({ request, fetch }) => {
-	return { libraries: await apiFor(request, fetch).libraries() };
-};
+import type { Actions } from './$types';
 
 export const actions: Actions = {
 	// Form actions rather than client-side fetch, so creating and deleting
