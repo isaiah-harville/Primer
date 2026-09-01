@@ -1,0 +1,48 @@
+{{- if .Values.migrations.enabled }}
+{{/*
+Migrations as a pre-upgrade hook, never an init container.
+
+An init container runs once per pod, so a three-replica rollout would have
+three processes racing to alter the same schema. A hook runs once per
+release and everything else waits for it to succeed.
+*/}}
+{{- range $service := list "control" "chat" }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "primer.fullname" $ }}-migrate-{{ $service }}
+  labels:
+    {{- include "primer.labels" $ | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    # Kept after success so the logs of a failed migration survive long
+    # enough to read. A deleted job takes its explanation with it.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ $.Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "primer.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: migrate-{{ $service }}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "primer.image" (dict "root" $ "component" "api") }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          workingDir: /app/services/{{ if eq $service "control" }}control-api{{ else }}chat{{ end }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            {{- include "primer.commonEnv" $ | nindent 12 }}
+          volumeMounts:
+            {{- include "primer.scratchMounts" $ | nindent 12 }}
+      volumes:
+        {{- include "primer.scratchVolumes" $ | nindent 8 }}
+{{- end }}
+{{- end }}

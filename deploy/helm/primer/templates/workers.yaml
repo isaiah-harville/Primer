@@ -1,0 +1,92 @@
+{{/*
+Two worker deployments, not one.
+
+Parsing is CPU-heavy and holds whole documents in memory; embedding and
+indexing mostly wait on a network call. Splitting them by queue lets each
+scale on what actually constrains it, and stops a burst of uploads from
+starving the stage that finishes them.
+*/}}
+{{- range $name, $worker := .Values.workers }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "primer.fullname" $ }}-worker-{{ $name }}
+  labels:
+    {{- include "primer.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ $name }}
+spec:
+  replicas: {{ $worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "primer.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: worker-{{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "primer.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: worker-{{ $name }}
+    spec:
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "primer.image" (dict "root" $ "component" "worker") }}
+          imagePullPolicy: {{ $.Values.image.worker.pullPolicy }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          command:
+            - celery
+            - -A
+            - primer_ingestion.worker
+            - worker
+            - --loglevel
+            - info
+            - -Q
+            {{- if eq $name "parse" }}
+            - ingestion.parse
+            {{- else }}
+            - ingestion.embed,ingestion.index,ingestion.delete
+            {{- end }}
+          env:
+            {{- include "primer.commonEnv" $ | nindent 12 }}
+            {{- include "primer.brokerEnv" $ | nindent 12 }}
+            - name: PRIMER_CONTROL_URL
+              value: http://{{ include "primer.fullname" $ }}-control:8000
+            - name: PRIMER_RETRIEVAL_URL
+              value: http://{{ include "primer.fullname" $ }}-retrieval:8000
+          resources:
+            {{- toYaml $worker.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "primer.scratchMounts" $ | nindent 12 }}
+            {{- if and (eq $name "parse") $worker.modelCache.enabled }}
+            - name: model-cache
+              mountPath: /var/cache/primer/huggingface
+            {{- end }}
+      volumes:
+        {{- include "primer.scratchVolumes" $ | nindent 8 }}
+        {{- if and (eq $name "parse") $worker.modelCache.enabled }}
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: {{ include "primer.fullname" $ }}-model-cache
+        {{- end }}
+{{- end }}
+{{- if .Values.workers.parse.modelCache.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "primer.fullname" . }}-model-cache
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # Docling downloads its layout models on first use. Without this, every
+  # pod restart re-downloads half a gigabyte from a third-party host.
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.workers.parse.modelCache.size }}
+  {{- with .Values.workers.parse.modelCache.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

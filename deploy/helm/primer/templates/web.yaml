@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "primer.fullname" . }}-web
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        {{- include "primer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The Node image's own user; overriding it to Primer's would leave
+        # the process without a passwd entry.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: {{ include "primer.image" (dict "root" . "component" "web") }}
+          imagePullPolicy: {{ .Values.image.web.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: PORT
+              value: "3000"
+            # The browser never reaches these directly; the web server calls
+            # them and forwards the identity headers the proxy set.
+            - name: PRIMER_CONTROL_URL
+              value: http://{{ include "primer.fullname" . }}-control:8000
+            - name: PRIMER_CHAT_URL
+              value: http://{{ include "primer.fullname" . }}-chat:8000
+          ports:
+            - name: http
+              containerPort: 3000
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "primer.fullname" . }}-web
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: http
+      name: http
+  selector:
+    {{- include "primer.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web

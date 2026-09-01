@@ -114,6 +114,35 @@ jobs:
         id: deploy
         uses: actions/deploy-pages@v4
 
+  chart:
+    name: Chart (lint, render, policy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Sync workspace
+        run: uv sync --all-packages --locked
+
+      - name: Helm lint
+        run: helm lint deploy/helm/primer
+
+      # The policy tests render the chart and read the result, so they catch
+      # a service exposed outside the cluster or an identity header that
+      # stopped being stripped.
+      - name: Chart policy
+        run: uv run pytest tests/helm -v
+
   web:
     name: Web (lint, types, tests)
     runs-on: ubuntu-latest

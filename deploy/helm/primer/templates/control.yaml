@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "primer.fullname" . }}-control
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control
+spec:
+  replicas: {{ .Values.control.replicas }}
+  selector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: control
+  template:
+    metadata:
+      labels:
+        {{- include "primer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: control
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: control
+          image: {{ include "primer.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command:
+            - uvicorn
+            - primer_control.app:create_app
+            - --factory
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+          env:
+            {{- include "primer.commonEnv" . | nindent 12 }}
+            {{- include "primer.brokerEnv" . | nindent 12 }}
+            - name: PRIMER_CHAT_SERVICE_URL
+              value: http://{{ include "primer.fullname" . }}-chat:8000
+            - name: PRIMER_TOOLS_ENABLED
+              value: {{ .Values.tools.enabled | quote }}
+          ports:
+            - name: http
+              containerPort: 8000
+          # Liveness deliberately checks nothing downstream: restarting this
+          # pod because PostgreSQL blipped is precisely when a restart helps
+          # least. Readiness is what takes it out of the load balancer.
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.control.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "primer.scratchMounts" . | nindent 12 }}
+      volumes:
+        {{- include "primer.scratchVolumes" . | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "primer.fullname" . }}-control
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # ClusterIP, never LoadBalancer or NodePort. Control trusts the identity
+  # headers the proxy sets, so anything that could reach it directly could
+  # set those headers itself and be any user. This is the single most
+  # important line in the chart.
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      name: http
+  selector:
+    {{- include "primer.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: control

@@ -1,0 +1,173 @@
+# Primer, for a deployment other people use.
+#
+# This is the multi-user story. Compose is deliberately single-user; here is
+# where the ingress, the identity provider, and the trusted-header boundary
+# live.
+
+image:
+  # One image for the three API services, another for the worker: Docling
+  # needs torch and torch has no musl wheels, so sharing would put a machine
+  # learning stack in services that never import it.
+  api:
+    repository: ghcr.io/isaiah-harville/primer-api
+    tag: ""          # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  worker:
+    repository: ghcr.io/isaiah-harville/primer-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  web:
+    repository: ghcr.io/isaiah-harville/primer-web
+    tag: ""
+    pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# --- Identity -----------------------------------------------------------
+#
+# Primer never validates a token. An authenticating proxy verifies the user
+# against your provider and injects headers Primer trusts, which is why the
+# ingress below strips those headers from inbound requests: without that,
+# anyone could set them and be anyone.
+auth:
+  # Required. There is no default, because a chart that silently deployed a
+  # shared, unauthenticated Primer into a cluster would be a trap.
+  mode: oidc
+
+  oidc:
+    issuerUrl: ""
+    clientId: ""
+    # Referenced, never inlined. A secret in values.yaml ends up in
+    # `helm get values`, in CI logs, and in whatever stores the release.
+    existingSecret: ""
+    clientSecretKey: client-secret
+    cookieSecretKey: cookie-secret
+    emailDomains:
+      - "*"
+    scopes: openid profile email groups
+
+  proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+    replicas: 2
+
+# --- Ingress ------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  host: primer.example.com
+  tlsSecret: primer-tls
+  annotations: {}
+
+# --- Data ---------------------------------------------------------------
+#
+# No database or broker is bundled. A chart that shipped its own PostgreSQL
+# would be one people run in production by accident.
+postgresql:
+  existingSecret: ""
+  urlKey: database-url
+
+rabbitmq:
+  existingSecret: ""
+  urlKey: broker-url
+
+sourceStore:
+  # An fsspec URL. Object storage for more than one replica: a
+  # ReadWriteOnce volume cannot be shared between nodes.
+  url: s3://primer-sources
+  existingSecret: ""
+
+# --- Inference ----------------------------------------------------------
+#
+# Primer ships no model. These point at whatever you already run.
+inference:
+  chat:
+    baseUrl: ""
+    model: ""
+    existingSecret: ""
+    apiKeyKey: chat-api-key
+  embeddings:
+    baseUrl: ""
+    model: ""
+    # Must match the model. Changing it invalidates every stored vector.
+    dimensions: 1536
+    existingSecret: ""
+    apiKeyKey: embedding-api-key
+
+vectorStore:
+  kind: pgvector          # pgvector | qdrant
+  qdrantUrl: ""
+
+# --- Tools --------------------------------------------------------------
+tools:
+  # Off by default, deployment-wide. Turning this on without a sandbox
+  # declaration on each execution server is refused at startup.
+  enabled: false
+  servers: []
+
+# --- Scale --------------------------------------------------------------
+#
+# Parsing is CPU-heavy and holds whole documents in memory; embedding mostly
+# waits on a network call. They are separate deployments so each scales on
+# what actually constrains it.
+control:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+retrieval:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { memory: 2Gi }
+
+chat:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+web:
+  replicas: 2
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
+workers:
+  parse:
+    replicas: 1
+    resources:
+      requests: { cpu: 500m, memory: 2Gi }
+      limits: { memory: 6Gi }
+    # Docling downloads layout models on first use; without a persistent
+    # cache every pod restart re-downloads half a gigabyte.
+    modelCache:
+      enabled: true
+      size: 4Gi
+      storageClass: ""
+  index:
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits: { memory: 2Gi }
+
+# --- Migrations ---------------------------------------------------------
+#
+# A pre-upgrade hook, never an init container on each pod: several replicas
+# racing to alter one schema is what this avoids.
+migrations:
+  enabled: true
+  backoffLimit: 1
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

@@ -1,0 +1,52 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "primer.fullname" . }}
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if eq .Values.auth.mode "oidc" }}
+    # Strip every identity header from the inbound request before it reaches
+    # anything. Primer trusts these headers, so a request that arrived
+    # carrying its own would otherwise be believed - this is the line that
+    # stops a stranger being any user they name.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_clear_input_headers "X-Auth-Request-User" "X-Auth-Request-Email" "X-Auth-Request-Groups" "X-Auth-Request-Preferred-Username" "X-Forwarded-User" "X-Forwarded-Email" "X-Forwarded-Groups";
+    # Streaming: buffering would hold every token of an answer until it
+    # finished, and the chat stream would arrive all at once.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tlsSecret }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # Everything goes through the proxy. There is deliberately no path
+          # here that reaches Control, Chat, or Retrieval directly: their
+          # services are ClusterIP and the only way in is authenticated.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                {{- if eq .Values.auth.mode "oidc" }}
+                name: {{ include "primer.fullname" . }}-auth
+                port:
+                  number: 4180
+                {{- else }}
+                name: {{ include "primer.fullname" . }}-web
+                port:
+                  number: 3000
+                {{- end }}
+{{- end }}

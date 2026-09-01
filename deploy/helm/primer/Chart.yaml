@@ -1,0 +1,15 @@
+apiVersion: v2
+name: primer
+description: Self-hosted, multi-user RAG research assistant
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/isaiah-harville/Primer
+sources:
+  - https://github.com/isaiah-harville/Primer
+keywords:
+  - rag
+  - research
+  - self-hosted
+maintainers:
+  - name: isaiah-harville
