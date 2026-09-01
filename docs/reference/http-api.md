@@ -12,6 +12,14 @@ edge proxy must not route them.
 
 Everything a user's browser talks to: libraries, documents, and identity.
 
+### `GET /api/v1/capabilities`
+
+What this deployment supports.
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful Response |
+
 ### `GET /api/v1/libraries`
 
 List the caller's libraries.

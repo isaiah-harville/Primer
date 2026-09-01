@@ -7,7 +7,9 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancels superseded runs, except on main: cancelling a run mid-deploy can
+  # leave Pages serving a half-published site.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -84,6 +86,33 @@ jobs:
 
       - name: Build site
         run: uv run mkdocs build --strict
+
+      # Uploaded from every run so a pull request proves the artefact builds,
+      # but only the deploy job below is gated on main.
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  publish-docs:
+    name: Docs (publish)
+    needs: docs
+    # Only from main, and only for this repository: a fork running this
+    # workflow has no Pages site to publish to and would fail confusingly.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      # Required by the deploy action to mint its OIDC token; it is scoped to
+      # this job alone rather than granted to the whole workflow.
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
 
   web:
     name: Web (lint, types, tests)
