@@ -26,6 +26,7 @@ from primer_contracts.identity import Principal
 from primer_contracts.indexing import SearchRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from primer_chat.budget import estimate_tokens, history_that_fits, passages_that_fit
 from primer_chat.clients import LibraryAuthority, LibraryForbidden, PassageSource
 from primer_chat.config import Settings
 from primer_chat.generation import ChatGenerator
@@ -68,6 +69,28 @@ class Responder:
         self._control = control
         self._retrieval = retrieval
         self._generator = generator
+
+    @property
+    def _characters_per_token(self) -> float:
+        return self._settings.chat_characters_per_token
+
+    def _window(self, turn: Answering) -> int:
+        """The model's context, less the room the answer itself needs."""
+        return self._settings.context_tokens(turn.model) - self._settings.chat_reply_tokens
+
+    def _room_for_passages(self, turn: Answering, system_prompt: str) -> int:
+        """What the passages may cost, before any history is considered.
+
+        Measured against a prompt with no passages in it, so the question and
+        the scaffolding around it are paid for first. History is fitted
+        afterwards into whatever the passages leave.
+        """
+        empty = build_prompt(turn.question, build_context(()))
+        return (
+            self._window(turn)
+            - estimate_tokens(system_prompt, characters_per_token=self._characters_per_token)
+            - estimate_tokens(empty, characters_per_token=self._characters_per_token)
+        )
 
     async def respond(
         self, session: AsyncSession, turn: Answering
@@ -114,6 +137,7 @@ class Responder:
         # is nothing to authorize and nothing to retrieve, and the prompt says
         # outright that the answer is unsourced.
         grounded = conversation.library_id is not None
+        system_prompt = SYSTEM_PROMPT if grounded else UNGROUNDED_SYSTEM_PROMPT
         context = build_context(())
 
         if grounded:
@@ -150,11 +174,9 @@ class Responder:
                 )
                 chunks = result.chunks
 
-            context = build_context(chunks)
-            for index, citation in enumerate(context.citations, start=1):
-                yield CitationEvent(id=next_id(), index=index, citation=citation)
+            retrieved = build_context(chunks)
 
-            if context.is_empty:
+            if retrieved.is_empty:
                 # Nothing to ground an answer in. Saying so is the answer;
                 # asking a model anyway would produce exactly the unsourced
                 # prose a library was chosen to avoid. An ungrounded
@@ -168,8 +190,54 @@ class Responder:
                 yield MessageCompleted(id=next_id(), message=summarize_message(completed))
                 return
 
-        system_prompt = SYSTEM_PROMPT if grounded else UNGROUNDED_SYSTEM_PROMPT
+            # Trimmed before the citations are sent, not after. A citation is
+            # a claim about what the answer was written from, so emitting one
+            # for a passage that then failed to fit would put a source in
+            # front of the reader that the model never saw.
+            context = retrieved.head(
+                passages_that_fit(
+                    retrieved,
+                    budget=self._room_for_passages(turn, system_prompt),
+                    characters_per_token=self._settings.chat_characters_per_token,
+                )
+            )
+
+            if context.is_empty:
+                # Retrieval worked; the window is the problem. Said plainly,
+                # because "I found nothing" would send the user looking for a
+                # document that is there.
+                await repository.finish_message(
+                    message,
+                    state=MessageState.FAILED,
+                    content="",
+                    error_code="context_exhausted",
+                )
+                await session.commit()
+                yield StreamError(
+                    id=next_id(),
+                    code="context_exhausted",
+                    detail=(
+                        "This question leaves no room for the passages found for it. "
+                        "Ask something shorter, or choose a model with a larger context."
+                    ),
+                )
+                return
+
+            for index, citation in enumerate(context.citations, start=1):
+                yield CitationEvent(id=next_id(), index=index, citation=citation)
+
         prompt = build_prompt(turn.question, context) if grounded else turn.question
+
+        # What is left of the window after this turn's own prompt. The
+        # earlier turns are what gives way: the question being asked now, and
+        # the passages it is answered from, are the answer's subject.
+        history = history_that_fits(
+            history,
+            budget=self._window(turn)
+            - estimate_tokens(system_prompt, characters_per_token=self._characters_per_token)
+            - estimate_tokens(prompt, characters_per_token=self._characters_per_token),
+            characters_per_token=self._characters_per_token,
+        )
 
         text = ""
         try:

@@ -104,6 +104,15 @@ class GroundedContext:
     def is_empty(self) -> bool:
         return not self.passages
 
+    def head(self, count: int) -> GroundedContext:
+        """The best-scoring `count` passages, with their citations.
+
+        A prefix, so the numbering the model is shown still starts at one and
+        still lines up with the citations recorded beside the answer. Used
+        when the whole retrieval does not fit the model's context window.
+        """
+        return GroundedContext(self.passages[:count], self.citations[:count])
+
 
 def build_context(chunks: tuple[RetrievedChunk, ...]) -> GroundedContext:
     """Turn retrieved chunks into numbered, quoted passages and citations."""

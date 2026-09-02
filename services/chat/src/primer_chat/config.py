@@ -10,6 +10,8 @@ from __future__ import annotations
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from primer_chat.budget import CHARACTERS_PER_TOKEN
+
 
 class Settings(BaseSettings):
     """Deployment configuration for the Chat service."""
@@ -58,6 +60,29 @@ class Settings(BaseSettings):
         le=200,
         description="Prior messages replayed to the model; 0 answers each question alone",
     )
+    #: The window a model has, and how much of it to leave for the answer.
+    #: Stated rather than discovered: an OpenAI-compatible endpoint is not
+    #: required to report its context length, several report one they do not
+    #: honour, and being wrong about it means a refused request after the
+    #: user has already waited.
+    chat_context_tokens: int = Field(
+        default=8192,
+        ge=1024,
+        description="Context window assumed for a model with no entry in chat_model_context_tokens",
+    )
+    #: Per model, for a deployment offering several. Set as JSON:
+    #: PRIMER_CHAT_MODEL_CONTEXT_TOKENS='{"llama-3.1-8b-instruct": 131072}'
+    chat_model_context_tokens: dict[str, int] = Field(default_factory=dict)
+    chat_reply_tokens: int = Field(
+        default=1024,
+        ge=64,
+        description="Held back from the window for the answer itself",
+    )
+    #: How pessimistically to estimate a prompt. Primer talks to any
+    #: OpenAI-compatible endpoint, so it cannot hold the tokenizer of every
+    #: model it might be pointed at; lower this for documents that tokenize
+    #: worse than English prose - code, tables, non-Latin scripts.
+    chat_characters_per_token: float = Field(default=CHARACTERS_PER_TOKEN, gt=0.5, le=8.0)
     heartbeat_seconds: float = Field(
         default=15.0,
         gt=0,
@@ -75,6 +100,11 @@ class Settings(BaseSettings):
         """
         ordered = [self.chat_model, *self.chat_models]
         return tuple(dict.fromkeys(name for name in ordered if name))
+
+    def context_tokens(self, model: str | None) -> int:
+        """The window to fit a prompt into, for whichever model will answer."""
+        name = model or self.chat_model
+        return self.chat_model_context_tokens.get(name, self.chat_context_tokens)
 
     def resolve_model(self, requested: str | None) -> str | None:
         """The model to use, or None if the request named an unknown one.
