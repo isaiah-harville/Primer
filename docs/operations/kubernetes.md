@@ -82,7 +82,7 @@ Anything that could reach the Control API directly could set the identity
 headers itself and be any user.
 
 **The ingress strips inbound identity headers.** A request arriving with its
-own `X-Auth-Request-User` has it removed before it reaches the proxy. Both
+own `X-Forwarded-User` has it removed before it reaches the proxy. Both
 are asserted by tests that render the chart and read the result.
 
 !!! danger "If you replace the ingress, keep the header stripping"

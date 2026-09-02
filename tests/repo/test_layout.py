@@ -80,7 +80,7 @@ def test_the_identity_boundary_is_still_written_by_hand() -> None:
     server = REPO_ROOT / "apps" / "web" / "src" / "lib" / "server"
     forwarding = (server / "api.ts").read_text() + (server / "chat.ts").read_text()
 
-    assert forwarding.count("x-auth-request-user") == 2
+    assert forwarding.count("x-forwarded-user") == 2
     assert "generated" not in forwarding
 
 

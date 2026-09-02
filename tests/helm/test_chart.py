@@ -249,8 +249,16 @@ def test_the_proxy_uses_pkce_and_secure_cookies(manifests: list[dict[str, Any]])
 
 
 def test_the_proxy_sets_the_headers_primer_reads(manifests: list[dict[str, Any]]) -> None:
+    """--pass-user-headers, not --set-xauthrequest.
+
+    The latter sets X-Auth-Request-* on oauth2-proxy's own /oauth2/auth
+    response, for the nginx auth_request / Traefik ForwardAuth pattern this
+    deployment does not use. In --upstream reverse-proxy mode it forwards
+    nothing; --pass-user-headers is what actually reaches Primer.
+    """
     args = containers(named(manifests, "Deployment", "-auth"))[0]["args"]
-    assert "--set-xauthrequest=true" in args
+    assert "--pass-user-headers=true" in args
+    assert "--set-xauthrequest=true" not in args
 
 
 def test_disabling_auth_removes_the_proxy_entirely() -> None:

@@ -15,7 +15,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const POST: RequestHandler = async ({ request, fetch }) => {
 	const headers = new Headers({ 'Content-Type': 'application/json' });
-	for (const name of ['x-auth-request-user', 'x-auth-request-email', 'x-auth-request-groups']) {
+	for (const name of ['x-forwarded-user', 'x-forwarded-email', 'x-forwarded-groups']) {
 		const value = request.headers.get(name);
 		if (value) headers.set(name, value);
 	}

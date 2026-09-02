@@ -73,11 +73,11 @@ class Settings(BaseSettings):
     )
 
     subject_header: str = Field(
-        default="X-Auth-Request-User",
+        default="X-Forwarded-User",
         description="Edge-injected header carrying the stable OIDC subject",
     )
-    email_header: str = Field(default="X-Auth-Request-Email")
-    groups_header: str = Field(default="X-Auth-Request-Groups")
+    email_header: str = Field(default="X-Forwarded-Email")
+    groups_header: str = Field(default="X-Forwarded-Groups")
     groups_delimiter: str = Field(default=",", min_length=1)
     request_id_header: str = Field(default="X-Request-ID")
 

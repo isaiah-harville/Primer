@@ -52,10 +52,16 @@ spec:
             {{- range .Values.auth.oidc.emailDomains }}
             - --email-domain={{ . }}
             {{- end }}
-            # The headers Primer reads. Set by the proxy from the verified
-            # session, and overwritten rather than appended - a request that
-            # arrived with its own X-Auth-Request-User must not keep it.
-            - --set-xauthrequest=true
+            # The headers Primer reads: X-Forwarded-User/-Email/-Groups, set
+            # by the proxy from the verified session and overwritten rather
+            # than appended - a request that arrived with its own must not
+            # keep it. --set-xauthrequest is deliberately not here: that
+            # flag sets X-Auth-Request-* on oauth2-proxy's own /oauth2/auth
+            # *response*, for the separate nginx auth_request / Traefik
+            # ForwardAuth pattern. In --upstream reverse-proxy mode, which
+            # is what this is, nothing calls that endpoint and the flag
+            # does nothing - Primer's services read the family this flag
+            # actually forwards.
             - --pass-user-headers=true
           resources:
             {{- toYaml .Values.auth.proxy.resources | nindent 12 }}

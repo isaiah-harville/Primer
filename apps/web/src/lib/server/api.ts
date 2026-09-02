@@ -12,9 +12,9 @@ import { PrimerApi } from '$lib/api/client';
 export function apiFor(request: Request, fetch: typeof globalThis.fetch): PrimerApi {
 	const forwarded = new Headers();
 	for (const name of [
-		'x-auth-request-user',
-		'x-auth-request-email',
-		'x-auth-request-groups',
+		'x-forwarded-user',
+		'x-forwarded-email',
+		'x-forwarded-groups',
 		'x-request-id',
 	]) {
 		const value = request.headers.get(name);

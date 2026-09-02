@@ -120,7 +120,7 @@ class ChatUser:
 
     def __init__(self, http: AsyncClient, subject: str) -> None:
         self._http = http
-        self._headers = {"X-Auth-Request-User": subject}
+        self._headers = {"X-Forwarded-User": subject}
 
     async def ask(
         self, library_id: str | None, message: str, *, model: str | None = None
