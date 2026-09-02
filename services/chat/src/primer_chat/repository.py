@@ -74,6 +74,17 @@ class ChatRepository:
         result = await self._session.execute(statement.order_by(Conversation.updated_at.desc()))
         return list(result.scalars())
 
+    async def delete_conversation(self, conversation: Conversation) -> None:
+        """Remove it, with the messages and citations that hang off it.
+
+        A real delete rather than a flag. Chat stores what a person asked and
+        what a model said back; keeping a copy of that after they asked for
+        it to go would be the wrong default for a deployment someone runs
+        themselves.
+        """
+        await self._session.delete(conversation)
+        await self._session.flush()
+
     async def add_message(
         self,
         conversation: Conversation,
