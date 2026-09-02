@@ -94,6 +94,86 @@ Setting `auth.mode=disabled` removes the proxy entirely rather than putting
 it in a permissive mode, so there is no half-configured edge that looks like
 it is authenticating.
 
+## Isolation inside the cluster
+
+`ClusterIP` and the ingress keep strangers out of the cluster. Inside it,
+every pod could reach every service: any workload in any namespace could
+open a connection to Retrieval, whose internal API indexes and deletes
+vectors and is guarded by a shared token and nothing else.
+
+`networkPolicies.enabled` — on by default — closes that. A deny-ingress
+policy covers every pod the chart runs, and one allow policy per service
+names what actually calls it:
+
+| Service | May be reached by |
+| --- | --- |
+| The proxy (or the web app, with auth disabled) | Any namespace, so the ingress controller can reach it |
+| Web | The proxy |
+| Control | Web, Chat, both workers |
+| Chat | Web |
+| Retrieval | Chat, both workers |
+
+Those paths are asserted by tests that render the chart and read the
+result, so a new dependency has to be declared rather than discovered in
+production.
+
+!!! warning "A policy needs a CNI that enforces it"
+    On a cluster whose network plugin does not implement NetworkPolicy —
+    plain kubenet, or Flannel without an add-on — these objects are accepted
+    by the API server and do nothing whatsoever. Nothing in the chart can
+    detect that, and an unenforced policy looks exactly like an enforced
+    one. Check your plugin rather than assuming, and if it does not enforce,
+    know that this section does not apply to you.
+
+The one rule wider than it needs to be is the door: an ingress controller
+runs in a namespace this chart cannot know the name of, so by default any
+namespace may reach the entry point. Narrow it when you know where yours
+runs:
+
+```yaml
+networkPolicies:
+  ingress:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+```
+
+**These are ingress rules only.** An egress policy would have to name
+PostgreSQL, the broker, the inference endpoint, and object storage — every
+one of them an address you supply, most of them possibly outside the
+cluster, none of them known here. Written blind it would either break the
+deployment or allow everything, and an egress rule that allows everything is
+a comment pretending to be a control. Add your own through
+`networkPolicies.extra`, which takes whole policy objects.
+
+## Who each workload runs as
+
+Every component has its own ServiceAccount, and none of them is granted
+anything: nothing Primer runs calls the Kubernetes API. They exist so that
+one compromised workload does not inherit whatever the namespace default can
+do, and so an audit log can tell a worker from the web app.
+
+No pod mounts a service account token, for the same reason — a credential in
+a filesystem nobody reads is one waiting for whoever gets into the container
+next.
+
+The reason to annotate one of these is usually cloud IAM, and only the two
+workloads that open a source object have any business assuming a role that
+can read the bucket:
+
+```yaml
+serviceAccounts:
+  perComponent:
+    control:
+      eks.amazonaws.com/role-arn: arn:aws:iam::111122223333:role/primer-sources
+    worker-parse:
+      eks.amazonaws.com/role-arn: arn:aws:iam::111122223333:role/primer-sources
+```
+
+Set `serviceAccounts.create=false` for a cluster that manages its own
+accounts. The pods fall back to the namespace default — still with no token
+mounted, since the default account's token is the one worth mounting least.
+
 ## Migrations
 
 Run as a `pre-install,pre-upgrade` hook, once per release. An init container

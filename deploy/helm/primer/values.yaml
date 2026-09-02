@@ -191,6 +191,40 @@ migrations:
   enabled: true
   backoffLimit: 1
 
+# --- Identity and isolation ---------------------------------------------
+serviceAccounts:
+  # One account per component instead of the namespace default, so what a
+  # workload may do is stated per workload and an audit log can tell them
+  # apart. None of them is granted anything: nothing here calls the
+  # Kubernetes API, and no token is mounted.
+  create: true
+  annotations: {}
+  # Merged over the above, keyed by component: control, chat, retrieval,
+  # web, auth, migrate, worker-parse, worker-index. The usual reason is
+  # cloud IAM, and only the workloads that open a source object have any
+  # business assuming a role that can read the bucket.
+  perComponent: {}
+    # worker-parse:
+    #   eks.amazonaws.com/role-arn: arn:aws:iam::111122223333:role/primer-sources
+
+networkPolicies:
+  # Ingress-only, and worth reading docs/operations/kubernetes.md before
+  # turning this off. A policy does nothing at all on a cluster whose CNI
+  # does not enforce NetworkPolicy - the objects are accepted and ignored -
+  # which is a bad way to believe you are isolated.
+  enabled: true
+  # Who may reach the public entry point. Empty means any namespace, because
+  # an ingress controller lives in a namespace this chart cannot know the
+  # name of. Naming it narrows the only rule here that is wider than it
+  # could be.
+  ingress: []
+    # - namespaceSelector:
+    #     matchLabels:
+    #       kubernetes.io/metadata.name: ingress-nginx
+  # Whole NetworkPolicy objects, for a path this chart does not model - a
+  # scraper reaching /metrics, say.
+  extra: []
+
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 10001

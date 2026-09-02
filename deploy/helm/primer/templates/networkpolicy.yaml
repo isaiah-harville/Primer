@@ -1,0 +1,196 @@
+{{- if .Values.networkPolicies.enabled }}
+{{/*
+What may reach what, inside the cluster.
+
+Every service is ClusterIP and the ingress strips identity headers, so
+nothing is reachable from outside except through the proxy. Inside the
+cluster there was no restriction at all: any pod in any namespace could
+open a connection to Retrieval, whose internal API is guarded by a shared
+token and nothing else.
+
+These policies are ingress-only, deliberately. An egress policy would have
+to name PostgreSQL, the broker, the inference endpoint and object storage -
+every one of them an address the operator supplies, half of them outside
+the cluster, and none of them known to this chart. Written blind it would
+either break the deployment or allow everything, and an egress rule that
+allows everything is a comment pretending to be a control. What is
+restricted here is what can reach a workload, which is the half that stops
+a compromised pod elsewhere in the cluster from talking to Primer.
+
+A policy is only as real as the CNI under it. On a cluster whose network
+plugin does not enforce NetworkPolicy these objects are accepted by the API
+server and do nothing at all, which is a bad way to believe you are
+isolated. `docs/operations/kubernetes.md` says so; there is no way for the
+chart to check.
+*/}}
+{{- $full := include "primer.fullname" . }}
+{{- $entry := ternary "auth" "web" (eq .Values.auth.mode "oidc") }}
+{{- $entryPort := ternary 4180 3000 (eq .Values.auth.mode "oidc") }}
+{{- $workers := list }}
+{{- range $name, $worker := .Values.workers }}
+{{- $workers = append $workers (printf "worker-%s" $name) }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-deny-ingress
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # Every pod this chart runs, and no rules: the allow policies below are
+  # added to this, and anything nobody allowed is refused. Written as the
+  # floor rather than per workload, so a component added later is closed
+  # until someone opens it rather than open until someone notices.
+  podSelector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-allow-entry
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # The one door in. With OIDC that is the proxy; without it, the web app
+  # itself - which is the deployment that has already decided every request
+  # is the same local user.
+  podSelector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: {{ $entry }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: {{ $entryPort }}
+          protocol: TCP
+      from:
+        {{- if .Values.networkPolicies.ingress }}
+        {{- toYaml .Values.networkPolicies.ingress | nindent 8 }}
+        {{- else }}
+        # An ingress controller lives in a namespace this chart cannot know
+        # the name of, so the default is any namespace. Narrow it with
+        # networkPolicies.ingress; this is the one rule here that is wider
+        # than it could be.
+        - namespaceSelector: {}
+        {{- end }}
+{{- if eq .Values.auth.mode "oidc" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-allow-web
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # Only the proxy, because the proxy is what establishes who the request is
+  # from. A pod that could reach the web app directly would arrive with no
+  # session and be treated as whatever headers it chose to send.
+  podSelector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 3000
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "primer.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: auth
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-allow-control
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # Libraries and documents: the web app on a user's behalf, Chat to
+  # authorize a question, the workers to report what they have indexed.
+  podSelector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: control
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 8000
+          protocol: TCP
+      from:
+        {{- range $component := concat (list "web" "chat") $workers }}
+        - podSelector:
+            matchLabels:
+              {{- include "primer.selectorLabels" $ | nindent 14 }}
+              app.kubernetes.io/component: {{ $component }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-allow-chat
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # The web app and nothing else. A question carries the identity headers
+  # the proxy set, and the only process that has them is the one serving the
+  # page.
+  podSelector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: chat
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 8000
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "primer.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: web
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-allow-retrieval
+  labels:
+    {{- include "primer.labels" . | nindent 4 }}
+spec:
+  # Chat searches; the workers write. This is the one the whole file is for:
+  # Retrieval's internal API is what indexes and deletes vectors, and it was
+  # reachable from every pod in the cluster.
+  podSelector:
+    matchLabels:
+      {{- include "primer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: retrieval
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 8000
+          protocol: TCP
+      from:
+        {{- range $component := concat (list "chat") $workers }}
+        - podSelector:
+            matchLabels:
+              {{- include "primer.selectorLabels" $ | nindent 14 }}
+              app.kubernetes.io/component: {{ $component }}
+        {{- end }}
+{{- with .Values.networkPolicies.extra }}
+{{- range . }}
+---
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+{{- end }}

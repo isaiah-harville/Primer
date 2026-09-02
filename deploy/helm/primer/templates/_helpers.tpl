@@ -142,3 +142,31 @@ and fail hard without one.
 - name: home
   mountPath: /home/primer
 {{- end -}}
+
+{{/*
+The account one workload runs as.
+
+One per component rather than one for the release, so that what a pod may do
+is stated per pod and an audit log can tell them apart. Falls back to the
+namespace default when the chart is not creating them, which is what a
+cluster that manages its own accounts wants.
+*/}}
+{{- define "primer.serviceAccountName" -}}
+{{- if .root.Values.serviceAccounts.create -}}
+{{- printf "%s-%s" (include "primer.fullname" .root) .component | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+default
+{{- end -}}
+{{- end -}}
+
+{{/*
+What every Primer pod says about its own identity.
+
+`automountServiceAccountToken: false` everywhere, because nothing here calls
+the Kubernetes API. A token mounted into a pod that never uses it is a
+credential sitting in a filesystem for whoever gets into the container next.
+*/}}
+{{- define "primer.podIdentity" -}}
+serviceAccountName: {{ include "primer.serviceAccountName" . }}
+automountServiceAccountToken: false
+{{- end -}}
