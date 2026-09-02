@@ -6,16 +6,22 @@
 		Markdown,
 		Message,
 		PromptComposer,
+		Sheet,
 		Spinner
 	} from '@sivir-ui/svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { History, Plus } from '@lucide/svelte';
+	import { goto, invalidateAll, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import CitationPanel from '$lib/components/CitationPanel.svelte';
+	import ConversationList from '$lib/components/ConversationList.svelte';
 	import LibraryLink from '$lib/components/LibraryLink.svelte';
 	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
-	import type { MessageSummary } from '$lib/api/types';
+	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
 	import { rejectionFor } from '$lib/upload';
+	import { turnsFrom, type Turn } from '$lib/transcript';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
 	import type { PageData } from './$types';
 
@@ -32,7 +38,7 @@
 	// the two disagree.
 	let model = $state('');
 	let question = $state('');
-	let turns = $state<{ question: string; stream: StreamState }[]>([]);
+	let turns = $state<Turn[]>([]);
 	// Set by the first answer and sent with every question after it. Without
 	// it each question opened its own conversation, so the model never saw
 	// the turn before - and a follow-up like "and the second one?" had
@@ -53,6 +59,32 @@
 	//: Set only when dropping a file created the library holding it, which is
 	//: the one case where the user should be asked whether to keep it.
 	let offered = $state<{ id: string; name: string; documents: number } | null>(null);
+
+	let historyOpen = $state(false);
+	let deleting = $state<ConversationSummary | null>(null);
+	//: Which stored conversation this screen is currently showing, so that
+	//: reloading the list does not look like opening a different thread.
+	let shown = $state<string | null>(null);
+
+	// Load decides which conversation is on screen; this follows it. Guarded
+	// on the id rather than on the data, so refreshing the list after a turn
+	// does not throw away the turn that was just streamed into it.
+	$effect(() => {
+		const opened = data.opened;
+		const id = opened?.conversation.id ?? null;
+		if (untrack(() => shown) === id) return;
+		untrack(() => {
+			shown = id;
+			conversationId = id;
+			turns = opened ? turnsFrom(opened.messages) : [];
+			libraryId = opened?.conversation.library_id ?? '';
+			question = '';
+			sourcesFor = null;
+			sourcesOpen = false;
+			uploadError = '';
+			offered = null;
+		});
+	});
 
 	async function accept(files: File[]) {
 		uploadError = '';
@@ -144,6 +176,15 @@
 			// Taken from the answer rather than assumed, so the next question
 			// continues the conversation the server actually opened.
 			conversationId = turn.stream.conversationId ?? conversationId;
+			if (conversationId && shown !== conversationId) {
+				// Shallow, so the thread on screen is not torn down and rebuilt
+				// from storage mid-conversation. It puts the thread in the URL,
+				// which is what makes a refresh or a bookmark come back to it.
+				shown = conversationId;
+				replaceState(`/chat?conversation=${conversationId}`, page.state);
+			}
+			// The history list is a page load away from knowing this happened.
+			await invalidateAll();
 		} catch {
 			turn.stream = {
 				...turn.stream,
@@ -158,14 +199,38 @@
 
 	// The library and the model are kept: starting over is usually asking
 	// something else about the same documents, not changing what is at hand.
-	function startOver() {
+	async function startOver() {
 		turns = [];
 		conversationId = null;
+		shown = null;
 		question = '';
 		sourcesFor = null;
 		sourcesOpen = false;
 		uploadError = '';
 		announcement = 'Started a new chat.';
+		// The conversation that was open is in the URL, and leaving it there
+		// would restore the thread on the next reload.
+		if (page.url.searchParams.has('conversation')) await goto('/chat');
+	}
+
+	async function remove(conversation: ConversationSummary) {
+		deleting = conversation;
+		try {
+			const response = await fetch(`/chat/conversations/${conversation.id}`, {
+				method: 'DELETE'
+			});
+			if (!response.ok) throw new Error('That conversation could not be deleted.');
+			announcement = 'Conversation deleted.';
+			// Leaving the screen showing a thread that no longer exists would
+			// be a transcript nothing stands behind.
+			if (conversation.id === shown) await startOver();
+			else await invalidateAll();
+		} catch (error) {
+			uploadError = error instanceof Error ? error.message : 'That conversation could not be deleted.';
+			announcement = uploadError;
+		} finally {
+			deleting = null;
+		}
 	}
 
 	function completed(stream: StreamState): MessageSummary | null {
@@ -191,18 +256,69 @@
   of the frame rather than under the conversation wherever that happens to
   end.
 -->
-<div class="flex h-full flex-col">
+<div class="flex h-full min-h-0 gap-6">
+	<!--
+	  A second rail, beside the frame's own. Conversations are the thing this
+	  screen accumulates, and a list you have to leave the screen to see is a
+	  list nobody looks at. It is the width of a title and no wider: the
+	  answers are what the space is for.
+	-->
+	<aside class="hidden w-64 shrink-0 xl:block">
+		<ConversationList
+			conversations={data.conversations}
+			libraries={data.libraries}
+			openId={shown}
+			busyId={deleting?.id ?? null}
+			ondelete={remove}
+		/>
+	</aside>
+
+	<div class="flex min-w-0 flex-1 flex-col">
 	<div class="flex shrink-0 items-center justify-between gap-4">
 		<h1 class="text-xl font-semibold tracking-[-0.02em]">Chat</h1>
-		<!--
-		  The way back to a blank page, and the only way to change the library
-		  a conversation is answered from. Absent until there is something to
-		  leave behind.
-		-->
-		{#if turns.length > 0}
-			<Button size="sm" variant="ghost" onclick={startOver} disabled={streaming}>New chat</Button>
-		{/if}
+		<div class="flex items-center gap-1">
+			<!--
+			  The same list in a drawer where the rail does not fit, rather
+			  than a second way of listing conversations that could drift from
+			  the first.
+			-->
+			<Button
+				size="sm"
+				variant="ghost"
+				class="xl:hidden"
+				onclick={() => (historyOpen = true)}
+			>
+				<History size={14} aria-hidden="true" />
+				History
+			</Button>
+			<!--
+			  The way back to a blank page, and the only way to change the
+			  library a conversation is answered from. Absent until there is
+			  something to leave behind.
+			-->
+			{#if turns.length > 0}
+				<Button size="sm" variant="ghost" onclick={startOver} disabled={streaming}>
+					<Plus size={14} aria-hidden="true" />
+					New chat
+				</Button>
+			{/if}
+		</div>
 	</div>
+
+	{#if data.unopened}
+		<!--
+		  Said out loud. A thread that simply appeared blank would look like a
+		  conversation that lost its messages, which is a much worse thing to
+		  believe than either of these.
+		-->
+		<Alert.Root variant={data.unopened === 'missing' ? 'warning' : 'error'} class="mt-4">
+			<Alert.Description>
+				{data.unopened === 'missing'
+					? 'That conversation is no longer here. This is a new one.'
+					: 'That conversation could not be opened. It is still stored; try again in a moment.'}
+			</Alert.Description>
+		</Alert.Root>
+	{/if}
 
 <!--
   Constrained here rather than in the frame. Answers are prose, and prose set
@@ -379,7 +495,21 @@
 	{/if}
 </div>
 
+	</div>
 </div>
+
+<Sheet.Root bind:open={historyOpen}>
+	<Sheet.Content side="right" class="w-80 p-4">
+		<ConversationList
+			conversations={data.conversations}
+			libraries={data.libraries}
+			openId={shown}
+			busyId={deleting?.id ?? null}
+			ondelete={remove}
+			onopen={() => (historyOpen = false)}
+		/>
+	</Sheet.Content>
+</Sheet.Root>
 
 {#if sourcesFor}
 	<CitationPanel citations={sourcesFor.citations} bind:open={sourcesOpen} />
