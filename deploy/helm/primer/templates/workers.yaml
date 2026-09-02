@@ -17,6 +17,15 @@ metadata:
     app.kubernetes.io/component: worker-{{ $name }}
 spec:
   replicas: {{ $worker.replicas }}
+  {{- if and (eq $name "parse") $worker.modelCache.enabled }}
+  # The model cache is a ReadWriteOnce volume, so a RollingUpdate surge pod
+  # cannot attach it while the pod it is replacing still holds it - Longhorn
+  # refuses the second attachment and the rollout hangs until the old pod is
+  # gone, which a RollingUpdate will not do first. Recreate accepts the gap
+  # in availability a single parse replica already has.
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "primer.selectorLabels" $ | nindent 6 }}
