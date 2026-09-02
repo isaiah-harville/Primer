@@ -86,6 +86,11 @@ object.
 | `PRIMER_CONTROL_URL` | `http://control-api:8000` | Cluster-internal |
 | `PRIMER_RETRIEVAL_URL` | `http://retrieval:8000` | Cluster-internal |
 | `PRIMER_RETRIEVAL_LIMIT` | `8` | Passages per question; bounds prompt size |
+| `PRIMER_CHAT_HISTORY_MESSAGES` | `20` | Earlier turns a follow-up may recall |
+| `PRIMER_CHAT_CONTEXT_TOKENS` | `8192` | Window assumed for a model not named below |
+| `PRIMER_CHAT_MODEL_CONTEXT_TOKENS` | unset | Per-model windows, as JSON |
+| `PRIMER_CHAT_REPLY_TOKENS` | `1024` | Held back out of the window for the answer |
+| `PRIMER_CHAT_CHARACTERS_PER_TOKEN` | `4.0` | How the prompt's size is estimated |
 | `PRIMER_SERVICE_TOKEN` | unset | Must match the services' tokens |
 
 ### Offering more than one model
@@ -107,8 +112,38 @@ received an answer from another one has been misled about where it came
 from, and Primer records the model against the message.
 
 They share one endpoint, one API key, and one `PRIMER_RETRIEVAL_LIMIT`.
-Primer does not model per-model context windows, so size that limit for the
-smallest context you offer.
+They need not share a context window: see below.
+
+
+### Fitting the prompt into the context window
+
+A conversation that remembers itself grows, and retrieved passages are
+added on top of it. Primer estimates how large a prompt has become and
+cuts it down to fit rather than letting the endpoint refuse the turn.
+
+`PRIMER_CHAT_CONTEXT_TOKENS` is the window Primer assumes. Name the models
+that differ in `PRIMER_CHAT_MODEL_CONTEXT_TOKENS`, a JSON object keyed by
+model name:
+
+```bash
+PRIMER_CHAT_CONTEXT_TOKENS=8192
+PRIMER_CHAT_MODEL_CONTEXT_TOKENS='{"llama3.1:70b": 131072, "mistral-small": 32768}'
+```
+
+`PRIMER_CHAT_REPLY_TOKENS` is held back out of that window so the answer
+has somewhere to go. What is left is spent on retrieved passages first and
+the conversation's history second, so a long thread loses its oldest turns
+before it loses the evidence the current question is grounded in. If not
+even one passage fits, the turn fails rather than answering ungrounded.
+
+Primer measures nothing: it estimates `PRIMER_CHAT_CHARACTERS_PER_TOKEN`
+characters to the token and charges a small overhead per message. There is
+no tokenizer that is right for every OpenAI-compatible endpoint, and the
+usual ones fetch vocabularies over the network, which a self-hosted Primer
+may not have. The default of 4.0 is deliberately conservative for English
+prose; lower it if your users write in a language or a notation that
+tokenizes less kindly, and only raise it if you have measured your own
+model and want the room back.
 
 
 ## Settings that fail at startup

@@ -16,6 +16,7 @@ from uuid import UUID
 
 from httpx2 import AsyncClient, Response
 from primer_chat.clients import LibraryForbidden
+from primer_chat.rag import HistoryTurn
 from primer_contracts.identity import Principal
 from primer_contracts.indexing import LibraryScope, SearchRequest, SearchResult
 from primer_contracts.retrieval import RetrievedChunk, SourceLocator
@@ -75,14 +76,23 @@ class FakeGenerator:
         self.fragments = fragments if fragments is not None else ["Grounded ", "answer [1]."]
         self.fail = fail
         self.prompts: list[tuple[str, str]] = []
+        #: The conversation each call was given, so a test can prove the
+        #: model was shown the turns before it rather than only the question.
+        self.histories: list[tuple[tuple[str, str], ...]] = []
         #: Which model each call asked for, so a test can prove the choice
         #: reached the provider rather than stopping at the request.
         self.models: list[str | None] = []
 
     async def stream(
-        self, system_prompt: str, user_prompt: str, *, model: str | None = None
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        history: tuple[HistoryTurn, ...] = (),
+        model: str | None = None,
     ) -> AsyncIterator[str]:
         self.prompts.append((system_prompt, user_prompt))
+        self.histories.append(tuple((turn.role.value, turn.content) for turn in history))
         self.models.append(model)
         for index, fragment in enumerate(self.fragments):
             if self.fail and index == 1:
