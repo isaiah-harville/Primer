@@ -11,7 +11,7 @@ instead of silently keeping a default.
 | `PRIMER_AUTH_MODE` | `disabled` | `disabled` or `oidc` |
 | `PRIMER_DATABASE_URL` | local PostgreSQL | Migrations are applied out of band |
 | `PRIMER_SOURCE_STORE_URL` | `file:///var/lib/primer/sources` | `file://` or `s3://`; see below |
-| `PRIMER_MAX_UPLOAD_BYTES` | `104857600` | Enforced while reading |
+| `PRIMER_MAX_UPLOAD_BYTES` | `104857600` | Enforced while reading. The web app's own `BODY_SIZE_LIMIT` (adapter-node, default 512K) must be raised above this too, or it rejects a large upload before Control ever sees it |
 | `PRIMER_BROKER_URL` | unset | Unset leaves uploads queued |
 | `PRIMER_INTERNAL_API_TOKEN` | unset | **Unset denies the internal API** |
 | `PRIMER_SUBJECT_HEADER` | `X-Forwarded-User` | Set by the proxy |

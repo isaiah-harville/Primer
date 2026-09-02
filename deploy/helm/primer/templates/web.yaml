@@ -43,6 +43,14 @@ spec:
               value: http://{{ include "primer.fullname" . }}-control:8000
             - name: PRIMER_CHAT_URL
               value: http://{{ include "primer.fullname" . }}-chat:8000
+            # adapter-node rejects anything over this before a request ever
+            # reaches upload validation, so it has to be at least as large as
+            # Control's own max_upload_bytes (100MB by default) plus room for
+            # multipart overhead - otherwise every upload near that size fails
+            # with a body-size-limit error the UI cannot distinguish from a
+            # real one.
+            - name: BODY_SIZE_LIMIT
+              value: {{ .Values.web.bodySizeLimit | quote }}
           ports:
             - name: http
               containerPort: 3000

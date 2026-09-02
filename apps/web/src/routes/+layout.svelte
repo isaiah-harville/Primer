@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Menu } from '@lucide/svelte';
+	import { Menu, TriangleAlert } from '@lucide/svelte';
 	import { Button, Sheet } from '@sivir-ui/svelte';
 	import '../app.css';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -37,6 +37,7 @@
 		<Sidebar
 			libraries={data.libraries}
 			capabilities={data.capabilities}
+			principal={data.principal}
 			onsearch={() => (searchOpen = true)}
 		/>
 	</aside>
@@ -50,6 +51,7 @@
 			<Sidebar
 				libraries={data.libraries}
 				capabilities={data.capabilities}
+				principal={data.principal}
 				bindShortcut={false}
 				onsearch={() => {
 					drawerOpen = false;
@@ -67,6 +69,29 @@
 				<span class="sr-only">Open navigation</span>
 			</Button>
 			<span class="text-sm font-semibold tracking-[-0.02em]">Primer</span>
+			{#if !data.capabilities.auth_enabled}
+				<!--
+				  Beside the wordmark rather than behind the drawer it opens: the
+				  full warning lives in the sidebar, but on a narrow screen that
+				  is a tap away, which is the one state this warning must not be
+				  in. This marker is the part that has to be seen without
+				  tapping anything; opening the drawer is only how to read the
+				  rest of it. Inline in the existing bar, not a row of its own,
+				  so it costs no height - the page still fits the window with
+				  nothing to scroll.
+				-->
+				<button
+					type="button"
+					onclick={() => (drawerOpen = true)}
+					title="No authentication: everyone who can reach this page shares one account."
+					class="ml-auto flex shrink-0 items-center gap-1 rounded-md border border-warning/40
+						bg-warning/10 px-2 py-1 text-[11px] font-medium text-warning
+						focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+				>
+					<TriangleAlert size={12} aria-hidden="true" />
+					No auth
+				</button>
+			{/if}
 		</div>
 
 		<!--

@@ -9,7 +9,7 @@
 		Sheet,
 		Spinner
 	} from '@sivir-ui/svelte';
-	import { History, Plus } from '@lucide/svelte';
+	import { Check, FileText, History, Plus } from '@lucide/svelte';
 	import { goto, invalidateAll, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
@@ -20,7 +20,7 @@
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
 	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
-	import { rejectionFor } from '$lib/upload';
+	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { turnsFrom, type Turn } from '$lib/transcript';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
 	import type { PageData } from './$types';
@@ -53,8 +53,21 @@
 	let started = $derived(conversationId !== null);
 	let dragging = $state(false);
 	let linkedName = $derived(data.libraries.find((library) => library.id === libraryId)?.name);
-	let uploading = $state<string[]>([]);
+	//: One card per file in flight or just finished. `done` lingers rather
+	//: than vanishing the instant the request resolves, so the card is seen
+	//: turning from greyed-out into its finished state instead of just
+	//: disappearing - the same reasoning as `uploadSuccess` below, applied to
+	//: the preview instead of the text.
+	let uploads = $state<{ id: string; name: string; size: number; status: 'uploading' | 'done' }[]>(
+		[]
+	);
 	let uploadError = $state('');
+	// Shown for a few seconds after a successful upload rather than cleared
+	// with `uploading`, because a small file uploads fast enough that the
+	// spinner it briefly replaces would be the only sign anything happened -
+	// and then it is gone, and the upload looks like it silently failed.
+	let uploadSuccess = $state('');
+	let successToken = 0;
 	let announcement = $state('');
 	//: Set only when dropping a file created the library holding it, which is
 	//: the one case where the user should be asked whether to keep it.
@@ -82,12 +95,26 @@
 			sourcesFor = null;
 			sourcesOpen = false;
 			uploadError = '';
+			uploadSuccess = '';
+			uploads = [];
 			offered = null;
 		});
 	});
 
+	// Shown for a few seconds rather than cleared right away, and guarded by
+	// a token so an upload that finishes later than a fresher one cannot
+	// blank out the message the fresher one just set.
+	function showSuccess(message: string) {
+		uploadSuccess = message;
+		const token = ++successToken;
+		setTimeout(() => {
+			if (successToken === token) uploadSuccess = '';
+		}, 4000);
+	}
+
 	async function accept(files: File[]) {
 		uploadError = '';
+		uploadSuccess = '';
 		// A file dropped here would land in a library this conversation
 		// cannot be asked about, and the upload would look like it worked.
 		if (started && !libraryId) {
@@ -104,7 +131,8 @@
 				continue;
 			}
 
-			uploading = [...uploading, file.name];
+			const id = crypto.randomUUID();
+			uploads = [...uploads, { id, name: file.name, size: file.size, status: 'uploading' }];
 			announcement = `Uploading ${file.name}.`;
 			try {
 				const result = await uploadDocument(file, libraryId || undefined);
@@ -116,12 +144,19 @@
 				} else if (offered && offered.id === result.libraryId) {
 					offered = { ...offered, documents: offered.documents + 1 };
 				}
-				announcement = `${file.name} added to ${result.libraryName ?? 'the library'}.`;
+				const named = result.libraryName ?? linkedName ?? 'the library';
+				announcement = `${file.name} added to ${named}.`;
+				showSuccess(announcement);
+				uploads = uploads.map((upload) =>
+					upload.id === id ? { ...upload, status: 'done' } : upload
+				);
+				setTimeout(() => {
+					uploads = uploads.filter((upload) => upload.id !== id);
+				}, 4000);
 			} catch (error) {
 				uploadError = error instanceof Error ? error.message : `${file.name} could not be uploaded.`;
 				announcement = uploadError;
-			} finally {
-				uploading = uploading.filter((name) => name !== file.name);
+				uploads = uploads.filter((upload) => upload.id !== id);
 			}
 		}
 		// The sidebar counts documents, and it is on this page too.
@@ -207,6 +242,8 @@
 		sourcesFor = null;
 		sourcesOpen = false;
 		uploadError = '';
+		uploadSuccess = '';
+		uploads = [];
 		announcement = 'Started a new chat.';
 		// The conversation that was open is in the URL, and leaving it there
 		// would restore the thread on the next reload.
@@ -274,8 +311,7 @@
 	</aside>
 
 	<div class="flex min-w-0 flex-1 flex-col">
-	<div class="flex shrink-0 items-center justify-between gap-4">
-		<h1 class="text-xl font-semibold tracking-[-0.02em]">Chat</h1>
+	<div class="flex shrink-0 items-center justify-end gap-4">
 		<div class="flex items-center gap-1">
 			<!--
 			  The same list in a drawer where the rail does not fit, rather
@@ -431,9 +467,8 @@
 			aria-label="Your question"
 		/>
 		<PromptComposer.Toolbar>
-			<PromptComposer.Actions>
-				<PromptComposer.Submit />
-			</PromptComposer.Actions>
+			<PromptComposer.Actions></PromptComposer.Actions>
+			<PromptComposer.Submit />
 		</PromptComposer.Toolbar>
 	</PromptComposer.Root>
 
@@ -445,11 +480,31 @@
 		<div class="flex flex-wrap items-center gap-2">
 			<LibraryLink libraries={data.libraries} bind:value={libraryId} locked={started} />
 			<ModelPicker models={data.models} bind:value={model} />
-			{#each uploading as name (name)}
-				<span class="flex items-center gap-2 text-xs text-muted-foreground">
-					<Spinner size={12} aria-hidden="true" />
-					{name}
-				</span>
+			{#each uploads as upload (upload.id)}
+				<!--
+				  A preview of the document it is about to become, greyed out
+				  rather than a bare spinner - what is happening is that this
+				  file specifically is becoming part of the library, not that
+				  work of some kind is in progress.
+				-->
+				<div
+					class="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5
+						text-xs transition-opacity duration-300
+						{upload.status === 'uploading' ? 'opacity-50' : 'opacity-100'}"
+				>
+					{#if upload.status === 'uploading'}
+						<Spinner size={12} aria-hidden="true" />
+					{:else}
+						<Check size={12} class="text-[var(--color-success)]" aria-hidden="true" />
+					{/if}
+					<FileText size={13} class="shrink-0 text-muted-foreground" aria-hidden="true" />
+					<span class="flex min-w-0 flex-col leading-tight">
+						<span class="max-w-[10rem] truncate font-medium text-foreground" title={upload.name}>
+							{upload.name}
+						</span>
+						<span class="text-muted-foreground">{formatBytes(upload.size)}</span>
+					</span>
+				</div>
 			{/each}
 		</div>
 
@@ -463,6 +518,12 @@
 	  are announced politely rather than left to be noticed.
 	-->
 	<p class="sr-only" aria-live="polite">{announcement}</p>
+
+	{#if uploadSuccess}
+		<Alert.Root variant="success" class="mt-3">
+			<Alert.Description>{uploadSuccess}</Alert.Description>
+		</Alert.Root>
+	{/if}
 
 	{#if uploadError}
 		<Alert.Root variant="error" class="mt-3">

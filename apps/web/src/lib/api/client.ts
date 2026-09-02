@@ -2,6 +2,7 @@ import type {
 	DeploymentCapabilities,
 	DocumentSummary,
 	LibrarySummary,
+	Principal,
 	ProblemDetail,
 } from './types';
 
@@ -73,6 +74,11 @@ export class PrimerApi {
 
 	capabilities(): Promise<DeploymentCapabilities> {
 		return this.request('/api/v1/capabilities');
+	}
+
+	/** Who the trusted proxy says is making this request. */
+	me(): Promise<Principal> {
+		return this.request('/api/v1/me');
 	}
 
 	libraries(): Promise<LibrarySummary[]> {
