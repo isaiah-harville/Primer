@@ -1,0 +1,56 @@
+{
+  "info": {
+    "summary": "The exclusive owner of Primer's vector stores",
+    "title": "Primer Retrieval",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health/live": {
+      "get": {
+        "description": "Whether the process is up. Deliberately touches no dependency.\n\nA liveness probe that checked the vector store would restart this\nservice whenever the store was briefly unreachable, which is precisely\nwhen restarting it helps least.",
+        "operationId": "live_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Live Health Live Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Process liveness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Whether this instance can serve a search.\n\nCounting documents in an empty filter is the cheapest call that proves\nthe store is reachable and the schema exists.",
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

@@ -51,6 +51,15 @@ jobs:
           key: docling-models-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: docling-models-${{ runner.os }}-
 
+      # The schemas the web app's types are generated from. Regenerating and
+      # diffing catches a contract that changed while the checked-in copy
+      # did not - which is the whole reason they are checked in.
+      - name: Regenerate the OpenAPI schemas
+        run: uv run python scripts/dump_openapi.py
+
+      - name: Check the schemas are current
+        run: git diff --exit-code -- schemas/
+
       - name: Ruff lint
         run: uv run ruff check .
 
@@ -218,6 +227,16 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Generated from the schemas checked in above, and diffed for the same
+      # reason: a contract the web app has not followed should fail here
+      # rather than in production. Node only, because the schemas are a file
+      # rather than a running service.
+      - name: Regenerate the API types
+        run: pnpm run generate:api
+
+      - name: Check the API types are current
+        run: git diff --exit-code -- apps/web/src/lib/api/generated
 
       - name: Biome
         run: pnpm check
