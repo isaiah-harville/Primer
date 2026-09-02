@@ -6,7 +6,9 @@ metadata:
     {{- include "primer.labels" . | nindent 4 }}
     app.kubernetes.io/component: retrieval
 spec:
+  {{- if not (include "primer.autoscaled" (dict "root" . "component" "retrieval")) }}
   replicas: {{ .Values.retrieval.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "primer.selectorLabels" . | nindent 6 }}

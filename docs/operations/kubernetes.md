@@ -196,6 +196,55 @@ re-downloads about half a gigabyte from a third-party host.
 **Source storage must be shared.** More than one replica means object
 storage: a `ReadWriteOnce` volume cannot be mounted across nodes.
 
+### Staying up while a node goes away
+
+A Deployment says how many pods there should be. Nothing said how many
+there must be while a node is drained, and a drain evicts as fast as the
+pods will go — so a two-replica service could lose both at once.
+
+Every component running more than one replica gets a `PodDisruptionBudget`
+of one pod at a time, the proxy included. Components running a single
+replica get none, deliberately: any budget at all makes that pod
+unevictable, and a drain that never finishes is a worse failure than the
+restart it was avoiding. The rule is the replica count rather than the
+component, so a worker scaled to three is protected like anything else.
+
+### Autoscaling
+
+Off unless you ask for it, and then only for the services whose load is
+requests:
+
+```yaml
+autoscaling:
+  chat:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+```
+
+Per component, merged over the shared defaults at the top of
+`autoscaling`, so turning one service on does not mean restating every
+threshold. **It scales on CPU utilisation**, against the requests in
+`chat.resources`; a Deployment under an autoscaler stops stating its own
+replica count, because setting both means every `helm upgrade` writes the
+configured number back and the autoscaler undoes it.
+
+Memory is available as a second metric and left off. A Python service that
+has grown does not give the memory back, so it scales up readily and down
+almost never — turn it on if you have measured your own workload, not
+because it sounds thorough.
+
+!!! note "The workers are not here, and that is deliberate"
+    Their work arrives on a queue, and CPU does not describe a queue. An
+    embedding worker spends its time waiting on a network call, so its CPU
+    is near zero precisely when the backlog is longest: a CPU autoscaler
+    would add pods while they compute and none while they fall behind.
+
+    Queue depth is the signal that describes them, and reading it needs an
+    adapter this chart does not ship — KEDA against RabbitMQ is the usual
+    answer. Until then `workers.parse.replicas` and `workers.index.replicas`
+    are set by hand.
+
 ## What is not here
 
 No PostgreSQL, RabbitMQ, or model server. A chart that shipped its own

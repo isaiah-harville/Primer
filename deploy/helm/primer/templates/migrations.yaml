@@ -47,6 +47,8 @@ spec:
           command: ["alembic", "upgrade", "head"]
           env:
             {{- include "primer.commonEnv" $ | nindent 12 }}
+          resources:
+            {{- toYaml $.Values.migrations.resources | nindent 12 }}
           volumeMounts:
             {{- include "primer.scratchMounts" $ | nindent 12 }}
       volumes:

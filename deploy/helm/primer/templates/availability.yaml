@@ -1,0 +1,98 @@
+{{/*
+Keeping the replicas that are configured.
+
+A Deployment says how many pods there should be; nothing said how many there
+must be while a node is being drained. A drain evicts as fast as the pods
+will go, so a two-replica service could lose both at once and be down for
+however long a rollout takes.
+
+A budget is written only where there is more than one replica to protect.
+On a single-replica component any budget at all makes the pod unevictable,
+and a drain that never finishes is a worse failure than the restart it was
+avoiding - so a component running one pod is left to be restarted, which is
+what running one pod already meant.
+*/}}
+{{- $components := list }}
+{{- range $name := list "control" "chat" "retrieval" "web" }}
+{{- $scaling := include "primer.autoscaling" (dict "root" $ "component" $name) | fromYaml }}
+{{/* Under an autoscaler the configured count is not the count. */}}
+{{- $replicas := ternary (int $scaling.minReplicas) (int (get $.Values $name).replicas) $scaling.enabled }}
+{{- $components = append $components (dict "name" $name "replicas" $replicas) }}
+{{- end }}
+{{- if eq .Values.auth.mode "oidc" }}
+{{- $components = append $components (dict "name" "auth" "replicas" (int .Values.auth.proxy.replicas)) }}
+{{- end }}
+{{- range $name, $worker := .Values.workers }}
+{{- $components = append $components (dict "name" (printf "worker-%s" $name) "replicas" (int $worker.replicas)) }}
+{{- end }}
+
+{{- if .Values.podDisruptionBudgets.enabled }}
+{{- range $component := $components }}
+{{- if gt $component.replicas 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "primer.fullname" $ }}-{{ $component.name }}
+  labels:
+    {{- include "primer.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component.name }}
+spec:
+  # Expressed as what may go rather than what must stay, so that a component
+  # scaled up to ten does not still be draining one pod at a time, and a
+  # component scaled down to two is still never taken to zero.
+  maxUnavailable: {{ $.Values.podDisruptionBudgets.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "primer.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component.name }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Autoscaling, for the services whose load is requests.
+
+Not the workers. Their work arrives on a queue, and an embedding worker
+spends its time waiting on a network call - its CPU is near zero precisely
+when the backlog is longest, so a CPU autoscaler would add pods when they
+are busy computing and none when they are behind.
+*/}}
+{{- range $name := list "control" "chat" "retrieval" "web" }}
+{{- $scaling := include "primer.autoscaling" (dict "root" $ "component" $name) | fromYaml }}
+{{- if $scaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "primer.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "primer.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "primer.fullname" $ }}-{{ $name }}
+  minReplicas: {{ $scaling.minReplicas }}
+  maxReplicas: {{ $scaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $scaling.targetCPUUtilizationPercentage }}
+    {{- if gt (int $scaling.targetMemoryUtilizationPercentage) 0 }}
+    # Only when a deployment has measured it. A Python service that has
+    # grown does not give the memory back, so this scales up readily and
+    # down almost never.
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $scaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

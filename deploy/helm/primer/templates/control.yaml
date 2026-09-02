@@ -6,7 +6,9 @@ metadata:
     {{- include "primer.labels" . | nindent 4 }}
     app.kubernetes.io/component: control
 spec:
+  {{- if not (include "primer.autoscaled" (dict "root" . "component" "control")) }}
   replicas: {{ .Values.control.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "primer.selectorLabels" . | nindent 6 }}

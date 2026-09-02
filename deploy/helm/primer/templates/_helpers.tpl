@@ -170,3 +170,29 @@ credential sitting in a filesystem for whoever gets into the container next.
 serviceAccountName: {{ include "primer.serviceAccountName" . }}
 automountServiceAccountToken: false
 {{- end -}}
+
+{{/*
+Autoscaling settings for one component, with the shared defaults underneath.
+
+Per component so that one service can be autoscaled without turning it on
+for the rest, and merged rather than replaced so that turning one on does
+not mean restating every threshold.
+*/}}
+{{- define "primer.autoscaling" -}}
+{{- $shared := omit .root.Values.autoscaling "control" "chat" "retrieval" "web" -}}
+{{- $own := get .root.Values.autoscaling .component | default dict -}}
+{{- merge (deepCopy $own) $shared | toYaml -}}
+{{- end -}}
+
+{{/*
+Whether a component's replica count is the autoscaler's to decide.
+
+Where it is, the Deployment leaves `replicas` unset. Setting both means
+every `helm upgrade` writes the configured number back and the autoscaler
+undoes it, which reads as a service that scales down for no reason a few
+seconds after every release.
+*/}}
+{{- define "primer.autoscaled" -}}
+{{- $scaling := include "primer.autoscaling" . | fromYaml -}}
+{{- if $scaling.enabled }}true{{ end -}}
+{{- end -}}
