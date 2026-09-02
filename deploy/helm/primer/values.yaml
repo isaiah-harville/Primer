@@ -48,6 +48,12 @@ auth:
   proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
     replicas: 2
+    # The workload in front of every request, so the scheduler should know
+    # its size. It holds a session cookie and forwards; it is not where the
+    # work happens.
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
 
 # --- Ingress ------------------------------------------------------------
 ingress:
@@ -192,6 +198,44 @@ workers:
       requests: { cpu: 100m, memory: 512Mi }
       limits: { memory: 2Gi }
 
+# --- Availability -------------------------------------------------------
+#
+# What keeps the replicas above, rather than what sets them.
+podDisruptionBudgets:
+  # A budget is written only for a component that runs more than one
+  # replica. On a single-replica component a budget of any kind makes the
+  # pod unevictable, and a node drain that never finishes is a worse
+  # failure than the restart it was avoiding.
+  enabled: true
+  # One at a time. With two replicas that is the strongest budget that
+  # still lets a node be drained at all.
+  maxUnavailable: 1
+
+# Off unless asked for, and only for the services whose load is requests.
+#
+# The workers are deliberately not here. Their work arrives on a queue, and
+# queue depth is the only signal that describes it: an embedding worker
+# spends its time waiting on a network call, so its CPU is near zero
+# precisely when the backlog is longest. Scaling those on CPU would add
+# pods when they are busy computing and none when they are behind. Wire
+# KEDA to the broker if you want them autoscaled, and set `workers.*.
+# replicas` until then.
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  # 0 leaves the metric off. Memory is a poor scaling signal for a Python
+  # service - an interpreter that has grown does not give the memory back -
+  # so this is here for deployments that have measured it, not as a default.
+  targetMemoryUtilizationPercentage: 0
+  # Per component, merged over the settings above. `enabled: true` here
+  # turns one service on without turning on the rest.
+  control: {}
+  chat: {}
+  retrieval: {}
+  web: {}
+
 # --- Migrations ---------------------------------------------------------
 #
 # A pre-upgrade hook, never an init container on each pod: several replicas
@@ -199,6 +243,11 @@ workers:
 migrations:
   enabled: true
   backoffLimit: 1
+  # Alembic on one connection. It is short-lived and single-threaded, and
+  # the limit is here so that every container in this chart has one.
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
 
 # --- Identity and isolation ---------------------------------------------
 serviceAccounts:

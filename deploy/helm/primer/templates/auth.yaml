@@ -57,6 +57,8 @@ spec:
             # arrived with its own X-Auth-Request-User must not keep it.
             - --set-xauthrequest=true
             - --pass-user-headers=true
+          resources:
+            {{- toYaml .Values.auth.proxy.resources | nindent 12 }}
           env:
             - name: OAUTH2_PROXY_CLIENT_SECRET
               valueFrom:
