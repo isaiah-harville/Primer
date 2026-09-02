@@ -137,11 +137,48 @@
             "model": {
               "type": "string"
             },
+            "models": {
+              "description": "Further models on the same endpoint a user may pick between.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "existingSecret": {
               "type": "string"
             },
             "apiKeyKey": {
               "type": "string"
+            },
+            "historyMessages": {
+              "description": "Earlier messages a follow-up question may recall.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200
+            },
+            "contextTokens": {
+              "description": "Context window assumed for a model not named in modelContextTokens.",
+              "type": "integer",
+              "minimum": 1024
+            },
+            "modelContextTokens": {
+              "description": "Context window per model name, for models that differ from contextTokens.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 1024
+              }
+            },
+            "replyTokens": {
+              "description": "Held back out of the context window for the answer.",
+              "type": "integer",
+              "minimum": 64
+            },
+            "charactersPerToken": {
+              "description": "How prompt size is estimated. Primer does not tokenize.",
+              "type": "number",
+              "exclusiveMinimum": 0.5,
+              "maximum": 8
             }
           }
         },

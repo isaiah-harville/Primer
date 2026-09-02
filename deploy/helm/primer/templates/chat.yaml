@@ -43,6 +43,22 @@ spec:
               value: {{ required "inference.chat.baseUrl is required" .Values.inference.chat.baseUrl | quote }}
             - name: PRIMER_CHAT_MODEL
               value: {{ required "inference.chat.model is required" .Values.inference.chat.model | quote }}
+            {{- with .Values.inference.chat.models }}
+            - name: PRIMER_CHAT_MODELS
+              value: {{ toJson . | quote }}
+            {{- end }}
+            - name: PRIMER_CHAT_HISTORY_MESSAGES
+              value: {{ .Values.inference.chat.historyMessages | quote }}
+            - name: PRIMER_CHAT_CONTEXT_TOKENS
+              value: {{ .Values.inference.chat.contextTokens | quote }}
+            - name: PRIMER_CHAT_REPLY_TOKENS
+              value: {{ .Values.inference.chat.replyTokens | quote }}
+            - name: PRIMER_CHAT_CHARACTERS_PER_TOKEN
+              value: {{ .Values.inference.chat.charactersPerToken | quote }}
+            {{- with .Values.inference.chat.modelContextTokens }}
+            - name: PRIMER_CHAT_MODEL_CONTEXT_TOKENS
+              value: {{ toJson . | quote }}
+            {{- end }}
             {{- if .Values.inference.chat.existingSecret }}
             - name: PRIMER_CHAT_API_KEY
               valueFrom:

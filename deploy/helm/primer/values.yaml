@@ -96,8 +96,22 @@ inference:
   chat:
     baseUrl: ""
     model: ""
+    # Further models on the same endpoint that a user may pick between.
+    models: []
     existingSecret: ""
     apiKeyKey: chat-api-key
+    # How much of a conversation a follow-up question may recall.
+    historyMessages: 20
+    # The context window assumed for any model not named in
+    # modelContextTokens, and how much of it is held back for the answer.
+    contextTokens: 8192
+    replyTokens: 1024
+    # modelContextTokens:
+    #   llama3.1:70b: 131072
+    modelContextTokens: {}
+    # Prompt size is estimated, not measured: no tokenizer is right for
+    # every OpenAI-compatible endpoint. Lower this if it under-counts.
+    charactersPerToken: 4.0
   embeddings:
     baseUrl: ""
     model: ""

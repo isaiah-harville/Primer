@@ -9,6 +9,7 @@ secret written into a manifest.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -132,11 +133,19 @@ def test_every_pod_runs_unprivileged(manifests: list[dict[str, Any]]) -> None:
             assert security["capabilities"]["drop"] == ["ALL"]
 
 
+# Settings whose names end like a credential but hold a number a reader is
+# meant to see. Named one by one rather than pattern-matched, so a real
+# credential cannot slip in behind a suffix.
+NOT_CREDENTIALS = frozenset({"PRIMER_CHAT_CHARACTERS_PER_TOKEN"})
+
+
 def test_no_credential_is_written_into_a_manifest(manifests: list[dict[str, Any]]) -> None:
     """A value in a manifest is a value in `kubectl get deployment -o yaml`."""
     for deployment in of_kind(manifests, "Deployment"):
         for container in containers(deployment):
             for entry in container.get("env", []):
+                if entry["name"] in NOT_CREDENTIALS:
+                    continue
                 if entry["name"].endswith(("_TOKEN", "_API_KEY", "_SECRET", "_URL")):
                     if entry["name"].endswith("_URL") and "value" in entry:
                         # Service URLs and model endpoints are not secrets.
@@ -342,3 +351,34 @@ def test_extra_environment_reaches_primer_workloads() -> None:
     }
 
     assert {"control", "chat", "retrieval"} <= {name.rsplit("-", 1)[-1] for name in carrying}
+
+
+def env_of(deployment: dict[str, Any]) -> dict[str, str]:
+    return {entry["name"]: entry.get("value", "") for entry in containers(deployment)[0]["env"]}
+
+
+def test_the_context_window_is_configurable_without_a_fork(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """Every model has a different window, and the chart has to say so."""
+    env = env_of(named(manifests, "Deployment", "-chat"))
+
+    assert env["PRIMER_CHAT_CONTEXT_TOKENS"] == "8192"
+    assert env["PRIMER_CHAT_REPLY_TOKENS"] == "1024"
+    assert env["PRIMER_CHAT_HISTORY_MESSAGES"] == "20"
+    # Nothing named, nothing claimed: an empty map would be a JSON literal
+    # the service has to parse for no reason.
+    assert "PRIMER_CHAT_MODELS" not in env
+    assert "PRIMER_CHAT_MODEL_CONTEXT_TOKENS" not in env
+
+
+def test_offered_models_and_their_windows_reach_chat() -> None:
+    """Both are JSON to the service, so the chart has to encode them."""
+    rendered = render(
+        "inference.chat.models={fast-model,long-model}",
+        "inference.chat.modelContextTokens.long-model=131072",
+    )
+    env = env_of(named(rendered, "Deployment", "-chat"))
+
+    assert json.loads(env["PRIMER_CHAT_MODELS"]) == ["fast-model", "long-model"]
+    assert json.loads(env["PRIMER_CHAT_MODEL_CONTEXT_TOKENS"]) == {"long-model": 131072}
