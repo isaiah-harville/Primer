@@ -530,10 +530,13 @@ def test_an_account_can_carry_the_cloud_role_that_reads_the_bucket() -> None:
         for account in of_kind(rendered, "ServiceAccount")
     }
 
-    assert annotated["primer-primer-worker-parse"] == {
-        "eks.amazonaws.com/role-arn": "arn:aws:iam::1:role/sources"
-    }
-    assert annotated["primer-primer-chat"] == {}
+    role = "eks.amazonaws.com/role-arn"
+    # Present, not sole: these accounts are Helm hooks and carry the
+    # annotations that make them one. Asserting the whole map would make this
+    # a test of how the accounts are installed rather than of who may read
+    # the bucket.
+    assert annotated["primer-primer-worker-parse"][role] == "arn:aws:iam::1:role/sources"
+    assert role not in annotated["primer-primer-chat"]
 
 
 def test_a_cluster_that_manages_its_own_accounts_can_say_so() -> None:
@@ -547,3 +550,124 @@ def test_a_cluster_that_manages_its_own_accounts_can_say_so() -> None:
         # Still not mounted: the default account's token is the one worth
         # mounting least.
         assert pod["automountServiceAccountToken"] is False, name
+
+
+# --- Staying up ---------------------------------------------------------
+
+
+def budgets(manifests: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Every PodDisruptionBudget, keyed by the component it protects."""
+    return {
+        policy["spec"]["selector"]["matchLabels"]["app.kubernetes.io/component"]: policy
+        for policy in of_kind(manifests, "PodDisruptionBudget")
+    }
+
+
+def test_a_drain_cannot_take_a_multi_replica_component_to_zero(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """A drain evicts as fast as the pods will go, and two is not many."""
+    protected = budgets(manifests)
+
+    assert set(protected) == {"control", "chat", "retrieval", "web", "auth"}
+    for name, policy in protected.items():
+        assert policy["spec"]["maxUnavailable"] == 1, name
+
+
+def test_a_single_replica_component_gets_no_budget(manifests: list[dict[str, Any]]) -> None:
+    """Any budget at all would make its one pod unevictable.
+
+    A node drain that never finishes is a worse failure than the restart it
+    was avoiding, and a component running one pod had already accepted that
+    restart.
+    """
+    assert "worker-parse" not in budgets(manifests)
+    assert "worker-index" not in budgets(manifests)
+
+
+def test_a_worker_scaled_up_is_protected_like_anything_else() -> None:
+    """The rule is the replica count, not which component it is."""
+    rendered = render("workers.parse.replicas=3")
+
+    assert "worker-parse" in budgets(rendered)
+    assert "worker-index" not in budgets(rendered)
+
+
+def test_every_container_is_sized(manifests: list[dict[str, Any]]) -> None:
+    """Including the proxy, which is the workload in front of every request."""
+    for name, workload in workloads(manifests).items():
+        for container in containers(workload):
+            resources = container.get("resources") or {}
+            assert resources.get("requests"), f"{name}/{container['name']} has no requests"
+            assert resources.get("limits"), f"{name}/{container['name']} has no limits"
+
+
+def test_autoscaling_is_off_unless_it_is_asked_for(manifests: list[dict[str, Any]]) -> None:
+    """A chart that autoscaled by default would scale on a metric nobody chose."""
+    assert of_kind(manifests, "HorizontalPodAutoscaler") == []
+
+
+def test_one_service_can_be_autoscaled_without_the_others() -> None:
+    rendered = render("autoscaling.chat.enabled=true")
+    scalers = of_kind(rendered, "HorizontalPodAutoscaler")
+
+    assert [scaler["metadata"]["name"] for scaler in scalers] == ["primer-primer-chat"]
+    # Merged over the shared defaults, so turning one on does not mean
+    # restating every threshold.
+    assert scalers[0]["spec"]["minReplicas"] == 2
+    assert scalers[0]["spec"]["maxReplicas"] == 6
+
+
+def test_an_autoscaled_deployment_does_not_also_state_its_replicas() -> None:
+    """Otherwise every upgrade writes the configured number back.
+
+    The autoscaler then undoes it, which reads as a service that scales down
+    for no reason a few seconds after every release.
+    """
+    rendered = render("autoscaling.chat.enabled=true")
+
+    assert "replicas" not in named(rendered, "Deployment", "-chat")["spec"]
+    assert named(rendered, "Deployment", "-control")["spec"]["replicas"] == 2
+
+
+def test_an_autoscaled_component_is_protected_at_its_floor() -> None:
+    """The configured count is not the count once an autoscaler owns it."""
+    rendered = render("autoscaling.chat.enabled=true", "autoscaling.chat.minReplicas=1")
+
+    assert "chat" not in budgets(rendered)
+    assert "control" in budgets(rendered)
+
+
+def test_the_workers_are_not_autoscaled_on_cpu() -> None:
+    """Their work arrives on a queue, and CPU does not describe a queue.
+
+    An embedding worker waits on a network call, so its CPU is near zero
+    exactly when the backlog is longest: a CPU autoscaler would add pods
+    while they compute and none while they fall behind.
+    """
+    rendered = render("autoscaling.enabled=true")
+    scaled = {
+        scaler["metadata"]["labels"]["app.kubernetes.io/component"]
+        for scaler in of_kind(rendered, "HorizontalPodAutoscaler")
+    }
+
+    assert scaled == {"control", "chat", "retrieval", "web"}
+
+
+def test_memory_is_not_a_scaling_signal_until_someone_measures_it() -> None:
+    """A Python service that has grown does not give the memory back."""
+    default = render("autoscaling.enabled=true")
+    measured = render(
+        "autoscaling.enabled=true", "autoscaling.targetMemoryUtilizationPercentage=80"
+    )
+
+    def metrics(rendered: list[dict[str, Any]]) -> set[str]:
+        scaler = next(
+            doc
+            for doc in of_kind(rendered, "HorizontalPodAutoscaler")
+            if doc["metadata"]["name"].endswith("-chat")
+        )
+        return {metric["resource"]["name"] for metric in scaler["spec"]["metrics"]}
+
+    assert metrics(default) == {"cpu"}
+    assert metrics(measured) == {"cpu", "memory"}
