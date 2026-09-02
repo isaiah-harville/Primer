@@ -530,10 +530,13 @@ def test_an_account_can_carry_the_cloud_role_that_reads_the_bucket() -> None:
         for account in of_kind(rendered, "ServiceAccount")
     }
 
-    assert annotated["primer-primer-worker-parse"] == {
-        "eks.amazonaws.com/role-arn": "arn:aws:iam::1:role/sources"
-    }
-    assert annotated["primer-primer-chat"] == {}
+    role = "eks.amazonaws.com/role-arn"
+    # Present, not sole: these accounts are Helm hooks and carry the
+    # annotations that make them one. Asserting the whole map would make this
+    # a test of how the accounts are installed rather than of who may read
+    # the bucket.
+    assert annotated["primer-primer-worker-parse"][role] == "arn:aws:iam::1:role/sources"
+    assert role not in annotated["primer-primer-chat"]
 
 
 def test_a_cluster_that_manages_its_own_accounts_can_say_so() -> None:
