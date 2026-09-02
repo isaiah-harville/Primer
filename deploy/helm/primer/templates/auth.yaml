@@ -18,6 +18,7 @@ spec:
         {{- include "primer.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: auth
     spec:
+      {{- include "primer.podIdentity" (dict "root" . "component" "auth") | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:

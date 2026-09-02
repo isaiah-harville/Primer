@@ -17,6 +17,7 @@ spec:
         {{- include "primer.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: retrieval
     spec:
+      {{- include "primer.podIdentity" (dict "root" . "component" "retrieval") | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:

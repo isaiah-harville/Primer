@@ -385,3 +385,165 @@ def test_offered_models_and_their_windows_reach_chat() -> None:
 
     assert json.loads(env["PRIMER_CHAT_MODELS"]) == ["fast-model", "long-model"]
     assert json.loads(env["PRIMER_CHAT_MODEL_CONTEXT_TOKENS"]) == {"long-model": 131072}
+
+
+# --- Isolation ----------------------------------------------------------
+
+
+def component_of(workload: dict[str, Any]) -> str:
+    return workload["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/component"]
+
+
+def policies(manifests: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Every NetworkPolicy, keyed by the component it protects.
+
+    Keyed by what it selects rather than by its name, because what matters
+    about a policy is which pods it lands on. The floor - the one selecting
+    everything - is keyed as "all".
+    """
+    found: dict[str, dict[str, Any]] = {}
+    for policy in of_kind(manifests, "NetworkPolicy"):
+        selector = policy["spec"]["podSelector"].get("matchLabels", {})
+        found[selector.get("app.kubernetes.io/component", "all")] = policy
+    return found
+
+
+def allowed_into(policy: dict[str, Any]) -> set[str]:
+    """The components a policy lets in, by label."""
+    sources = set()
+    for rule in policy["spec"].get("ingress") or []:
+        for peer in rule.get("from") or []:
+            labels = peer.get("podSelector", {}).get("matchLabels", {})
+            if "app.kubernetes.io/component" in labels:
+                sources.add(labels["app.kubernetes.io/component"])
+            elif "namespaceSelector" in peer:
+                sources.add("*")
+    return sources
+
+
+def test_nothing_is_reachable_until_something_allows_it(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """The floor. A component added later is closed until someone opens it."""
+    floor = policies(manifests)["all"]
+
+    assert floor["spec"]["policyTypes"] == ["Ingress"]
+    # No `ingress` key at all is what makes it a deny: an empty list of rules
+    # matches nothing, while a missing policyTypes would restrict nothing.
+    assert "ingress" not in floor["spec"]
+    assert "app.kubernetes.io/component" not in floor["spec"]["podSelector"]["matchLabels"]
+
+
+def test_each_service_admits_exactly_what_calls_it(manifests: list[dict[str, Any]]) -> None:
+    """The paths the services actually use, and no others.
+
+    Written out rather than derived, so adding a dependency means declaring
+    it here - which is the point. A path discovered in production because a
+    connection was refused is the failure this is meant to prevent.
+    """
+    admits = {name: allowed_into(policy) for name, policy in policies(manifests).items()}
+
+    assert admits["control"] == {"web", "chat", "worker-parse", "worker-index"}
+    assert admits["chat"] == {"web"}
+    assert admits["retrieval"] == {"chat", "worker-parse", "worker-index"}
+    # Only the proxy reaches the web app: a pod that could reach it directly
+    # would arrive with no session and be whatever headers it chose to send.
+    assert admits["web"] == {"auth"}
+
+
+def test_the_only_door_in_is_the_proxy(manifests: list[dict[str, Any]]) -> None:
+    """And it is the one rule wider than the rest, because it has to be."""
+    entry = policies(manifests)["auth"]
+
+    assert allowed_into(entry) == {"*"}
+    assert entry["spec"]["ingress"][0]["ports"] == [{"port": 4180, "protocol": "TCP"}]
+
+
+def test_the_door_can_be_narrowed_to_one_namespace() -> None:
+    """An operator who knows where their ingress controller runs can say so."""
+    rendered = render(
+        "networkPolicies.ingress[0].namespaceSelector.matchLabels.kubernetes\\.io/metadata\\.name=ingress-nginx"
+    )
+
+    peers = policies(rendered)["auth"]["spec"]["ingress"][0]["from"]
+
+    assert peers == [
+        {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}}}
+    ]
+
+
+def test_without_the_proxy_the_web_app_is_the_door() -> None:
+    """Disabling auth removes the proxy, so the policy has to follow it."""
+    rendered = render("auth.mode=disabled")
+    admits = policies(rendered)
+
+    assert "auth" not in admits
+    assert allowed_into(admits["web"]) == {"*"}
+    assert admits["web"]["spec"]["ingress"][0]["ports"] == [{"port": 3000, "protocol": "TCP"}]
+
+
+def test_policies_can_be_turned_off_for_a_cluster_that_ignores_them() -> None:
+    """They are accepted and silently unenforced without a CNI that reads them."""
+    rendered = render("networkPolicies.enabled=false")
+
+    assert of_kind(rendered, "NetworkPolicy") == []
+
+
+def test_every_workload_runs_as_its_own_account(manifests: list[dict[str, Any]]) -> None:
+    """Sharing the namespace default means sharing whatever it can do."""
+    accounts = {doc["metadata"]["name"] for doc in of_kind(manifests, "ServiceAccount")}
+    assert accounts, "no accounts were rendered"
+
+    seen = set()
+    for name, workload in workloads(manifests).items():
+        account = workload["spec"]["template"]["spec"].get("serviceAccountName")
+        assert account in accounts, f"{name} runs as an account this chart did not create"
+        # The migration jobs are one component run three times, so they share
+        # one account; nothing else may.
+        if not name.rsplit("-", 1)[0].endswith("migrate"):
+            assert account not in seen, f"{account} is shared"
+            seen.add(account)
+
+
+def test_no_workload_mounts_a_token_it_does_not_use(manifests: list[dict[str, Any]]) -> None:
+    """Nothing here calls the Kubernetes API.
+
+    A token mounted into a pod that never reads it is a credential sitting in
+    a filesystem for whoever gets into the container next.
+    """
+    for name, workload in workloads(manifests).items():
+        pod = workload["spec"]["template"]["spec"]
+        assert pod.get("automountServiceAccountToken") is False, name
+
+    for account in of_kind(manifests, "ServiceAccount"):
+        assert account["automountServiceAccountToken"] is False, account["metadata"]["name"]
+
+
+def test_an_account_can_carry_the_cloud_role_that_reads_the_bucket() -> None:
+    """Per component, because only two workloads open a source object."""
+    rendered = render(
+        "serviceAccounts.perComponent.worker-parse.eks\\.amazonaws\\.com/role-arn=arn:aws:iam::1:role/sources"
+    )
+
+    annotated = {
+        account["metadata"]["name"]: (account["metadata"].get("annotations") or {})
+        for account in of_kind(rendered, "ServiceAccount")
+    }
+
+    assert annotated["primer-primer-worker-parse"] == {
+        "eks.amazonaws.com/role-arn": "arn:aws:iam::1:role/sources"
+    }
+    assert annotated["primer-primer-chat"] == {}
+
+
+def test_a_cluster_that_manages_its_own_accounts_can_say_so() -> None:
+    """No accounts created, and the pods fall back to the namespace default."""
+    rendered = render("serviceAccounts.create=false")
+
+    assert of_kind(rendered, "ServiceAccount") == []
+    for name, workload in workloads(rendered).items():
+        pod = workload["spec"]["template"]["spec"]
+        assert pod["serviceAccountName"] == "default", name
+        # Still not mounted: the default account's token is the one worth
+        # mounting least.
+        assert pod["automountServiceAccountToken"] is False, name

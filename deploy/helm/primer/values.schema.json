@@ -273,6 +273,54 @@
       "items": {
         "type": "object"
       }
+    },
+    "serviceAccounts": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "description": "One ServiceAccount per component instead of the namespace default. None is granted anything and no token is mounted.",
+          "type": "boolean"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "perComponent": {
+          "description": "Annotations by component (control, chat, retrieval, web, auth, migrate, worker-*), merged over the shared ones. Usually cloud IAM.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "networkPolicies": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Restrict which pods may reach Primer. Does nothing on a cluster whose CNI does not enforce NetworkPolicy.",
+          "type": "boolean"
+        },
+        "ingress": {
+          "description": "Peers allowed to reach the public entry point. Empty means any namespace, because the ingress controller's namespace is not known here.",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "extra": {
+          "description": "Whole NetworkPolicy objects, for a path this chart does not model.",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
     }
   }
 }

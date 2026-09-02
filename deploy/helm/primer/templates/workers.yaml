@@ -27,6 +27,7 @@ spec:
         {{- include "primer.selectorLabels" $ | nindent 8 }}
         app.kubernetes.io/component: worker-{{ $name }}
     spec:
+      {{- include "primer.podIdentity" (dict "root" $ "component" (printf "worker-%s" $name)) | nindent 6 }}
       securityContext:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       containers:
