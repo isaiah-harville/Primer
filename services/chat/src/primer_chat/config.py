@@ -83,6 +83,25 @@ class Settings(BaseSettings):
     #: model it might be pointed at; lower this for documents that tokenize
     #: worse than English prose - code, tables, non-Latin scripts.
     chat_characters_per_token: float = Field(default=CHARACTERS_PER_TOKEN, gt=0.5, le=8.0)
+    #: Whether the turns that fall out of the window are summarized before
+    #: they go. On by default: a long conversation otherwise loses its own
+    #: beginning, and the thing a user mentioned once is exactly what a later
+    #: question tends to depend on. It costs a model call whenever something
+    #: is actually dropped, which is the reason it can be turned off.
+    chat_compact_history: bool = Field(
+        default=True,
+        description="Summarize the turns that no longer fit instead of dropping them",
+    )
+    #: Room set aside for that summary, and the length the summarizer is held
+    #: to. Reserved whenever compaction is on, whether or not a summary
+    #: exists yet, so that writing one never costs the history a turn it was
+    #: already shown.
+    chat_summary_tokens: int = Field(
+        default=512,
+        ge=64,
+        le=4096,
+        description="Space reserved for the summary of compacted turns",
+    )
     heartbeat_seconds: float = Field(
         default=15.0,
         gt=0,

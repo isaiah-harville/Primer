@@ -17,6 +17,11 @@ retrieved for this question go in first: an answer that cites the user's
 documents is what a library is for, and one written without them is a
 different kind of answer wearing the same clothes. The earlier turns go in
 second, newest first, because a conversation is understood from its end.
+
+Deciding what to cut is all this module does. What happens to the turns on
+the way out - summarized into the conversation's running memory, or simply
+forgotten - is `compaction.py`, which is why the split is returned whole
+rather than only the half that stays.
 """
 
 from __future__ import annotations
@@ -64,13 +69,18 @@ def passages_that_fit(
     return len(context.passages)
 
 
-def history_that_fits(
+def split_history(
     history: tuple[HistoryTurn, ...],
     *,
     budget: int,
     characters_per_token: float = CHARACTERS_PER_TOKEN,
-) -> tuple[HistoryTurn, ...]:
-    """The most recent turns that fit, oldest dropped first."""
+) -> tuple[tuple[HistoryTurn, ...], tuple[HistoryTurn, ...]]:
+    """The turns that do not fit and the turns that do, in that order.
+
+    Both halves are returned because both are wanted: the recent turns are
+    replayed, and the older ones are what compaction is given to summarize.
+    They partition the history, so nothing is quietly in neither.
+    """
     kept: list[HistoryTurn] = []
     remaining = budget
     for turn in reversed(history):
@@ -83,7 +93,36 @@ def history_that_fits(
 
     # An answer whose question was cut is a non-sequitur, and a model shown
     # one will try to make sense of it. Better to start the replay at a
-    # question.
+    # question - and the orphan goes to the dropped half, where it is
+    # summarized rather than lost.
     while kept and kept[0].role is MessageRole.ASSISTANT:
         kept.pop(0)
-    return tuple(kept)
+
+    return history[: len(history) - len(kept)], tuple(kept)
+
+
+def history_that_fits(
+    history: tuple[HistoryTurn, ...],
+    *,
+    budget: int,
+    characters_per_token: float = CHARACTERS_PER_TOKEN,
+) -> tuple[HistoryTurn, ...]:
+    """The most recent turns that fit, oldest dropped first."""
+    _, kept = split_history(history, budget=budget, characters_per_token=characters_per_token)
+    return kept
+
+
+def truncate_to_tokens(
+    text: str, *, budget: int, characters_per_token: float = CHARACTERS_PER_TOKEN
+) -> str:
+    """Cut text down to an estimated token count, at a word boundary.
+
+    For text that came back from a model that was asked to be brief and was
+    not. The budget it was given is what the rest of the prompt was measured
+    against, so it is enforced here rather than hoped for.
+    """
+    limit = max(0, int((budget - MESSAGE_OVERHEAD_TOKENS) * characters_per_token))
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0].rstrip()
+    return f"{cut}…" if cut else ""
