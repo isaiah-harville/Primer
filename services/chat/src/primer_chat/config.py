@@ -137,6 +137,6 @@ class Settings(BaseSettings):
             return self.chat_model
         return requested if requested in self.selectable_models else None
 
-    subject_header: str = Field(default="X-Auth-Request-User")
-    email_header: str = Field(default="X-Auth-Request-Email")
+    subject_header: str = Field(default="X-Forwarded-User")
+    email_header: str = Field(default="X-Forwarded-Email")
     auth_mode: str = Field(default="disabled")

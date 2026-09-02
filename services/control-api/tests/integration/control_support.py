@@ -17,7 +17,7 @@ class UserClient:
 
     def __init__(self, http: AsyncClient, subject: str) -> None:
         self._http = http
-        self._headers = {"X-Auth-Request-User": subject}
+        self._headers = {"X-Forwarded-User": subject}
 
     async def get(self, path: str) -> Response:
         return await self._http.get(path, headers=self._headers)

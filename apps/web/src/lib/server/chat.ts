@@ -11,9 +11,9 @@ import { ChatApi } from '$lib/api/chat-client';
 export function chatFor(request: Request, fetch: typeof globalThis.fetch): ChatApi {
 	const forwarded = new Headers();
 	for (const name of [
-		'x-auth-request-user',
-		'x-auth-request-email',
-		'x-auth-request-groups',
+		'x-forwarded-user',
+		'x-forwarded-email',
+		'x-forwarded-groups',
 		'x-request-id',
 	]) {
 		const value = request.headers.get(name);

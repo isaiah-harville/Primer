@@ -221,7 +221,7 @@ def authorization_path() -> Canvas:
     proxy = canvas.box(Box(56, 208, 220, 82, "oauth2-proxy", "verifies with the IdP", "edge"))
     headers = canvas.box(
         Box(
-            56, 356, 220, 82, "X-Auth-Request-User", "trusted from the edge only", "edge", mono=True
+            56, 356, 220, 82, "X-Forwarded-User", "trusted from the edge only", "edge", mono=True
         )
     )
 

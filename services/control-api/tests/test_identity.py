@@ -35,7 +35,7 @@ def test_oidc_mode_requires_trusted_subject(oidc_client: TestClient) -> None:
 
 
 def test_oidc_mode_rejects_a_blank_subject(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/api/v1/me", headers={"X-Auth-Request-User": "   "})
+    response = oidc_client.get("/api/v1/me", headers={"X-Forwarded-User": "   "})
     assert response.status_code == 401
     assert response.json()["code"] == "identity_missing"
 
@@ -44,8 +44,8 @@ def test_oidc_mode_maps_the_edge_subject(oidc_client: TestClient) -> None:
     response = oidc_client.get(
         "/api/v1/me",
         headers={
-            "X-Auth-Request-User": "oidc-subject-1",
-            "X-Auth-Request-Email": "researcher@example.edu",
+            "X-Forwarded-User": "oidc-subject-1",
+            "X-Forwarded-Email": "researcher@example.edu",
         },
     )
     assert response.status_code == 200
@@ -58,7 +58,7 @@ def test_oidc_user_ids_are_stable_per_subject_and_distinct_across_subjects(
     oidc_client: TestClient,
 ) -> None:
     def user_id(subject: str) -> str:
-        return oidc_client.get("/api/v1/me", headers={"X-Auth-Request-User": subject}).json()[
+        return oidc_client.get("/api/v1/me", headers={"X-Forwarded-User": subject}).json()[
             "user_id"
         ]
 
@@ -70,8 +70,8 @@ def test_oidc_mode_splits_groups_on_the_configured_delimiter(oidc_client: TestCl
     response = oidc_client.get(
         "/api/v1/me",
         headers={
-            "X-Auth-Request-User": "oidc-subject-1",
-            "X-Auth-Request-Groups": " researchers , students ,, ",
+            "X-Forwarded-User": "oidc-subject-1",
+            "X-Forwarded-Groups": " researchers , students ,, ",
         },
     )
     assert response.json()["groups"] == ["researchers", "students"]

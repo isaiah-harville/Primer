@@ -14,7 +14,7 @@ instead of silently keeping a default.
 | `PRIMER_MAX_UPLOAD_BYTES` | `104857600` | Enforced while reading |
 | `PRIMER_BROKER_URL` | unset | Unset leaves uploads queued |
 | `PRIMER_INTERNAL_API_TOKEN` | unset | **Unset denies the internal API** |
-| `PRIMER_SUBJECT_HEADER` | `X-Auth-Request-User` | Set by the proxy |
+| `PRIMER_SUBJECT_HEADER` | `X-Forwarded-User` | Set by the proxy |
 | `PRIMER_JOB_LEASE_SECONDS` | `300` | Before another worker may re-claim |
 | `PRIMER_MAX_JOB_ATTEMPTS` | `5` | Hard bound, independent of workers |
 
