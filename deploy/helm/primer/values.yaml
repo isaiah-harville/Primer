@@ -168,6 +168,11 @@ web:
 workers:
   parse:
     replicas: 1
+    # Processes per pod, and the number `resources` below has to be sized
+    # for. One, because a parse holds a whole document in memory and loads
+    # Docling's layout models: two of those in one container is two copies
+    # of both. Scale this component with replicas rather than here.
+    concurrency: 1
     resources:
       requests: { cpu: 500m, memory: 2Gi }
       limits: { memory: 6Gi }
@@ -179,6 +184,10 @@ workers:
       storageClass: ""
   index:
     replicas: 1
+    # Higher, because this one mostly waits: embedding is a network call to
+    # a model endpoint, and a process blocked on a socket is not using the
+    # memory the limit is protecting.
+    concurrency: 4
     resources:
       requests: { cpu: 100m, memory: 512Mi }
       limits: { memory: 2Gi }
