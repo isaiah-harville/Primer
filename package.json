@@ -9,7 +9,8 @@
 		"check": "biome ci .",
 		"format": "biome format --write .",
 		"lint": "biome check --write .",
-		"test": "pnpm -r --if-present test"
+		"test": "pnpm -r --if-present test",
+		"generate:api": "pnpm --filter @primer/web generate:api"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.0.0"

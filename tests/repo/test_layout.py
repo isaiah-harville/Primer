@@ -51,3 +51,41 @@ def test_agent_planning_docs_are_untracked_by_policy() -> None:
     ]
     assert "docs/superpowers" in ignored
     assert "docs" not in ignored
+
+
+def test_the_web_app_s_types_are_generated_rather_than_transcribed() -> None:
+    """A contract change the web app has not followed should not compile.
+
+    The schemas under `schemas/` are what the types are generated from, and
+    CI regenerates both and diffs them. Asserting the wiring here means the
+    guard cannot be quietly removed - a hand-written `interface
+    LibrarySummary` would pass every other test in this repository.
+    """
+    types = (REPO_ROOT / "apps" / "web" / "src" / "lib" / "api" / "types.ts").read_text()
+
+    assert "./generated/control" in types
+    assert "./generated/chat" in types
+    for shape in ("LibrarySummary", "DocumentSummary", "MessageSummary", "ConversationSummary"):
+        assert f"export type {shape} = " in types, shape
+        assert f"export interface {shape}" not in types, shape
+
+
+def test_the_identity_boundary_is_still_written_by_hand() -> None:
+    """Generation stops at the shapes.
+
+    Which headers this server forwards to Primer is the thing that decides
+    who a request is from. It is reviewed, not emitted by a tool from a
+    document describing something else.
+    """
+    server = REPO_ROOT / "apps" / "web" / "src" / "lib" / "server"
+    forwarding = (server / "api.ts").read_text() + (server / "chat.ts").read_text()
+
+    assert forwarding.count("x-auth-request-user") == 2
+    assert "generated" not in forwarding
+
+
+def test_the_schemas_are_written_deterministically() -> None:
+    """Or the check that they have not drifted fails on dict ordering."""
+    script = (REPO_ROOT / "scripts" / "dump_openapi.py").read_text()
+
+    assert "sort_keys=True" in script

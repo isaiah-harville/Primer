@@ -1,0 +1,1106 @@
+{
+  "components": {
+    "schemas": {
+      "Body_replace_document_api_v1_libraries__library_id__documents__document_id__versions_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The source file to ingest",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_replace_document_api_v1_libraries__library_id__documents__document_id__versions_post",
+        "type": "object"
+      },
+      "Body_upload_document_api_v1_libraries__library_id__documents_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The source file to ingest",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_document_api_v1_libraries__library_id__documents_post",
+        "type": "object"
+      },
+      "DeploymentCapabilities": {
+        "additionalProperties": false,
+        "description": "What this deployment can actually do, as the browser needs to know it.\n\nSent to the web app so it can hide what will not work rather than\noffering it and failing. Every field is a checked fact or an operator's\ndeclaration - none is inferred from a model's name.",
+        "properties": {
+          "auth_enabled": {
+            "title": "Auth Enabled",
+            "type": "boolean"
+          },
+          "chat_available": {
+            "title": "Chat Available",
+            "type": "boolean"
+          },
+          "ingestion_available": {
+            "title": "Ingestion Available",
+            "type": "boolean"
+          },
+          "max_upload_bytes": {
+            "minimum": 0.0,
+            "title": "Max Upload Bytes",
+            "type": "integer"
+          },
+          "supported_extensions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Extensions",
+            "type": "array"
+          },
+          "tools_available": {
+            "title": "Tools Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "auth_enabled",
+          "ingestion_available",
+          "chat_available",
+          "tools_available",
+          "max_upload_bytes"
+        ],
+        "title": "DeploymentCapabilities",
+        "type": "object"
+      },
+      "DocumentSummary": {
+        "additionalProperties": false,
+        "description": "A document and the state of its current immutable version.",
+        "properties": {
+          "byte_size": {
+            "minimum": 0.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_version_id": {
+            "format": "uuid",
+            "title": "Current Version Id",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "library_id": {
+            "format": "uuid",
+            "title": "Library Id",
+            "type": "string"
+          },
+          "media_type": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Media Type",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IngestionStatus"
+          },
+          "status_detail": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Detail"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "library_id",
+          "current_version_id",
+          "filename",
+          "media_type",
+          "byte_size",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentSummary",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IngestionStatus": {
+        "description": "Deterministic states a user can observe for a document version.",
+        "enum": [
+          "queued",
+          "parsing",
+          "chunking",
+          "embedding",
+          "indexing",
+          "ready",
+          "failed",
+          "unsupported",
+          "cancelled",
+          "deleting",
+          "deleted"
+        ],
+        "title": "IngestionStatus",
+        "type": "string"
+      },
+      "LibraryCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LibraryCreate",
+        "type": "object"
+      },
+      "LibraryDuplicate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "LibraryDuplicate",
+        "type": "object"
+      },
+      "LibrarySummary": {
+        "additionalProperties": false,
+        "description": "A library as returned by the Control API.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_user_id": {
+            "format": "uuid",
+            "title": "Owner User Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "owner_user_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LibrarySummary",
+        "type": "object"
+      },
+      "LibraryUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LibraryUpdate",
+        "type": "object"
+      },
+      "Principal": {
+        "additionalProperties": false,
+        "description": "An authenticated Primer identity acting on a request.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "groups": {
+            "default": [],
+            "description": "Operator-policy groups; never an implicit grant to resources",
+            "items": {
+              "type": "string"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "subject": {
+            "description": "Stable OIDC `sub` claim",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "Primer-internal user identifier",
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "user_id"
+        ],
+        "title": "Principal",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "summary": "Public domain operations and authorization for Primer",
+    "title": "Primer Control API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/capabilities": {
+      "get": {
+        "description": "Report the deployment's shape.\n\nAuthenticated, because the answer describes a specific deployment's\nconfiguration and there is no reason for it to be readable by anyone who\ncannot already use it.\n\nChat and tool availability are reported by Control rather than probed\nhere: Control does not hold the inference configuration, and asking Chat\non every page load would make a browser refresh depend on a model\nendpoint being awake.",
+        "operationId": "capabilities_api_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "What this deployment supports",
+        "tags": [
+          "capabilities"
+        ]
+      }
+    },
+    "/api/v1/libraries": {
+      "get": {
+        "operationId": "list_libraries_api_v1_libraries_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibrarySummary"
+                  },
+                  "title": "Response List Libraries Api V1 Libraries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List the caller's libraries",
+        "tags": [
+          "libraries"
+        ]
+      },
+      "post": {
+        "operationId": "create_library_api_v1_libraries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a private library",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}": {
+      "delete": {
+        "operationId": "delete_library_api_v1_libraries__library_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete a library",
+        "tags": [
+          "libraries"
+        ]
+      },
+      "get": {
+        "operationId": "read_library_api_v1_libraries__library_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one library",
+        "tags": [
+          "libraries"
+        ]
+      },
+      "patch": {
+        "operationId": "rename_library_api_v1_libraries__library_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename a library",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/documents": {
+      "get": {
+        "operationId": "list_documents_api_v1_libraries__library_id__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentSummary"
+                  },
+                  "title": "Response List Documents Api V1 Libraries  Library Id  Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List a library's documents",
+        "tags": [
+          "documents"
+        ]
+      },
+      "post": {
+        "operationId": "upload_document_api_v1_libraries__library_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_api_v1_libraries__library_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload a document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/documents/{document_id}": {
+      "delete": {
+        "description": "Tombstone first; the passages and bytes go afterwards.\n\nThe tombstone is the deletion the user asked for, and it takes effect\nimmediately. Everything after it is cleanup, and scheduling it separately\nmeans a slow or failing cleanup never leaves a deleted document\nanswering questions in the meantime.",
+        "operationId": "delete_document_api_v1_libraries__library_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete a document",
+        "tags": [
+          "documents"
+        ]
+      },
+      "get": {
+        "operationId": "read_document_api_v1_libraries__library_id__documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one document's status",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/documents/{document_id}/content": {
+      "get": {
+        "operationId": "download_document_api_v1_libraries__library_id__documents__document_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download the current version's bytes",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/documents/{document_id}/reindex": {
+      "post": {
+        "description": "Build a new generation, leaving the current one answering.\n\nPressing this twice does not start two builds. A second build of the\nsame version would have two workers writing different generations with\nonly one ever activated, so a rebuild already in flight is reported as\nit stands rather than restarted.",
+        "operationId": "reindex_document_api_v1_libraries__library_id__documents__document_id__reindex_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rebuild a document's index",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/documents/{document_id}/versions": {
+      "post": {
+        "description": "Add a version rather than overwriting one.\n\nEarlier versions stay readable so a citation pinned to a version keeps\nresolving to the text that was actually quoted.",
+        "operationId": "replace_document_api_v1_libraries__library_id__documents__document_id__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_replace_document_api_v1_libraries__library_id__documents__document_id__versions_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace a document with a new version",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/duplicate": {
+      "post": {
+        "description": "Copy a library so the two can diverge.\n\nThe copy is owned by whoever asked for it, not by whoever owned the\noriginal: a copy of something you were allowed to read is yours, and\nleaving it owned by someone else would make it unmanageable by the only\nperson who knows it exists.\n\nIts documents are queued for indexing like any upload, so the copy is\nbrowsable immediately and answerable once they finish. Nothing is\npublished to the broker until the transaction commits.",
+        "operationId": "duplicate_library_api_v1_libraries__library_id__duplicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryDuplicate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Copy a library into a new one",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Principal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Describe the acting principal",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "live_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Live Health Live Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ready Health Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}
