@@ -91,6 +91,8 @@ object.
 | `PRIMER_CHAT_MODEL_CONTEXT_TOKENS` | unset | Per-model windows, as JSON |
 | `PRIMER_CHAT_REPLY_TOKENS` | `1024` | Held back out of the window for the answer |
 | `PRIMER_CHAT_CHARACTERS_PER_TOKEN` | `4.0` | How the prompt's size is estimated |
+| `PRIMER_CHAT_COMPACT_HISTORY` | `true` | Summarize turns instead of dropping them |
+| `PRIMER_CHAT_SUMMARY_TOKENS` | `512` | Room reserved for that summary |
 | `PRIMER_SERVICE_TOKEN` | unset | Must match the services' tokens |
 
 ### Offering more than one model
@@ -144,6 +146,42 @@ may not have. The default of 4.0 is deliberately conservative for English
 prose; lower it if your users write in a language or a notation that
 tokenizes less kindly, and only raise it if you have measured your own
 model and want the room back.
+
+
+### Compacting a long conversation
+
+Dropping the oldest turns keeps a thread inside the window, and what it
+costs is the beginning of the thread — the document someone named ten
+messages ago, the constraint they gave once and never repeated. With
+`PRIMER_CHAT_COMPACT_HISTORY` on, which is the default, the turns that fall
+out are summarized on their way out and the summary is carried in their
+place.
+
+It is incremental: each pass folds the newly dropped turns into what was
+already remembered, so compacting an hour-long conversation does not cost
+more each time. The summary is written by the same endpoint that answers, so
+it costs a model call — but only on a turn that would otherwise have dropped
+something, and never on a conversation that still fits.
+
+`PRIMER_CHAT_SUMMARY_TOKENS` is the room set aside for it, and the length
+the summarizer is held to; anything longer is cut. The room is reserved
+whether or not a summary exists yet, so writing the first one never costs
+the history a turn it was already shown. It is also capped at a quarter of
+the window however large you set it: the passages a question is answered
+from are the point, and a small model must not spend half its context
+remembering a conversation it can no longer ground.
+
+If the summarizer fails, the turn is still answered. The conversation simply
+forgets, which is what would have happened anyway.
+
+Turning it off is reasonable for a metered endpoint, or where the extra
+latency before the first token matters more than a long thread's memory.
+The summary of a conversation already compacted is still carried; forgetting
+it would lose the turns it stands for.
+
+Summaries are Primer's own note to itself. They are not shown in the
+transcript and no endpoint returns them — the messages they stand for are
+all still there, and are what a reader is shown.
 
 
 ## Settings that fail at startup

@@ -71,6 +71,15 @@ class Conversation(Base):
         PGUUID(as_uuid=True), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: What is remembered of the turns that no longer fit in the model's
+    #: context window. Stored rather than recomputed: it costs a model call
+    #: to write, and rewriting it every turn would cost more with every turn.
+    summary: Mapped[str | None] = mapped_column(Text)
+    #: How far through the conversation the summary reaches. Messages after
+    #: it are replayed in full; messages up to it are what the summary is
+    #: standing in for. Null means nothing has been compacted yet, which is
+    #: different from a summary that covers position zero.
+    summary_through_ordinal: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

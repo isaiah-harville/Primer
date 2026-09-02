@@ -6,6 +6,8 @@ from primer_chat.budget import (
     estimate_tokens,
     history_that_fits,
     passages_that_fit,
+    split_history,
+    truncate_to_tokens,
 )
 from primer_chat.rag import GroundedContext, HistoryTurn
 from primer_contracts.chat import MessageRole
@@ -61,3 +63,37 @@ def test_passages_are_kept_as_a_prefix() -> None:
     assert passages_that_fit(context, budget=10_000) == 2
     assert passages_that_fit(context, budget=estimate_tokens("[1] " + "a" * 400)) == 1
     assert passages_that_fit(context, budget=1) == 0
+
+
+def test_the_split_loses_nothing() -> None:
+    """Every turn is either replayed or summarized. None is in neither."""
+    history = (user("a" * 400), assistant("b" * 400), user("c" * 40))
+
+    dropped, kept = split_history(history, budget=estimate_tokens("c" * 40) + 1)
+
+    assert dropped + kept == history
+
+
+def test_an_orphaned_answer_is_summarized_rather_than_lost() -> None:
+    """It is cut from the replay, which is not a reason to forget it."""
+    history = (user("a" * 4000), assistant("short"))
+
+    dropped, kept = split_history(history, budget=estimate_tokens("short") + 1)
+
+    assert kept == ()
+    assert dropped == history
+
+
+def test_a_summary_is_cut_to_the_room_it_was_given() -> None:
+    """A model asked to be brief is not obliged to be."""
+    long = "word " * 500
+
+    cut = truncate_to_tokens(long, budget=64)
+
+    assert len(cut) < len(long)
+    assert cut.endswith("…")
+    assert estimate_tokens(cut) <= 64
+
+
+def test_a_summary_that_already_fits_is_left_alone() -> None:
+    assert truncate_to_tokens("brief enough", budget=64) == "brief enough"

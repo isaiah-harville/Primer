@@ -112,6 +112,11 @@ inference:
     # Prompt size is estimated, not measured: no tokenizer is right for
     # every OpenAI-compatible endpoint. Lower this if it under-counts.
     charactersPerToken: 4.0
+    # Summarize the turns that no longer fit instead of dropping them, and
+    # the room reserved for that summary. Costs a model call whenever
+    # something is actually dropped, which is the reason to turn it off.
+    compactHistory: true
+    summaryTokens: 512
   embeddings:
     baseUrl: ""
     model: ""

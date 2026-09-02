@@ -179,6 +179,16 @@
               "type": "number",
               "exclusiveMinimum": 0.5,
               "maximum": 8
+            },
+            "compactHistory": {
+              "description": "Summarize the turns that no longer fit instead of dropping them.",
+              "type": "boolean"
+            },
+            "summaryTokens": {
+              "description": "Room reserved for the summary of compacted turns.",
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 4096
             }
           }
         },

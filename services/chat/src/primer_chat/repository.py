@@ -147,7 +147,9 @@ class ChatRepository:
         await self._session.refresh(message)
         return message
 
-    async def history_for(self, conversation_id: UUID, *, limit: int) -> tuple[HistoryTurn, ...]:
+    async def history_for(
+        self, conversation_id: UUID, *, limit: int, after_ordinal: int | None = None
+    ) -> tuple[HistoryTurn, ...]:
         """The recent turns of a conversation, oldest first.
 
         Only completed messages with text. A message still streaming is the
@@ -157,24 +159,44 @@ class ChatRepository:
 
         The bound is applied newest-first and the result reversed, so a long
         conversation keeps its recent turns rather than its opening ones.
+
+        `after_ordinal` is how far a summary already reaches. Messages up to
+        it are not read: they are what the summary stands in for, and
+        replaying them beside it would say everything twice.
         """
         if limit <= 0:
             return ()
+        statement = select(Message).where(
+            Message.conversation_id == conversation_id,
+            Message.state == MessageState.COMPLETED.value,
+            Message.content != "",
+        )
+        if after_ordinal is not None:
+            statement = statement.where(Message.ordinal > after_ordinal)
         result = await self._session.execute(
-            select(Message)
-            .where(
-                Message.conversation_id == conversation_id,
-                Message.state == MessageState.COMPLETED.value,
-                Message.content != "",
-            )
-            .order_by(Message.ordinal.desc())
-            .limit(limit)
+            statement.order_by(Message.ordinal.desc()).limit(limit)
         )
         recent = list(result.scalars())[::-1]
         return tuple(
-            HistoryTurn(role=MessageRole(message.role), content=message.content)
+            HistoryTurn(
+                role=MessageRole(message.role),
+                content=message.content,
+                ordinal=message.ordinal,
+            )
             for message in recent
         )
+
+    async def set_summary(
+        self, conversation: Conversation, *, summary: str, through_ordinal: int
+    ) -> None:
+        """Record what is remembered of the conversation up to a position.
+
+        Both together, always. A summary without the position it reaches
+        would be replayed alongside the very messages it replaces.
+        """
+        conversation.summary = summary
+        conversation.summary_through_ordinal = through_ordinal
+        await self._session.flush()
 
     async def messages_for(self, conversation_id: UUID) -> list[MessageSummary]:
         result = await self._session.execute(
