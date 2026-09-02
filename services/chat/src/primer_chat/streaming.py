@@ -26,17 +26,20 @@ from primer_contracts.identity import Principal
 from primer_contracts.indexing import SearchRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from primer_chat.budget import estimate_tokens, history_that_fits, passages_that_fit
+from primer_chat.budget import estimate_tokens, passages_that_fit, split_history
 from primer_chat.clients import LibraryAuthority, LibraryForbidden, PassageSource
+from primer_chat.compaction import Compactor
 from primer_chat.config import Settings
 from primer_chat.generation import ChatGenerator
 from primer_chat.models import Conversation
 from primer_chat.rag import (
     NO_CONTEXT_REPLY,
+    SUMMARY_PREAMBLE,
     SYSTEM_PROMPT,
     UNGROUNDED_SYSTEM_PROMPT,
     build_context,
     build_prompt,
+    with_summary,
 )
 from primer_chat.repository import ChatRepository, summarize_message
 
@@ -69,6 +72,7 @@ class Responder:
         self._control = control
         self._retrieval = retrieval
         self._generator = generator
+        self._compactor = Compactor(settings, generator)
 
     @property
     def _characters_per_token(self) -> float:
@@ -78,7 +82,39 @@ class Responder:
         """The model's context, less the room the answer itself needs."""
         return self._settings.context_tokens(turn.model) - self._settings.chat_reply_tokens
 
-    def _room_for_passages(self, turn: Answering, system_prompt: str) -> int:
+    def _summary_allowance(self, turn: Answering) -> int:
+        """The most a summary may cost.
+
+        Never more than a quarter of the window, however large the setting
+        is. A summary is a convenience; the passages this question is
+        answered from are the point, and a small model must not spend half
+        its context remembering a conversation it can no longer ground.
+        """
+        return min(self._settings.chat_summary_tokens, max(0, self._window(turn) // 4))
+
+    def _summary_room(self, turn: Answering, summary: str | None) -> int:
+        """Room set aside for what is remembered of the compacted turns.
+
+        A fixed reservation rather than the length of the summary that
+        happens to exist, because compaction runs inside the turn and the
+        summary it writes is longer than the one it replaces. Reserving what
+        a summary is allowed to grow to keeps the arithmetic true whether or
+        not this turn is the one that compacts.
+        """
+        if self._settings.chat_compact_history:
+            reserved = self._summary_allowance(turn)
+        elif summary:
+            # Compaction was turned off after this conversation had already
+            # been compacted. The summary is still carried - forgetting it
+            # would lose the turns it stands for - so it is still paid for.
+            reserved = estimate_tokens(summary, characters_per_token=self._characters_per_token)
+        else:
+            return 0
+        return reserved + estimate_tokens(
+            SUMMARY_PREAMBLE, characters_per_token=self._characters_per_token
+        )
+
+    def _room_for_passages(self, turn: Answering, system_prompt: str, summary_room: int) -> int:
         """What the passages may cost, before any history is considered.
 
         Measured against a prompt with no passages in it, so the question and
@@ -88,6 +124,7 @@ class Responder:
         empty = build_prompt(turn.question, build_context(()))
         return (
             self._window(turn)
+            - summary_room
             - estimate_tokens(system_prompt, characters_per_token=self._characters_per_token)
             - estimate_tokens(empty, characters_per_token=self._characters_per_token)
         )
@@ -105,8 +142,12 @@ class Responder:
         # Read before this turn's own messages are written, so the question
         # being asked is not also in the history behind it.
         history = await repository.history_for(
-            conversation.id, limit=self._settings.chat_history_messages
+            conversation.id,
+            limit=self._settings.chat_history_messages,
+            after_ordinal=conversation.summary_through_ordinal,
         )
+        summary = conversation.summary
+        summary_room = self._summary_room(turn, summary)
 
         def next_id() -> int:
             nonlocal event_id
@@ -197,7 +238,7 @@ class Responder:
             context = retrieved.head(
                 passages_that_fit(
                     retrieved,
-                    budget=self._room_for_passages(turn, system_prompt),
+                    budget=self._room_for_passages(turn, system_prompt, summary_room),
                     characters_per_token=self._settings.chat_characters_per_token,
                 )
             )
@@ -231,13 +272,36 @@ class Responder:
         # What is left of the window after this turn's own prompt. The
         # earlier turns are what gives way: the question being asked now, and
         # the passages it is answered from, are the answer's subject.
-        history = history_that_fits(
+        dropped, history = split_history(
             history,
             budget=self._window(turn)
+            - summary_room
             - estimate_tokens(system_prompt, characters_per_token=self._characters_per_token)
             - estimate_tokens(prompt, characters_per_token=self._characters_per_token),
             characters_per_token=self._characters_per_token,
         )
+
+        if dropped and self._settings.chat_compact_history:
+            # Before answering rather than after, because it is this turn
+            # that would otherwise be answered without them. It costs a model
+            # call and the user waits for it; a conversation that forgets
+            # what it was told is the more expensive of the two.
+            written = await self._compactor.compact(
+                summary,
+                dropped,
+                budget=self._summary_allowance(turn),
+                model=turn.model,
+            )
+            if written:
+                summary = written
+                await repository.set_summary(
+                    conversation, summary=summary, through_ordinal=dropped[-1].ordinal
+                )
+                await session.commit()
+
+        # Last, so everything measured above was measured against the
+        # reservation rather than against whatever the summarizer wrote.
+        system_prompt = with_summary(system_prompt, summary)
 
         text = ""
         try:

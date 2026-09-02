@@ -29,8 +29,18 @@ def user(client: AsyncClient) -> ChatUser:
 class TestASmallWindow:
     @pytest.fixture
     def settings(self) -> Settings:
-        """Small enough to force choices, large enough to answer at all."""
-        return Settings(auth_mode="oidc", chat_context_tokens=1024, chat_reply_tokens=64)
+        """Small enough to force choices, large enough to answer at all.
+
+        Compaction is off here so that what is cut is cut and stays cut.
+        These are about the order things give way in; that the dropped turns
+        are summarized before they go is `test_compaction.py`.
+        """
+        return Settings(
+            auth_mode="oidc",
+            chat_context_tokens=1024,
+            chat_reply_tokens=64,
+            chat_compact_history=False,
+        )
 
     @pytest.fixture
     def retrieval(self) -> FakeRetrieval:
@@ -133,6 +143,7 @@ class TestAModelWithItsOwnWindow:
             chat_context_tokens=1024,
             chat_reply_tokens=64,
             chat_model_context_tokens={"large-model": 200_000},
+            chat_compact_history=False,
         )
 
     @pytest.fixture
