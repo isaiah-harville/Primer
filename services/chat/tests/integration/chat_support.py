@@ -155,3 +155,6 @@ class ChatUser:
 
     async def get(self, path: str) -> Response:
         return await self._http.get(path, headers=self._headers)
+
+    async def delete(self, path: str) -> Response:
+        return await self._http.delete(path, headers=self._headers)

@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from primer_contracts.base import WireModel
 from primer_contracts.chat import (
@@ -91,6 +91,35 @@ async def list_messages(
     if conversation is None:
         raise not_found("Conversation")
     return await repository.messages_for(conversation.id)
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a conversation",
+)
+async def delete_conversation(
+    conversation_id: UUID, principal: CurrentPrincipal, session: Session
+) -> Response:
+    """Remove a conversation and everything written in it.
+
+    Really removed, not hidden. A conversation is what someone asked and what
+    they were told, and a user who deletes one is usually deleting it for a
+    reason rather than tidying a list. The messages and their citations go
+    with it, by the cascade the schema already declares.
+
+    Ownership is in the query, so another user's conversation is not found
+    rather than forbidden: whether it exists is not this caller's business.
+    """
+    repository = ChatRepository(session)
+    conversation = await repository.get_conversation(
+        conversation_id, owner_user_id=principal.user_id
+    )
+    if conversation is None:
+        raise not_found("Conversation")
+    await repository.delete_conversation(conversation)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/models", summary="Models this deployment offers")

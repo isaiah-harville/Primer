@@ -86,7 +86,8 @@ export interface MessageSummary {
 
 export interface ConversationSummary {
 	id: string;
-	library_id: string;
+	/** Null for a conversation answered by the model alone, with no library. */
+	library_id: string | null;
 	owner_user_id: string;
 	title: string;
 	created_at: string;
