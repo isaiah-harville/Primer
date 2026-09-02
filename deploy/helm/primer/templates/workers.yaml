@@ -23,8 +23,17 @@ spec:
   # refuses the second attachment and the rollout hangs until the old pod is
   # gone, which a RollingUpdate will not do first. Recreate accepts the gap
   # in availability a single parse replica already has.
+  #
+  # rollingUpdate explicitly nulled, not omitted: the API server had already
+  # defaulted it onto the live object from every prior release's implicit
+  # RollingUpdate, and helm-controller applies through server-side apply -
+  # a manifest that is merely silent about the field leaves that stale value
+  # in place, and Recreate with a non-empty rollingUpdate is rejected
+  # outright ("may not be specified when strategy type is 'Recreate'"). Null
+  # is what tells SSA to clear a field an earlier apply owned.
   strategy:
     type: Recreate
+    rollingUpdate: null
   {{- end }}
   selector:
     matchLabels:
