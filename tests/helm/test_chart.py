@@ -366,6 +366,9 @@ def test_the_context_window_is_configurable_without_a_fork(
     assert env["PRIMER_CHAT_CONTEXT_TOKENS"] == "8192"
     assert env["PRIMER_CHAT_REPLY_TOKENS"] == "1024"
     assert env["PRIMER_CHAT_HISTORY_MESSAGES"] == "20"
+    # A conversation that outgrows the window is summarized rather than
+    # forgotten, and an operator has to be able to say otherwise.
+    assert env["PRIMER_CHAT_COMPACT_HISTORY"] == "true"
     # Nothing named, nothing claimed: an empty map would be a JSON literal
     # the service has to parse for no reason.
     assert "PRIMER_CHAT_MODELS" not in env

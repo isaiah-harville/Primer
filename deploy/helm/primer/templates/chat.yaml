@@ -55,6 +55,10 @@ spec:
               value: {{ .Values.inference.chat.replyTokens | quote }}
             - name: PRIMER_CHAT_CHARACTERS_PER_TOKEN
               value: {{ .Values.inference.chat.charactersPerToken | quote }}
+            - name: PRIMER_CHAT_COMPACT_HISTORY
+              value: {{ .Values.inference.chat.compactHistory | quote }}
+            - name: PRIMER_CHAT_SUMMARY_TOKENS
+              value: {{ .Values.inference.chat.summaryTokens | quote }}
             {{- with .Values.inference.chat.modelContextTokens }}
             - name: PRIMER_CHAT_MODEL_CONTEXT_TOKENS
               value: {{ toJson . | quote }}
