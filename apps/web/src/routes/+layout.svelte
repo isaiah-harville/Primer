@@ -37,6 +37,7 @@
 		<Sidebar
 			libraries={data.libraries}
 			capabilities={data.capabilities}
+			principal={data.principal}
 			onsearch={() => (searchOpen = true)}
 		/>
 	</aside>
@@ -50,6 +51,7 @@
 			<Sidebar
 				libraries={data.libraries}
 				capabilities={data.capabilities}
+				principal={data.principal}
 				bindShortcut={false}
 				onsearch={() => {
 					drawerOpen = false;

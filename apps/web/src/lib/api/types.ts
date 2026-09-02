@@ -24,6 +24,7 @@ export type IngestionStatus = ControlSchemas['IngestionStatus'];
 export type LibrarySummary = ControlSchemas['LibrarySummary'];
 export type DocumentSummary = ControlSchemas['DocumentSummary'];
 export type DeploymentCapabilities = ControlSchemas['DeploymentCapabilities'];
+export type Principal = ControlSchemas['Principal'];
 
 export type SourceLocator = ChatSchemas['SourceLocator'];
 export type Citation = ChatSchemas['Citation'];

@@ -167,6 +167,9 @@ chat:
 
 web:
   replicas: 2
+  # Above Control's max_upload_bytes (100MB default), so a legitimate upload
+  # never gets rejected by the web server before Control gets to validate it.
+  bodySizeLimit: 110M
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }

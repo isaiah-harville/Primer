@@ -2,13 +2,16 @@
 	import { page } from '$app/state';
 	import { Library, MessageSquare, Search } from '@lucide/svelte';
 	import { Shortcut } from '@sivir-ui/svelte';
-	import type { DeploymentCapabilities, LibrarySummary } from '$lib/api/types';
+	import type { DeploymentCapabilities, LibrarySummary, Principal } from '$lib/api/types';
 	import AuthModeWarning from '$lib/components/AuthModeWarning.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
 	interface Props {
 		libraries: LibrarySummary[];
 		capabilities: DeploymentCapabilities;
+		//: Null only when Control could not be reached for it; the frame still
+		//: renders rather than losing navigation over a missing name.
+		principal: Principal | null;
 		onsearch?: () => void;
 		/** Called after any navigation, so the mobile drawer can close itself. */
 		onnavigate?: () => void;
@@ -24,10 +27,16 @@
 	let {
 		libraries,
 		capabilities,
+		principal,
 		onsearch,
 		onnavigate,
 		bindShortcut = true
 	}: Props = $props();
+
+	// A name over an email over the bare subject: the display name is what a
+	// person picked to be called, the email is at least recognizable, and the
+	// subject is a last resort that still says something rather than nothing.
+	let identity = $derived(principal?.display_name || principal?.email || principal?.subject);
 
 	let sections = $derived(
 		[
@@ -134,6 +143,15 @@
 
 	<div class="flex flex-col gap-2 border-t border-border px-1 pt-3">
 		<AuthModeWarning authEnabled={capabilities.auth_enabled} />
+
+		{#if identity}
+			<!--
+			  Who "Signed in" below actually refers to. Without it the badge
+			  says a session exists but never who is in it - the one thing a
+			  shared deployment most needs to show.
+			-->
+			<p class="truncate px-1.5 text-sm text-foreground" title={identity}>{identity}</p>
+		{/if}
 
 		<div class="flex items-center justify-between">
 			<span
