@@ -38,6 +38,13 @@ spec:
             # PKCE, because a public redirect and a leaked authorization code
             # are otherwise enough to complete someone else's sign-in.
             - --code-challenge-method=S256
+            # Authentik's managed email scope mapping hardcodes
+            # email_verified: false unconditionally - it doesn't track
+            # per-user email verification at all, so this is true of every
+            # account on every login, not a signal about this one. Without
+            # this flag oauth2-proxy refuses the callback outright:
+            # "email in id_token isn't verified", a 500 on every sign-in.
+            - --insecure-oidc-allow-unverified-email=true
             - --cookie-secure=true
             - --cookie-httponly=true
             - --cookie-samesite=lax

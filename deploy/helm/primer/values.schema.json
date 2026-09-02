@@ -260,10 +260,40 @@
       "type": "object",
       "properties": {
         "parse": {
-          "type": "object"
+          "type": "object",
+          "required": [
+            "concurrency"
+          ],
+          "properties": {
+            "replicas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "concurrency": {
+              "description": "Processes per pod. Absent, Celery sizes its pool from the node's CPU count, which is not what the memory limit was set for.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            }
+          }
         },
         "index": {
-          "type": "object"
+          "type": "object",
+          "required": [
+            "concurrency"
+          ],
+          "properties": {
+            "replicas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "concurrency": {
+              "description": "Processes per pod. Absent, Celery sizes its pool from the node's CPU count, which is not what the memory limit was set for.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            }
+          }
         }
       }
     },

@@ -43,6 +43,13 @@ spec:
             - worker
             - --loglevel
             - info
+            # Stated, never inferred. Celery sizes its prefork pool from the
+            # node's CPU count when this is absent, so a worker landing on a
+            # large node forks a dozen children against a limit set for a
+            # couple - and is killed on startup, before doing any work, for
+            # a reason that has nothing to do with the work.
+            - --concurrency
+            - {{ required (printf "workers.%s.concurrency is required" $name) $worker.concurrency | quote }}
             - -Q
             {{- if eq $name "parse" }}
             - ingestion.parse

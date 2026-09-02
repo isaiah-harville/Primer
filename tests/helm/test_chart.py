@@ -552,6 +552,38 @@ def test_a_cluster_that_manages_its_own_accounts_can_say_so() -> None:
         assert pod["automountServiceAccountToken"] is False, name
 
 
+def test_every_worker_is_told_how_many_processes_to_run(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """Celery sizes its prefork pool from the node otherwise.
+
+    A worker scheduled onto a large node forks a child per CPU against a
+    memory limit set for a couple of them, and is killed on startup - before
+    doing any work, for a reason that has nothing to do with the work. The
+    number belongs to the container, so the container has to state it.
+    """
+    workers = {
+        name: workload for name, workload in workloads(manifests).items() if "-worker-" in name
+    }
+    assert workers, "no workers were rendered"
+
+    for name, workload in workers.items():
+        command = containers(workload)[0]["command"]
+        assert "--concurrency" in command, name
+        # A number, not an empty string: `--concurrency ""` is how a
+        # required value that was set to nothing would reach Celery.
+        assert int(command[command.index("--concurrency") + 1]) >= 1, name
+
+
+def test_the_parse_worker_runs_one_document_at_a_time(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """It holds a whole document and Docling's models; two is two of both."""
+    command = containers(named(manifests, "Deployment", "-worker-parse"))[0]["command"]
+
+    assert command[command.index("--concurrency") + 1] == "1"
+
+
 # --- Staying up ---------------------------------------------------------
 
 
