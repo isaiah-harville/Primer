@@ -42,6 +42,9 @@
 	let sourcesOpen = $state(false);
 	let sourcesFor = $state<StreamState | null>(null);
 
+	// The library is fixed when the conversation opens: follow-up questions
+	// carry only the conversation, so changing it now would change nothing.
+	let started = $derived(conversationId !== null);
 	let dragging = $state(false);
 	let linkedName = $derived(data.libraries.find((library) => library.id === libraryId)?.name);
 	let uploading = $state<string[]>([]);
@@ -53,6 +56,14 @@
 
 	async function accept(files: File[]) {
 		uploadError = '';
+		// A file dropped here would land in a library this conversation
+		// cannot be asked about, and the upload would look like it worked.
+		if (started && !libraryId) {
+			uploadError =
+				'This conversation was started without a library. Start a new chat to ask about a file.';
+			announcement = uploadError;
+			return;
+		}
 		for (const file of files) {
 			const rejection = rejectionFor(file, data.capabilities);
 			if (rejection) {
@@ -145,11 +156,16 @@
 		}
 	}
 
+	// The library and the model are kept: starting over is usually asking
+	// something else about the same documents, not changing what is at hand.
 	function startOver() {
 		turns = [];
 		conversationId = null;
 		question = '';
 		sourcesFor = null;
+		sourcesOpen = false;
+		uploadError = '';
+		announcement = 'Started a new chat.';
 	}
 
 	function completed(stream: StreamState): MessageSummary | null {
@@ -176,7 +192,17 @@
   end.
 -->
 <div class="flex h-full flex-col">
-	<h1 class="shrink-0 text-xl font-semibold tracking-[-0.02em]">Chat</h1>
+	<div class="flex shrink-0 items-center justify-between gap-4">
+		<h1 class="text-xl font-semibold tracking-[-0.02em]">Chat</h1>
+		<!--
+		  The way back to a blank page, and the only way to change the library
+		  a conversation is answered from. Absent until there is something to
+		  leave behind.
+		-->
+		{#if turns.length > 0}
+			<Button size="sm" variant="ghost" onclick={startOver} disabled={streaming}>New chat</Button>
+		{/if}
+	</div>
 
 <!--
   Constrained here rather than in the frame. Answers are prose, and prose set
@@ -301,7 +327,7 @@
 	-->
 	<div class="mt-2 flex flex-wrap items-center justify-between gap-3">
 		<div class="flex flex-wrap items-center gap-2">
-			<LibraryLink libraries={data.libraries} bind:value={libraryId} />
+			<LibraryLink libraries={data.libraries} bind:value={libraryId} locked={started} />
 			<ModelPicker models={data.models} bind:value={model} />
 			{#each uploading as name (name)}
 				<span class="flex items-center gap-2 text-xs text-muted-foreground">

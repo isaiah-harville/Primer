@@ -7,9 +7,14 @@
 		libraries: LibrarySummary[];
 		/** Empty means no library: the model answers on its own. */
 		value?: string;
+		/**
+		 * A conversation is under way. Its library was fixed when it opened,
+		 * so the choice is shown rather than offered.
+		 */
+		locked?: boolean;
 	}
 
-	let { libraries, value = $bindable('') }: Props = $props();
+	let { libraries, value = $bindable(''), locked = false }: Props = $props();
 
 	let linked = $derived(libraries.find((library) => library.id === value));
 </script>
@@ -23,6 +28,29 @@
   An answer with no library is a different kind of answer, and the moment to
   notice that is before asking rather than after reading one.
 -->
+{#if locked}
+	<!--
+	  Shown, not offered. The library is part of the conversation the server
+	  opened, and every question after the first is answered against it; a
+	  picker that changed nothing would be worse than none. Start a new chat
+	  to ask a different library.
+	-->
+	<span
+		class="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm
+			{linked ? 'text-muted-foreground' : 'text-error'}"
+		title={linked
+			? `This conversation is answered from ${linked.name}. Start a new chat to change it.`
+			: 'This conversation is answered by the model alone. Start a new chat to link a library.'}
+	>
+		{#if linked}
+			<Library size={14} aria-hidden="true" />
+			<span class="max-w-[16rem] truncate">{linked.name}</span>
+		{:else}
+			<Link2Off size={14} aria-hidden="true" />
+			<span>No library linked</span>
+		{/if}
+	</span>
+{:else}
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
 		variant="ghost"
@@ -73,3 +101,4 @@
 		{/if}
 	</DropdownMenu.Content>
 </DropdownMenu.Root>
+{/if}
