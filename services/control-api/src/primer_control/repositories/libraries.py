@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from primer_control.models import Library
+from primer_control.models import Document, DocumentVersion, Library
 
 
 class LibraryRepository:
@@ -37,6 +38,37 @@ class LibraryRepository:
             .order_by(Library.created_at, Library.id)
         )
         return list(result.scalars())
+
+    async def document_counts(self, library_ids: Sequence[UUID]) -> dict[UUID, int]:
+        """How many documents each library holds, as a user would count them.
+
+        Counted here rather than derived from a stored column, because a
+        cached count is a second source of truth that drifts the first time
+        an upload is rolled back or a delete is retried.
+
+        The definition has to match what listing a library returns, or the
+        two disagree and one of them looks like data loss: live documents
+        only, and only those with a version behind them. A document with no
+        version was interrupted mid-upload and has nothing anyone could
+        read, so it is not listed and must not be counted either.
+        """
+        if not library_ids:
+            return {}
+        has_version = exists().where(DocumentVersion.document_id == Document.id)
+        result = await self._session.execute(
+            select(Document.library_id, func.count().label("documents"))
+            .where(
+                Document.library_id.in_(library_ids),
+                Document.deleted_at.is_(None),
+                has_version,
+            )
+            .group_by(Document.library_id)
+        )
+        counted: dict[UUID, int] = {row.library_id: row.documents for row in result.all()}
+        # Every library asked about gets an answer: a library with no
+        # documents is absent from the grouped result, and leaving it out
+        # would make the caller guess between "none" and "not counted".
+        return {library_id: counted.get(library_id, 0) for library_id in library_ids}
 
     async def rename(self, library: Library, name: str) -> Library:
         library.name = name
