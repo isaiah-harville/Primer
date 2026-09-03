@@ -39,8 +39,10 @@ COPY packages/ packages/
 COPY services/ingestion/ services/ingestion/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --package primer-ingestion \
-    && mkdir -p /var/cache/primer/huggingface \
-    && chown -R 10001:10001 /app /var/cache/primer
+    && mkdir -p /var/cache/primer/huggingface
+
+RUN python -c "from rapidocr import RapidOCR; RapidOCR()"
+RUN chown -R 10001:10001 /app /var/cache/primer
 
 USER 10001:10001
 CMD ["celery", "-A", "primer_ingestion.worker", "worker", "--loglevel", "info"]

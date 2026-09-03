@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "celery",
     "docling",
+    "onnxruntime",
     "httpx2",
     "primer-contracts",
     "primer-observability",
