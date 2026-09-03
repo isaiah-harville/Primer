@@ -228,8 +228,26 @@ export interface components {
             /** Id */
             id: string;
         };
-        /** ChatModelList */
+        /**
+         * ChatModelList
+         * @description What this deployment can answer with, and whether it could be asked.
+         *
+         *     An empty list with `endpoint_reachable` false is not the same fact as an
+         *     empty list with it true, and the difference is the whole point of the
+         *     field. Primer used to answer an unreachable endpoint with its configured
+         *     default name, which put a model in the picker that nothing was serving:
+         *     the interface offered a choice that did not exist and the failure only
+         *     surfaced when someone asked a question and waited for an answer that was
+         *     never coming.
+         */
         ChatModelList: {
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Endpoint Reachable
+             * @default true
+             */
+            endpoint_reachable: boolean;
             /**
              * Models
              * @default []
@@ -365,6 +383,8 @@ export interface components {
             id: string;
             /** Provider Model */
             provider_model?: string | null;
+            /** Reasoning */
+            reasoning?: string | null;
             role: components["schemas"]["MessageRole"];
             state: components["schemas"]["MessageState"];
         };

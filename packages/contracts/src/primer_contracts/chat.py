@@ -64,7 +64,23 @@ class ChatModel(WireModel):
 
 
 class ChatModelList(WireModel):
+    """What this deployment can answer with, and whether it could be asked.
+
+    An empty list with `endpoint_reachable` false is not the same fact as an
+    empty list with it true, and the difference is the whole point of the
+    field. Primer used to answer an unreachable endpoint with its configured
+    default name, which put a model in the picker that nothing was serving:
+    the interface offered a choice that did not exist and the failure only
+    surfaced when someone asked a question and waited for an answer that was
+    never coming.
+    """
+
     models: tuple[ChatModel, ...] = ()
+    #: Whether the inference endpoint answered. False means nothing here can
+    #: be asked, and the interface must say so rather than offer a model.
+    endpoint_reachable: bool = True
+    #: What went wrong, for an operator reading it. Never a stack trace.
+    detail: str | None = Field(default=None, max_length=500)
 
 
 class MessageRole(StrEnum):

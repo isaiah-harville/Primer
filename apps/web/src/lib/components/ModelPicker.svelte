@@ -1,19 +1,23 @@
 <script lang="ts">
-	import { Cpu } from '@lucide/svelte';
+	import { Cpu, TriangleAlert } from '@lucide/svelte';
 	import { DropdownMenu } from '@sivir-ui/svelte';
 
 	interface Props {
 		models: { id: string; default: boolean }[];
 		/** Empty means the deployment's default. */
 		value?: string;
-		//: True when Chat could not be reached for the list, as opposed to a
-		//: deployment that was reached and genuinely offers only one model.
-		//: The two look identical in `models` alone - both empty or
-		//: single-entry - so the caller has to say which one this is.
-		unavailable?: boolean;
+		/**
+		 * Why there is no model, when there is none. Null when all is well.
+		 *
+		 * Carried as a sentence rather than a flag because the causes need
+		 * different fixes: an inference endpoint that is down, one that is up
+		 * with nothing loaded, and a Chat service that cannot be reached at
+		 * all are three different jobs for whoever runs this.
+		 */
+		problem?: string | null;
 	}
 
-	let { models, value = $bindable(''), unavailable = false }: Props = $props();
+	let { models, value = $bindable(''), problem = null }: Props = $props();
 
 	let chosen = $derived(models.find((model) => model.id === value));
 	let fallback = $derived(models.find((model) => model.default) ?? models[0]);
@@ -32,20 +36,27 @@
   never named the thing writing the answers. Which model wrote an answer is a
   fact about the answer, not a preference, and it belongs on screen whether
   or not it can be changed.
-
-  With one model it is plain text rather than a dead menu, so nothing invites
-  a click that leads nowhere.
 -->
-{#if choosable}
+{#if shown === undefined}
+	<!--
+	  No model, and the reason. Not a picker in an error colour: there is
+	  nothing to pick, and a control implies otherwise. This used to show the
+	  configured default name, which meant an endpoint that was down looked
+	  exactly like one that was up.
+	-->
+	<span
+		class="flex items-center gap-2 px-1 py-1.5 text-sm text-error"
+		title={problem ?? 'No model is available.'}
+	>
+		<TriangleAlert size={14} aria-hidden="true" />
+		<span class="max-w-[22rem] truncate">No model available</span>
+	</span>
+{:else if choosable}
 	<DropdownMenu.Root>
-		<DropdownMenu.Trigger
-			variant="ghost"
-			size="sm"
-			class={unavailable ? 'text-error' : 'text-muted-foreground'}
-		>
+		<DropdownMenu.Trigger variant="ghost" size="sm" class="text-muted-foreground">
 			<Cpu size={14} aria-hidden="true" />
-			<span class="max-w-[16rem] truncate font-mono text-xs" title={shown?.id}>
-				{shown?.id}
+			<span class="max-w-[16rem] truncate font-mono text-xs" title={shown.id}>
+				{shown.id}
 			</span>
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Content>
@@ -64,22 +75,15 @@
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
 {:else}
+	<!--
+	  One model: plain text rather than a dead menu, so nothing invites a
+	  click that leads nowhere.
+	-->
 	<span
-		class="flex items-center gap-2 px-1 py-1.5 text-sm
-			{unavailable ? 'text-error' : 'text-muted-foreground'}"
-		title={unavailable
-			? 'The model list could not be fetched. Questions are still answered by this deployment’s default model.'
-			: `Answered by ${shown?.id}. This deployment serves one model.`}
+		class="flex items-center gap-2 px-1 py-1.5 text-sm text-muted-foreground"
+		title="Answered by {shown.id}. This deployment serves one model."
 	>
 		<Cpu size={14} aria-hidden="true" />
-		<!--
-		  Named where a name is known. Unreachable and unnamed are different
-		  states and are worded differently: one is a deployment offering its
-		  single model, the other is Chat not answering, and a person watching
-		  a slow answer needs to be able to tell which they are looking at.
-		-->
-		<span class="max-w-[16rem] truncate font-mono text-xs">
-			{shown?.id ?? (unavailable ? 'Model list unavailable' : 'Default model')}
-		</span>
+		<span class="max-w-[16rem] truncate font-mono text-xs">{shown.id}</span>
 	</span>
 {/if}

@@ -135,21 +135,24 @@ async def list_models(request: Request) -> ChatModelList:
     match.
     """
     settings: Settings = request.app.state.settings
-    names = await _discover_models(settings)
-    return ChatModelList(
-        models=tuple(ChatModel(id=name, default=name == settings.chat_model) for name in names)
-    )
+    return await _discover_models(settings)
 
 
-async def _discover_models(settings: Settings) -> tuple[str, ...]:
+async def _discover_models(settings: Settings) -> ChatModelList:
     """Ask the chat endpoint what it serves, the configured default first.
 
-    Falls back to just the configured default on any failure - unreachable,
-    refused, unparsable - because a model picker that cannot be built is a
-    reason to hide it, not a reason the rest of the page should fail to load.
+    An endpoint that cannot be reached is reported as exactly that, with no
+    models. Naming the configured default here instead - which is what this
+    used to do - offered a model that nothing was serving: the picker showed
+    a choice that did not exist, and the deployment only looked broken later,
+    to whoever asked a question and waited for an answer that never came.
     """
     if not settings.chat_base_url:
-        return (settings.chat_model,)
+        return ChatModelList(
+            models=(),
+            endpoint_reachable=False,
+            detail="No chat endpoint is configured for this deployment.",
+        )
     try:
         async with httpx2.AsyncClient(timeout=10.0) as client:
             response = await client.get(
@@ -171,21 +174,44 @@ async def _discover_models(settings: Settings) -> tuple[str, ...]:
         # trace per page load buries the deployment's real errors in noise
         # that says nothing the first line did not.
         logger.warning(
-            "could not reach the chat endpoint at %s to list models (%s); "
-            "offering the configured default only",
+            "could not reach the chat endpoint at %s to list models (%s)",
             settings.chat_base_url,
             type(error).__name__,
         )
-        served = []
+        return ChatModelList(
+            models=(),
+            endpoint_reachable=False,
+            detail=f"The chat endpoint at {settings.chat_base_url} could not be reached.",
+        )
     except Exception:
         # Anything else - a refusal, a body that is not what it should be -
         # is a surprise, and a surprise is worth the trace.
         logger.warning("could not list models from %s", settings.chat_base_url, exc_info=True)
-        served = []
+        return ChatModelList(
+            models=(),
+            endpoint_reachable=False,
+            detail=f"The chat endpoint at {settings.chat_base_url} did not answer usefully.",
+        )
+
+    # Reached, and serving nothing. Rare, and worth distinguishing from
+    # unreachable: the endpoint is up and has no model loaded.
     if not served:
-        return (settings.chat_model,)
-    ordered = [settings.chat_model, *served]
-    return tuple(dict.fromkeys(ordered))
+        return ChatModelList(
+            models=(),
+            endpoint_reachable=True,
+            detail="The chat endpoint is reachable but is serving no models.",
+        )
+
+    # The configured default first, and only if the endpoint actually serves
+    # it. A default naming a model that was removed is the same lie in a
+    # smaller place.
+    ordered = dict.fromkeys(
+        [settings.chat_model, *served] if settings.chat_model in served else served
+    )
+    default = settings.chat_model if settings.chat_model in served else next(iter(ordered))
+    return ChatModelList(
+        models=tuple(ChatModel(id=name, default=name == default) for name in ordered)
+    )
 
 
 @router.post(

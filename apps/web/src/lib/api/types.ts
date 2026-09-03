@@ -31,6 +31,7 @@ export type Citation = ChatSchemas['Citation'];
 export type MessageSummary = ChatSchemas['MessageSummary'];
 export type ConversationSummary = ChatSchemas['ConversationSummary'];
 export type ChatModel = ChatSchemas['ChatModel'];
+export type ChatModelList = ChatSchemas['ChatModelList'];
 
 /** States where nothing further will happen without the user acting. */
 export const TERMINAL_STATUSES: readonly IngestionStatus[] = [

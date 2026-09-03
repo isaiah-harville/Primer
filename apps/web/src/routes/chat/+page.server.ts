@@ -1,6 +1,26 @@
-import type { ConversationSummary, MessageSummary } from '$lib/api/types';
+import type { ChatModelList, ConversationSummary, MessageSummary } from '$lib/api/types';
 import { chatFor } from '$lib/server/chat';
 import type { PageServerLoad } from './$types';
+
+/**
+ * Why nothing can answer a question, or null when something can.
+ *
+ * Keyed on there being no models rather than on reachability, so this can
+ * never disagree with the composer, which is enabled by the same fact. An
+ * endpoint that is unreachable but somehow still listed a model is a working
+ * deployment, and warning about it would be crying wolf.
+ *
+ * `endpoint_reachable` is read as true when absent. It is a newer field than
+ * the rest of this response, and a web app rolled ahead of its Chat would
+ * otherwise put a red banner across a deployment with nothing wrong with it.
+ */
+function whyUnanswerable(body: ChatModelList): string | null {
+	if ((body.models ?? []).length > 0) return null;
+	if (body.detail) return body.detail;
+	return body.endpoint_reachable === false
+		? 'The chat endpoint could not be reached.'
+		: 'This deployment is serving no models.';
+}
 
 /** Matched before an id is put in a path, so nothing else can be. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,11 +34,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * kind of thing a URL is for.
  *
  * A failure here is not a failure of the page: an empty list means no
- * history rather than a chat screen that will not load, and asking a new
- * question is the one thing this screen must always offer. Losing the model
- * list specifically is still worth saying out loud - `modelsUnavailable`
- * lets the page toast it - because an empty list here otherwise looks
- * exactly like a deployment that only offers its one default model.
+ * history rather than a chat screen that will not load.
+ *
+ * Having no model to answer with is different, and is not smoothed over.
+ * `modelsProblem` carries the reason - Chat itself unreachable, or Chat
+ * reachable and the inference endpoint behind it not - so the screen can say
+ * which. Offering a model that nothing is serving would be worse than
+ * offering none: it reads as a working deployment right up until someone
+ * asks a question.
  *
  * What is not swallowed is why a named conversation did not open. A thread
  * that silently appears blank looks like a thread that lost its messages, so
@@ -35,11 +58,14 @@ export const load: PageServerLoad = async ({ request, fetch, url, parent }) => {
 	const [modelsResult, { conversations }] = await Promise.all([
 		chat
 			.models()
-			.then((body) => ({ models: body.models ?? [], unavailable: false }))
-			.catch(() => ({ models: [] as { id: string; default: boolean }[], unavailable: true })),
+			.then((body) => ({ models: body.models ?? [], problem: whyUnanswerable(body) }))
+			.catch(() => ({
+				models: [] as ChatModelList['models'],
+				problem: 'The chat service could not be reached, so no model can answer.',
+			})),
 		parent(),
 	]);
-	const { models, unavailable: modelsUnavailable } = modelsResult;
+	const { models, problem: modelsProblem } = modelsResult;
 
 	let opened: { conversation: ConversationSummary; messages: MessageSummary[] } | null = null;
 	//: Why the conversation in the URL is not the one on screen: `missing` for
@@ -58,5 +84,5 @@ export const load: PageServerLoad = async ({ request, fetch, url, parent }) => {
 		}
 	}
 
-	return { models, modelsUnavailable, opened, unopened };
+	return { models, modelsProblem, opened, unopened };
 };

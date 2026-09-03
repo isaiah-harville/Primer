@@ -1,5 +1,5 @@
 import { ApiError } from './client';
-import type { ConversationSummary, MessageSummary, ProblemDetail } from './types';
+import type { ChatModelList, ConversationSummary, MessageSummary, ProblemDetail } from './types';
 
 /**
  * Talking to Chat.
@@ -47,7 +47,15 @@ export class ChatApi {
 		return (await response.json()) as T;
 	}
 
-	models(): Promise<{ models: { id: string; default: boolean }[] }> {
+	/**
+	 * What can answer a question, and whether anything can.
+	 *
+	 * The reachability of the inference endpoint travels with the list
+	 * rather than being inferred from its emptiness: those are different
+	 * facts with different fixes, and a caller that guessed would tell an
+	 * operator to restart the wrong thing.
+	 */
+	models(): Promise<ChatModelList> {
 		return this.request('/api/v1/models');
 	}
 
