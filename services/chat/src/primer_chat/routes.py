@@ -7,24 +7,26 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-import httpx2
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from primer_contracts.base import WireModel
 from primer_contracts.chat import (
-    ChatModel,
     ChatModelList,
     ConversationSummary,
     Message,
     MessageSummary,
 )
+from primer_contracts.errors import ErrorCode
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.config import Settings
 from primer_chat.db import get_session
-from primer_chat.errors import not_found
+from primer_chat.errors import ProblemError, not_found
+from primer_chat.generation import Endpoint
 from primer_chat.identity import CurrentPrincipal
+from primer_chat.model_catalog import catalog
+from primer_chat.providers_store import ProviderStore
 from primer_chat.repository import ChatRepository, summarize_conversation
 from primer_chat.sse import encode
 from primer_chat.streaming import Answering, Responder
@@ -132,91 +134,47 @@ async def delete_conversation(
 
 
 @router.get("/models", summary="Models this deployment offers")
-async def list_models(request: Request) -> ChatModelList:
-    """What a user may choose between: everything the chat endpoint serves.
+async def list_models(request: Request, session: Session) -> ChatModelList:
+    """Everything every configured provider serves, each tagged with its own.
 
-    Asked live rather than kept as a list of Primer's own, so a model added
-    or removed on the endpoint shows up here without redeploying Primer to
-    match.
+    A deployment may hold several providers at once, and model names are not
+    unique across them, so a model is only fully named by the pair. Each is
+    asked in parallel and allowed to fail alone: a hosted API plus a machine
+    at home that is asleep still answers, with the sleeping one named rather
+    than silently dropped.
     """
     settings: Settings = request.app.state.settings
-    return await _discover_models(settings)
+    store = ProviderStore(session, settings, request.app.state.secret_box)
+    return await catalog(await store.enabled(), preferred_model=settings.chat_model)
 
 
-async def _discover_models(settings: Settings) -> ChatModelList:
-    """Ask the chat endpoint what it serves, the configured default first.
+async def endpoint_for(
+    request: Request, session: AsyncSession, provider_id: UUID | None
+) -> Endpoint | None:
+    """Where to send this question.
 
-    An endpoint that cannot be reached is reported as exactly that, with no
-    models. Naming the configured default here instead - which is what this
-    used to do - offered a model that nothing was serving: the picker showed
-    a choice that did not exist, and the deployment only looked broken later,
-    to whoever asked a question and waited for an answer that never came.
+    None when the request named no provider, which falls back to the endpoint
+    configured for the deployment - what every request did before a
+    deployment could hold more than one.
+
+    An id that names nothing is refused rather than quietly answered by the
+    default. The caller picked from a list Primer gave it, so a name that is
+    not in it means the list has changed underneath them, and answering from
+    somewhere else would attribute one provider's answer to another.
     """
-    if not settings.chat_base_url:
-        return ChatModelList(
-            models=(),
-            endpoint_reachable=False,
-            detail="No chat endpoint is configured for this deployment.",
+    if provider_id is None:
+        return None
+    settings: Settings = request.app.state.settings
+    store = ProviderStore(session, settings, request.app.state.secret_box)
+    provider = await store.find(provider_id)
+    if provider is None or not provider.enabled:
+        raise ProblemError(
+            code=ErrorCode.NOT_FOUND,
+            title="Provider not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="That provider is not available on this deployment.",
         )
-    try:
-        async with httpx2.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{settings.chat_base_url.rstrip('/')}/models",
-                headers={
-                    "Authorization": "Bearer "
-                    + (
-                        settings.chat_api_key.get_secret_value()
-                        if settings.chat_api_key
-                        else "none"
-                    )
-                },
-            )
-        response.raise_for_status()
-        served = [entry["id"] for entry in response.json().get("data", []) if entry.get("id")]
-    except httpx2.RequestError as error:
-        # An endpoint that is not there is an operational fact, not a bug in
-        # Primer, and this runs on every load of the chat screen. A stack
-        # trace per page load buries the deployment's real errors in noise
-        # that says nothing the first line did not.
-        logger.warning(
-            "could not reach the chat endpoint at %s to list models (%s)",
-            settings.chat_base_url,
-            type(error).__name__,
-        )
-        return ChatModelList(
-            models=(),
-            endpoint_reachable=False,
-            detail=f"The chat endpoint at {settings.chat_base_url} could not be reached.",
-        )
-    except Exception:
-        # Anything else - a refusal, a body that is not what it should be -
-        # is a surprise, and a surprise is worth the trace.
-        logger.warning("could not list models from %s", settings.chat_base_url, exc_info=True)
-        return ChatModelList(
-            models=(),
-            endpoint_reachable=False,
-            detail=f"The chat endpoint at {settings.chat_base_url} did not answer usefully.",
-        )
-
-    # Reached, and serving nothing. Rare, and worth distinguishing from
-    # unreachable: the endpoint is up and has no model loaded.
-    if not served:
-        return ChatModelList(
-            models=(),
-            endpoint_reachable=True,
-            detail="The chat endpoint is reachable but is serving no models.",
-        )
-
-    # The configured default first, and only if the endpoint actually serves
-    # it. A default naming a model that was removed is the same lie in a
-    # smaller place.
-    ordered = dict.fromkeys(
-        [settings.chat_model, *served] if settings.chat_model in served else served
-    )
-    default = settings.chat_model if settings.chat_model in served else next(iter(ordered))
-    return ChatModelList(
-        models=tuple(ChatModel(id=name, default=name == default) for name in ordered)
-    )
+    return Endpoint(base_url=provider.base_url, api_key=provider.api_key)
 
 
 @router.post(
@@ -240,6 +198,7 @@ async def ask(
     exactly one place to handle failures.
     """
     model = request.app.state.settings.resolve_model(payload.model)
+    endpoint = await endpoint_for(request, session, payload.provider_id)
     conversation = await ChatRepository(session).create_conversation(
         library_id=payload.library_id,
         owner_user_id=principal.user_id,
@@ -250,6 +209,7 @@ async def ask(
         conversation=conversation,
         question=payload.message,
         model=model,
+        endpoint=endpoint,
     )
     return stream_response(responder, session, turn)
 
@@ -283,6 +243,7 @@ async def follow_up(
         conversation=conversation,
         question=payload.message,
         model=request.app.state.settings.resolve_model(payload.model),
+        endpoint=await endpoint_for(request, session, payload.provider_id),
     )
     return stream_response(responder, session, turn)
 

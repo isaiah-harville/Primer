@@ -34,6 +34,18 @@
               }
             ],
             "title": "Model"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
           }
         },
         "required": [
@@ -56,6 +68,30 @@
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "provider_name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Name"
           }
         },
         "required": [
@@ -91,6 +127,14 @@
               "$ref": "#/components/schemas/ChatModel"
             },
             "title": "Models",
+            "type": "array"
+          },
+          "unreachable": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Unreachable",
             "type": "array"
           }
         },
@@ -219,6 +263,18 @@
               }
             ],
             "title": "Model"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
           }
         },
         "required": [
@@ -341,6 +397,203 @@
           "created_at"
         ],
         "title": "MessageSummary",
+        "type": "object"
+      },
+      "ProviderCheck": {
+        "additionalProperties": false,
+        "description": "What happened when Primer asked a provider what it serves.\n\nRun on demand from the settings page, because the useful moment to learn\nthat a URL is wrong is while it is still on screen being typed.",
+        "properties": {
+          "detail": {
+            "maxLength": 500,
+            "title": "Detail",
+            "type": "string"
+          },
+          "models": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "detail"
+        ],
+        "title": "ProviderCheck",
+        "type": "object"
+      },
+      "ProviderCreate": {
+        "additionalProperties": false,
+        "description": "A provider being added through the settings page.",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "base_url"
+        ],
+        "title": "ProviderCreate",
+        "type": "object"
+      },
+      "ProviderSummary": {
+        "additionalProperties": false,
+        "description": "One endpoint Primer can ask, as an administrator sees it.",
+        "properties": {
+          "api_key_set": {
+            "default": false,
+            "title": "Api Key Set",
+            "type": "boolean"
+          },
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "default": "configured",
+            "enum": [
+              "deployment",
+              "configured"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "base_url"
+        ],
+        "title": "ProviderSummary",
+        "type": "object"
+      },
+      "ProviderUpdate": {
+        "additionalProperties": false,
+        "description": "A change to a provider. Absent fields are left alone.\n\n`api_key` has three states rather than two, which is why it is not a\nplain optional string: absent leaves the stored key untouched, a string\nreplaces it, and an empty string removes it. Without the third, a key\ncould be set and never unset.",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "ProviderUpdate",
         "type": "object"
       },
       "SourceLocator": {
@@ -554,6 +807,201 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/providers": {
+      "get": {
+        "operationId": "list_providers_api_v1_admin_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderSummary"
+                  },
+                  "title": "Response List Providers Api V1 Admin Providers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Every endpoint this deployment can ask",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "add_provider_api_v1_admin_providers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add an endpoint",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/{provider_id}": {
+      "delete": {
+        "operationId": "delete_provider_api_v1_admin_providers__provider_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove an endpoint",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_provider_api_v1_admin_providers__provider_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change an endpoint",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/{provider_id}/check": {
+      "post": {
+        "description": "Try the endpoint now, and report what came back.\n\nOn demand rather than on a schedule, because the useful moment to learn\nthat a URL is wrong is while it is still on screen being typed.",
+        "operationId": "check_provider_api_v1_admin_providers__provider_id__check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCheck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask an endpoint what it serves",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/conversations": {
       "get": {
         "operationId": "list_conversations_api_v1_conversations_get",
@@ -813,7 +1261,7 @@
     },
     "/api/v1/models": {
       "get": {
-        "description": "What a user may choose between: everything the chat endpoint serves.\n\nAsked live rather than kept as a list of Primer's own, so a model added\nor removed on the endpoint shows up here without redeploying Primer to\nmatch.",
+        "description": "Everything every configured provider serves, each tagged with its own.\n\nA deployment may hold several providers at once, and model names are not\nunique across them, so a model is only fully named by the pair. Each is\nasked in parallel and allowed to fail alone: a hosted API plus a machine\nat home that is asleep still answers, with the sleeping one named rather\nthan silently dropped.",
         "operationId": "list_models_api_v1_models_get",
         "responses": {
           "200": {

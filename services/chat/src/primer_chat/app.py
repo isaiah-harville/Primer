@@ -13,7 +13,9 @@ from primer_chat.db import Database
 from primer_chat.errors import ProblemError, problem_response, rendered, validation_problem
 from primer_chat.generation import ChatGenerator, HaystackChatGenerator
 from primer_chat.routes import router
+from primer_chat.routes_admin import router as admin_router
 from primer_chat.routes_tools import router as tool_router
+from primer_chat.secrets import SecretBox
 from primer_chat.streaming import Responder
 
 
@@ -39,6 +41,14 @@ def create_app(
     )
     app.state.settings = settings
     app.state.database = database or Database(settings.database_url)
+    # Built once: constructing the cipher validates the configured key, so a
+    # deployment with a malformed one is told at startup rather than the
+    # first time an administrator tries to save a provider.
+    app.state.secret_box = SecretBox(
+        settings.settings_encryption_key.get_secret_value()
+        if settings.settings_encryption_key
+        else None
+    )
     app.state.responder = Responder(
         settings,
         control or ControlClient(settings),
@@ -74,4 +84,5 @@ def create_app(
 
     app.include_router(router)
     app.include_router(tool_router)
+    app.include_router(admin_router)
     return app

@@ -16,6 +16,7 @@ from uuid import UUID
 
 from httpx2 import AsyncClient, Response
 from primer_chat.clients import LibraryForbidden
+from primer_chat.generation import Endpoint
 from primer_chat.rag import HistoryTurn
 from primer_chat.reasoning import Channel, Fragment
 from primer_contracts.identity import Principal
@@ -112,6 +113,7 @@ class FakeGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
+        endpoint: Endpoint | None = None,
     ) -> AsyncIterator[Fragment]:
         self.prompts.append((system_prompt, user_prompt))
         self.histories.append(tuple((turn.role.value, turn.content) for turn in history))
@@ -177,6 +179,9 @@ class ChatUser:
 
     async def get(self, path: str) -> Response:
         return await self._http.get(path, headers=self._headers)
+
+    async def patch(self, path: str, payload: dict[str, Any] | None = None) -> Response:
+        return await self._http.patch(path, json=payload or {}, headers=self._headers)
 
     async def delete(self, path: str) -> Response:
         return await self._http.delete(path, headers=self._headers)

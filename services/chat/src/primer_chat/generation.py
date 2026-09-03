@@ -8,6 +8,7 @@ without one, and so swapping Haystack's client later touches one class.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass
 from typing import Protocol
 
 import anyio
@@ -44,6 +45,19 @@ def _reasoning_of(chunk: object) -> str:
     return ""
 
 
+@dataclass(frozen=True)
+class Endpoint:
+    """Where to send a question, and what to authenticate with.
+
+    Passed per request rather than read from settings, because which endpoint
+    answers is now a property of the question - a deployment may hold several
+    and the asker chose one.
+    """
+
+    base_url: str | None
+    api_key: str | None = None
+
+
 class ChatGenerator(Protocol):
     """Yields fragments as the model produces them, thinking and answer apart."""
 
@@ -54,6 +68,7 @@ class ChatGenerator(Protocol):
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
+        endpoint: Endpoint | None = None,
     ) -> AsyncIterator[Fragment]: ...
 
 
@@ -67,29 +82,46 @@ class HaystackChatGenerator:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._generators: dict[str, OpenAIChatGenerator] = {}
+        #: Keyed by endpoint as well as model. A deployment can hold several
+        #: providers serving the same model name, and keying on the name
+        #: alone would send a question to whichever of them happened to be
+        #: asked first - and keep doing so after an administrator changed
+        #: the endpoint, because the cached client would still be there.
+        self._generators: dict[tuple[str, str], OpenAIChatGenerator] = {}
 
     @property
-    def model(self) -> str:
+    def model(self) -> str | None:
         return self._settings.chat_model
 
-    def _for(self, model: str | None) -> OpenAIChatGenerator:
-        """A client for one model.
+    def _for(self, model: str | None, endpoint: Endpoint | None = None) -> OpenAIChatGenerator:
+        """A client for one model at one endpoint.
 
         The name is not validated here. Whether a user may ask for a model is
         a question about the request, answered where the request is handled;
         by this point it has been.
         """
+        target = endpoint or Endpoint(
+            base_url=self._settings.chat_base_url,
+            api_key=(
+                self._settings.chat_api_key.get_secret_value()
+                if self._settings.chat_api_key
+                else None
+            ),
+        )
         name = model or self._settings.chat_model
-        if name not in self._generators:
-            key = self._settings.chat_api_key
-            self._generators[name] = OpenAIChatGenerator(
-                api_key=Secret.from_token(key.get_secret_value() if key else "none"),
+        if name is None:
+            raise ValueError("no model was chosen and this deployment configures no default")
+
+        key = (target.base_url or "", name)
+        if key not in self._generators:
+            self._generators[key] = OpenAIChatGenerator(
+                # Many local servers ignore the key but require the header.
+                api_key=Secret.from_token(target.api_key or "none"),
                 model=name,
-                api_base_url=self._settings.chat_base_url,
+                api_base_url=target.base_url,
                 timeout=self._settings.chat_timeout_seconds,
             )
-        return self._generators[name]
+        return self._generators[key]
 
     async def stream(
         self,
@@ -98,6 +130,7 @@ class HaystackChatGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
+        endpoint: Endpoint | None = None,
     ) -> AsyncIterator[Fragment]:
         """Bridge Haystack's synchronous callback into an async iterator.
 
@@ -129,7 +162,9 @@ class HaystackChatGenerator:
         async def produce() -> None:
             try:
                 await anyio.to_thread.run_sync(
-                    lambda: self._run(system_prompt, user_prompt, history, on_chunk, model)
+                    lambda: self._run(
+                        system_prompt, user_prompt, history, on_chunk, model, endpoint
+                    )
                 )
             finally:
                 # Anything the splitter was holding back for a tag that never
@@ -153,8 +188,9 @@ class HaystackChatGenerator:
         history: tuple[HistoryTurn, ...],
         on_chunk: object,
         model: str | None,
+        endpoint: Endpoint | None = None,
     ) -> None:
-        self._for(model).run(
+        self._for(model, endpoint).run(
             messages=[
                 ChatMessage.from_system(system_prompt),
                 *_replay(history),
@@ -204,6 +240,7 @@ class StaticGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
+        endpoint: Endpoint | None = None,
     ) -> AsyncIterator[Fragment]:
         for fragment in self._fragments:
             yield fragment

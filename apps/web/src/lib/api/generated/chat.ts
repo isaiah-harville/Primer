@@ -4,6 +4,65 @@
  */
 
 export interface paths {
+    "/api/v1/admin/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every endpoint this deployment can ask */
+        get: operations["list_providers_api_v1_admin_providers_get"];
+        put?: never;
+        /** Add an endpoint */
+        post: operations["add_provider_api_v1_admin_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/providers/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an endpoint */
+        delete: operations["delete_provider_api_v1_admin_providers__provider_id__delete"];
+        options?: never;
+        head?: never;
+        /** Change an endpoint */
+        patch: operations["update_provider_api_v1_admin_providers__provider_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/providers/{provider_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask an endpoint what it serves
+         * @description Try the endpoint now, and report what came back.
+         *
+         *     On demand rather than on a schedule, because the useful moment to learn
+         *     that a URL is wrong is while it is still on screen being typed.
+         */
+        post: operations["check_provider_api_v1_admin_providers__provider_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations": {
         parameters: {
             query?: never;
@@ -93,11 +152,13 @@ export interface paths {
         };
         /**
          * Models this deployment offers
-         * @description What a user may choose between: everything the chat endpoint serves.
+         * @description Everything every configured provider serves, each tagged with its own.
          *
-         *     Asked live rather than kept as a list of Primer's own, so a model added
-         *     or removed on the endpoint shows up here without redeploying Primer to
-         *     match.
+         *     A deployment may hold several providers at once, and model names are not
+         *     unique across them, so a model is only fully named by the pair. Each is
+         *     asked in parallel and allowed to fail alone: a hosted API plus a machine
+         *     at home that is asleep still answers, with the sleeping one named rather
+         *     than silently dropped.
          */
         get: operations["list_models_api_v1_models_get"];
         put?: never;
@@ -211,6 +272,8 @@ export interface components {
             message: string;
             /** Model */
             model?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
         };
         /**
          * ChatModel
@@ -227,6 +290,10 @@ export interface components {
             default: boolean;
             /** Id */
             id: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
         };
         /**
          * ChatModelList
@@ -253,6 +320,11 @@ export interface components {
              * @default []
              */
             models: components["schemas"]["ChatModel"][];
+            /**
+             * Unreachable
+             * @default []
+             */
+            unreachable: string[];
         };
         /**
          * Citation
@@ -321,6 +393,8 @@ export interface components {
             message: string;
             /** Model */
             model?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -387,6 +461,95 @@ export interface components {
             reasoning?: string | null;
             role: components["schemas"]["MessageRole"];
             state: components["schemas"]["MessageState"];
+        };
+        /**
+         * ProviderCheck
+         * @description What happened when Primer asked a provider what it serves.
+         *
+         *     Run on demand from the settings page, because the useful moment to learn
+         *     that a URL is wrong is while it is still on screen being typed.
+         */
+        ProviderCheck: {
+            /** Detail */
+            detail: string;
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * ProviderCreate
+         * @description A provider being added through the settings page.
+         */
+        ProviderCreate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ProviderSummary
+         * @description One endpoint Primer can ask, as an administrator sees it.
+         */
+        ProviderSummary: {
+            /**
+             * Api Key Set
+             * @default false
+             */
+            api_key_set: boolean;
+            /** Base Url */
+            base_url: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Source
+             * @default configured
+             * @enum {string}
+             */
+            source: "deployment" | "configured";
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * ProviderUpdate
+         * @description A change to a provider. Absent fields are left alone.
+         *
+         *     `api_key` has three states rather than two, which is why it is not a
+         *     plain optional string: absent leaves the stored key untouched, a string
+         *     replaces it, and an empty string removes it. Without the third, a key
+         *     could be set and never unset.
+         */
+        ProviderUpdate: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * SourceLocator
@@ -478,6 +641,154 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_providers_api_v1_admin_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSummary"][];
+                };
+            };
+        };
+    };
+    add_provider_api_v1_admin_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_provider_api_v1_admin_providers__provider_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_provider_api_v1_admin_providers__provider_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_provider_api_v1_admin_providers__provider_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_conversations_api_v1_conversations_get: {
         parameters: {
             query?: {

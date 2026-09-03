@@ -31,7 +31,7 @@ from primer_chat.budget import estimate_tokens, passages_that_fit, split_history
 from primer_chat.clients import LibraryAuthority, LibraryForbidden, PassageSource
 from primer_chat.compaction import Compactor
 from primer_chat.config import Settings
-from primer_chat.generation import ChatGenerator
+from primer_chat.generation import ChatGenerator, Endpoint
 from primer_chat.models import Conversation
 from primer_chat.rag import (
     NO_CONTEXT_REPLY,
@@ -58,6 +58,10 @@ class Answering:
     #: Already checked against what this deployment offers. None means its
     #: default, which is the same thing a request with no preference gets.
     model: str | None = None
+    #: Which provider serves that model, resolved before the turn begins.
+    #: None falls back to the endpoint configured for the deployment, which
+    #: is what every request did before a deployment could hold several.
+    endpoint: Endpoint | None = None
 
 
 class Responder:
@@ -316,7 +320,7 @@ class Responder:
         thinking: str | None = None
         try:
             async for fragment in self._generator.stream(
-                system_prompt, prompt, history=history, model=turn.model
+                system_prompt, prompt, history=history, model=turn.model, endpoint=turn.endpoint
             ):
                 if fragment.channel is Channel.REASONING:
                     thinking = (thinking or "") + fragment.text

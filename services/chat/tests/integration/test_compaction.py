@@ -20,6 +20,7 @@ from chat_support import ChatUser, FakeGenerator
 from httpx2 import AsyncClient
 from primer_chat.config import Settings
 from primer_chat.db import Database
+from primer_chat.generation import Endpoint
 from primer_chat.rag import SUMMARY_SYSTEM_PROMPT, HistoryTurn
 from primer_chat.reasoning import Channel, Fragment
 from primer_chat.repository import ChatRepository
@@ -63,6 +64,7 @@ class Summarizer(FakeGenerator):
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
+        endpoint: Endpoint | None = None,
     ) -> AsyncIterator[Fragment]:
         if system_prompt == SUMMARY_SYSTEM_PROMPT:
             self.summaries.append(user_prompt)
@@ -71,7 +73,7 @@ class Summarizer(FakeGenerator):
             yield Fragment(Channel.ANSWER, self.summary)
             return
         async for fragment in super().stream(
-            system_prompt, user_prompt, history=history, model=model
+            system_prompt, user_prompt, history=history, model=model, endpoint=endpoint
         ):
             yield fragment
 

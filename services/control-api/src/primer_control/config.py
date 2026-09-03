@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     email_header: str = Field(default="X-Forwarded-Email")
     groups_header: str = Field(default="X-Forwarded-Groups")
     groups_delimiter: str = Field(default=",", min_length=1)
+    #: The group whose members may see and change how this deployment is
+    #: wired. Unset with authentication on means nobody, which is the safe
+    #: reading of an operator who has not decided yet.
+    admin_group: str | None = Field(default=None)
     request_id_header: str = Field(default="X-Request-ID")
 
     @model_validator(mode="after")

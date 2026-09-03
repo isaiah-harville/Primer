@@ -47,6 +47,11 @@
             "title": "Ingestion Available",
             "type": "boolean"
           },
+          "is_admin": {
+            "default": false,
+            "title": "Is Admin",
+            "type": "boolean"
+          },
           "max_upload_bytes": {
             "minimum": 0.0,
             "title": "Max Upload Bytes",

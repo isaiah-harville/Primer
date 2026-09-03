@@ -64,12 +64,20 @@ async def database(migrated_url: str) -> AsyncIterator[Database]:
 
 @pytest_asyncio.fixture
 async def clean_tables(database: Database) -> AsyncIterator[AsyncEngine]:
+    """Empty every table in the schema between tests.
+
+    Taken from the metadata rather than listed by hand. A hand-written list
+    goes stale the moment a table is added, and the failure it produces is
+    the worst kind: rows left behind by one test make another fail somewhere
+    unrelated, so the symptom points away from the cause. That is exactly
+    what happened when providers arrived.
+    """
+    from primer_chat.models import Base
     from sqlalchemy import text
 
+    tables = ", ".join(f"chat.{table.name}" for table in Base.metadata.sorted_tables)
     async with database.engine.begin() as connection:
-        await connection.execute(
-            text("TRUNCATE chat.conversations, chat.tool_calls RESTART IDENTITY CASCADE")
-        )
+        await connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
     yield database.engine
 
 

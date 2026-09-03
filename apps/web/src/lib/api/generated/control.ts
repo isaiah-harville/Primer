@@ -294,6 +294,11 @@ export interface components {
             chat_available: boolean;
             /** Ingestion Available */
             ingestion_available: boolean;
+            /**
+             * Is Admin
+             * @default false
+             */
+            is_admin: boolean;
             /** Max Upload Bytes */
             max_upload_bytes: number;
             /**
