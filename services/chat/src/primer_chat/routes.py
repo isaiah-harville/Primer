@@ -165,7 +165,21 @@ async def _discover_models(settings: Settings) -> tuple[str, ...]:
             )
         response.raise_for_status()
         served = [entry["id"] for entry in response.json().get("data", []) if entry.get("id")]
+    except httpx2.RequestError as error:
+        # An endpoint that is not there is an operational fact, not a bug in
+        # Primer, and this runs on every load of the chat screen. A stack
+        # trace per page load buries the deployment's real errors in noise
+        # that says nothing the first line did not.
+        logger.warning(
+            "could not reach the chat endpoint at %s to list models (%s); "
+            "offering the configured default only",
+            settings.chat_base_url,
+            type(error).__name__,
+        )
+        served = []
     except Exception:
+        # Anything else - a refusal, a body that is not what it should be -
+        # is a surprise, and a surprise is worth the trace.
         logger.warning("could not list models from %s", settings.chat_base_url, exc_info=True)
         served = []
     if not served:
