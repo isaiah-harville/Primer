@@ -18,6 +18,13 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/var/cache/primer/huggingface
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 primer \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin primer
 
