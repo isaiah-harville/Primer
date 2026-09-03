@@ -1,4 +1,4 @@
-import { ApiError } from './client';
+import { ApiError, asProblem } from './client';
 import type { ChatModelList, ConversationSummary, MessageSummary, ProblemDetail } from './types';
 
 /**
@@ -31,7 +31,9 @@ export class ChatApi {
 		if (!response.ok) {
 			let problem: ProblemDetail;
 			try {
-				problem = (await response.json()) as ProblemDetail;
+				// Read rather than cast, so a body that is not the contract's
+				// shape cannot reach a user as "[object Object]".
+				problem = asProblem(await response.json(), response.status);
 			} catch {
 				problem = {
 					code: 'unexpected_response',

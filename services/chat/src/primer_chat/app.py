@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from primer_chat import __version__
 from primer_chat.clients import ControlClient, LibraryAuthority, PassageSource, RetrievalClient
 from primer_chat.config import Settings
 from primer_chat.db import Database
-from primer_chat.errors import ProblemError, problem_response
+from primer_chat.errors import ProblemError, problem_response, rendered, validation_problem
 from primer_chat.generation import ChatGenerator, HaystackChatGenerator
 from primer_chat.routes import router
 from primer_chat.routes_tools import router as tool_router
@@ -48,6 +49,16 @@ def create_app(
     @app.exception_handler(ProblemError)
     async def _handle_problem(request: Request, exc: ProblemError) -> JSONResponse:
         return problem_response(request, exc)
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """Answer a malformed request in the shape every other failure uses.
+
+        Without this, FastAPI answers in its own: a list of objects under
+        `detail`, where the contract promises a string. Clients read it as
+        one, and a rejected field arrived on screen as "[object Object]".
+        """
+        return rendered(request, validation_problem(exc))
 
     @app.get("/health/live", summary="Process liveness")
     async def live() -> dict[str, str]:

@@ -31,6 +31,31 @@ export class ApiError extends Error {
 	}
 }
 
+/**
+ * Read an error body as a problem document, whatever it actually is.
+ *
+ * A body was previously cast to `ProblemDetail` and trusted. Anything that
+ * did not match - a framework's own validation shape, a gateway's error page
+ * rendered as JSON - therefore produced an `ApiError` with an undefined
+ * status and a `detail` that was not a string, which reached the screen as
+ * "[object Object]". The services all answer in the contract's shape now;
+ * this is the guarantee that a service which does not cannot put nonsense in
+ * front of a user.
+ */
+export function asProblem(body: unknown, status: number): ProblemDetail {
+	const shape = (body ?? {}) as Record<string, unknown>;
+	const detail = typeof shape.detail === 'string' ? shape.detail : null;
+	return {
+		code: typeof shape.code === 'string' ? shape.code : 'unexpected_response',
+		title: typeof shape.title === 'string' ? shape.title : 'Unexpected response',
+		// The response's own status, not the body's claim about it: the two
+		// disagree only when the body is not what it says it is.
+		status,
+		detail: detail ?? `The server replied with ${status}.`,
+		request_id: typeof shape.request_id === 'string' ? shape.request_id : null,
+	} as ProblemDetail;
+}
+
 export interface ApiOptions {
 	fetch?: typeof globalThis.fetch;
 	baseUrl?: string;
@@ -58,7 +83,7 @@ export class PrimerApi {
 
 	private async problemFrom(response: Response): Promise<ProblemDetail> {
 		try {
-			return (await response.json()) as ProblemDetail;
+			return asProblem(await response.json(), response.status);
 		} catch {
 			// A proxy timeout or a crash produces a non-JSON body. Reporting
 			// the status honestly beats a parse error the user cannot act on.
