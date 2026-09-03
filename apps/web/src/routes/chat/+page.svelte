@@ -20,6 +20,7 @@
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
 	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
+	import { notify } from '$lib/notifications.svelte';
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { turnsFrom, type Turn } from '$lib/transcript';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
@@ -99,6 +100,23 @@
 			uploads = [];
 			offered = null;
 		});
+	});
+
+	//: Edge-triggered on the transition into failure, not on every reload
+	//: while it stays failed: `invalidateAll()` reruns this load after every
+	//: question, and a still-unreachable Chat should not toast again each
+	//: time.
+	let modelsWereUnavailable = $state(false);
+	$effect(() => {
+		const unavailable = data.modelsUnavailable;
+		if (unavailable && !untrack(() => modelsWereUnavailable)) {
+			notify(
+				'error',
+				'Could not list available models.',
+				"Questions will still be answered by this deployment's default model."
+			);
+		}
+		untrack(() => (modelsWereUnavailable = unavailable));
 	});
 
 	// Shown for a few seconds rather than cleared right away, and guarded by
@@ -479,7 +497,7 @@
 	<div class="mt-2 flex flex-wrap items-center justify-between gap-3">
 		<div class="flex flex-wrap items-center gap-2">
 			<LibraryLink libraries={data.libraries} bind:value={libraryId} locked={started} />
-			<ModelPicker models={data.models} bind:value={model} />
+			<ModelPicker models={data.models} unavailable={data.modelsUnavailable} bind:value={model} />
 			{#each uploads as upload (upload.id)}
 				<!--
 				  A preview of the document it is about to become, greyed out

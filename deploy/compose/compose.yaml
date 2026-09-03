@@ -104,9 +104,19 @@ services:
     command: ["alembic", "upgrade", "head"]
     restart: "no"
 
+  init-volumes:
+    image: alpine
+    restart: "no"
+    volumes:
+      - source-objects:/var/lib/primer/sources
+      - model-cache:/var/cache/primer/huggingface
+    command: ["sh", "-c", "mkdir -p /var/lib/primer/sources/sources /var/lib/primer/sources/tmp && chown -R 10001:10001 /var/lib/primer/sources && chmod -R u+rwX /var/lib/primer/sources && mkdir -p /var/cache/primer/huggingface && chown -R 10001:10001 /var/cache/primer/huggingface"]
+
   control:
     <<: [*python-image, *hardening]
     depends_on:
+      init-volumes:
+        condition: service_completed_successfully
       migrate-control:
         condition: service_completed_successfully
       rabbitmq:
@@ -197,6 +207,8 @@ services:
       dockerfile: deploy/images/Dockerfile.worker
     <<: *hardening
     depends_on:
+      init-volumes:
+        condition: service_completed_successfully
       control:
         condition: service_healthy
       rabbitmq:

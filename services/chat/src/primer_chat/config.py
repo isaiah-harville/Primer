@@ -35,11 +35,6 @@ class Settings(BaseSettings):
     #: API. Primer ships no model of its own.
     chat_base_url: str | None = Field(default=None)
     chat_model: str = Field(default="gpt-4o-mini")
-    #: Further models on the same endpoint that a user may choose between.
-    #: Listed by the operator rather than discovered: an endpoint often serves
-    #: models nobody meant to expose here, and one of them being expensive or
-    #: unreviewed is not something to find out from a dropdown.
-    chat_models: tuple[str, ...] = Field(default=())
     chat_api_key: SecretStr | None = Field(default=None)
     chat_timeout_seconds: float = Field(default=120.0, gt=0)
 
@@ -108,34 +103,21 @@ class Settings(BaseSettings):
         description="Idle keepalive, so a proxy does not close a slow stream",
     )
 
-    @property
-    def selectable_models(self) -> tuple[str, ...]:
-        """Every model a user may ask for, the default first.
-
-        Order is the offer: the configured `chat_model` is what a request
-        with no preference gets, so it leads. Duplicates are dropped rather
-        than rejected, because listing the default again in `chat_models` is
-        an easy thing to write and a silly thing to fail startup over.
-        """
-        ordered = [self.chat_model, *self.chat_models]
-        return tuple(dict.fromkeys(name for name in ordered if name))
-
     def context_tokens(self, model: str | None) -> int:
         """The window to fit a prompt into, for whichever model will answer."""
         name = model or self.chat_model
         return self.chat_model_context_tokens.get(name, self.chat_context_tokens)
 
-    def resolve_model(self, requested: str | None) -> str | None:
-        """The model to use, or None if the request named an unknown one.
+    def resolve_model(self, requested: str | None) -> str:
+        """The model to use: what was asked for, or the configured default.
 
-        An unknown name is refused rather than silently replaced with the
-        default. A user who picked a model and got an answer from a different
-        one has been misled about where the answer came from, and Primer
-        records that model against the message as provenance.
+        Primer keeps no list of its own to check a name against - `/models`
+        already told the caller everything the endpoint serves, so a name
+        that reaches here came from that list. What the endpoint does with a
+        name it no longer recognizes is the same failure as any other model
+        error, handled where those already are.
         """
-        if requested is None:
-            return self.chat_model
-        return requested if requested in self.selectable_models else None
+        return requested or self.chat_model
 
     subject_header: str = Field(default="X-Forwarded-User")
     email_header: str = Field(default="X-Forwarded-Email")

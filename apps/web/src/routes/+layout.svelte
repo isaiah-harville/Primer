@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { Menu, TriangleAlert } from '@lucide/svelte';
-	import { Button, Sheet } from '@sivir-ui/svelte';
+	import { Button, Sheet, Toaster } from '@sivir-ui/svelte';
 	import '../app.css';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
+	import NotificationBell from '$lib/components/NotificationBell.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import type { LayoutData } from './$types';
 
@@ -120,3 +121,6 @@
 	libraries={data.libraries}
 	capabilities={data.capabilities}
 />
+
+<Toaster />
+<NotificationBell />

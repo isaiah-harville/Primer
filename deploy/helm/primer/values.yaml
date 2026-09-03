@@ -102,8 +102,6 @@ inference:
   chat:
     baseUrl: ""
     model: ""
-    # Further models on the same endpoint that a user may pick between.
-    models: []
     existingSecret: ""
     apiKeyKey: chat-api-key
     # How much of a conversation a follow-up question may recall.

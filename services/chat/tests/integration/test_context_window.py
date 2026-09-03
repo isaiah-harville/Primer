@@ -139,7 +139,6 @@ class TestAModelWithItsOwnWindow:
         return Settings(
             auth_mode="oidc",
             chat_model="small-model",
-            chat_models=("large-model",),
             chat_context_tokens=1024,
             chat_reply_tokens=64,
             chat_model_context_tokens={"large-model": 200_000},

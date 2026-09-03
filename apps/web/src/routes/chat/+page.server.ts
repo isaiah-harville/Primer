@@ -13,10 +13,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * survives a refresh and can be linked to. Which one is open is exactly the
  * kind of thing a URL is for.
  *
- * A failure here is not a failure of the page. Chat being unreachable is
- * already visible everywhere else, and an empty list means no history rather
- * than a chat screen that will not load - asking a new question is the one
- * thing this screen must always offer.
+ * A failure here is not a failure of the page: an empty list means no
+ * history rather than a chat screen that will not load, and asking a new
+ * question is the one thing this screen must always offer. Losing the model
+ * list specifically is still worth saying out loud - `modelsUnavailable`
+ * lets the page toast it - because an empty list here otherwise looks
+ * exactly like a deployment that only offers its one default model.
  *
  * What is not swallowed is why a named conversation did not open. A thread
  * that silently appears blank looks like a thread that lost its messages, so
@@ -27,13 +29,14 @@ export const load: PageServerLoad = async ({ request, fetch, url }) => {
 	const asked = url.searchParams.get('conversation');
 	const wanted = asked && UUID.test(asked) ? asked : null;
 
-	const [models, conversations] = await Promise.all([
+	const [modelsResult, conversations] = await Promise.all([
 		chat
 			.models()
-			.then((body) => body.models ?? [])
-			.catch(() => []),
+			.then((body) => ({ models: body.models ?? [], unavailable: false }))
+			.catch(() => ({ models: [] as { id: string; default: boolean }[], unavailable: true })),
 		chat.conversations().catch((): ConversationSummary[] => []),
 	]);
+	const { models, unavailable: modelsUnavailable } = modelsResult;
 
 	let opened: { conversation: ConversationSummary; messages: MessageSummary[] } | null = null;
 	//: Why the conversation in the URL is not the one on screen: `missing` for
@@ -52,5 +55,5 @@ export const load: PageServerLoad = async ({ request, fetch, url }) => {
 		}
 	}
 
-	return { models, conversations, opened, unopened };
+	return { models, modelsUnavailable, conversations, opened, unopened };
 };

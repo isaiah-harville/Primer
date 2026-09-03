@@ -93,11 +93,11 @@ export interface paths {
         };
         /**
          * Models this deployment offers
-         * @description What a user may choose between.
+         * @description What a user may choose between: everything the chat endpoint serves.
          *
-         *     The operator's list, not the endpoint's. An OpenAI-compatible server
-         *     often serves models nobody meant to expose here, and finding one of them
-         *     in a dropdown is not how an operator should learn that.
+         *     Asked live rather than kept as a list of Primer's own, so a model added
+         *     or removed on the endpoint shows up here without redeploying Primer to
+         *     match.
          */
         get: operations["list_models_api_v1_models_get"];
         put?: never;
