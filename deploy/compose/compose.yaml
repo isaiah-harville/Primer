@@ -242,7 +242,8 @@ services:
     environment:
       PRIMER_CONTROL_URL: http://control:8000
       PRIMER_CHAT_URL: http://chat:8000
-      PORT: "3000"
+      PORT: ${PRIMER_WEB_PORT:-3000}
+      ORIGIN: ${PRIMER_WEB_ORIGIN:-http://localhost:${PRIMER_WEB_PORT:-3000}}
       # adapter-node's own 512K default rejects uploads long before Control's
       # PRIMER_MAX_UPLOAD_BYTES gets a say, so this has to stay above it -
       # with headroom for multipart overhead, not equal to it.

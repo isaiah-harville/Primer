@@ -37,6 +37,8 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            - name: ORIGIN
+              value: {{ printf "https://%s" (required "ingress.host is required so the web app knows its own origin" .Values.ingress.host) | quote }}
             # The browser never reaches these directly; the web server calls
             # them and forwards the identity headers the proxy set.
             - name: PRIMER_CONTROL_URL
