@@ -379,19 +379,14 @@ def test_the_context_window_is_configurable_without_a_fork(
     assert env["PRIMER_CHAT_COMPACT_HISTORY"] == "true"
     # Nothing named, nothing claimed: an empty map would be a JSON literal
     # the service has to parse for no reason.
-    assert "PRIMER_CHAT_MODELS" not in env
     assert "PRIMER_CHAT_MODEL_CONTEXT_TOKENS" not in env
 
 
-def test_offered_models_and_their_windows_reach_chat() -> None:
-    """Both are JSON to the service, so the chart has to encode them."""
-    rendered = render(
-        "inference.chat.models={fast-model,long-model}",
-        "inference.chat.modelContextTokens.long-model=131072",
-    )
+def test_a_models_context_window_reaches_chat() -> None:
+    """JSON to the service, so the chart has to encode it."""
+    rendered = render("inference.chat.modelContextTokens.long-model=131072")
     env = env_of(named(rendered, "Deployment", "-chat"))
 
-    assert json.loads(env["PRIMER_CHAT_MODELS"]) == ["fast-model", "long-model"]
     assert json.loads(env["PRIMER_CHAT_MODEL_CONTEXT_TOKENS"]) == {"long-model": 131072}
 
 

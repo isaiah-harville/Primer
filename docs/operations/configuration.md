@@ -80,7 +80,6 @@ object.
 | --- | --- | --- |
 | `PRIMER_CHAT_BASE_URL` | unset | Any OpenAI-compatible endpoint |
 | `PRIMER_CHAT_MODEL` | `gpt-4o-mini` | The default a question gets |
-| `PRIMER_CHAT_MODELS` | unset | Further models a user may choose |
 | `PRIMER_CHAT_API_KEY` | unset | Many local servers ignore it |
 | `PRIMER_CHAT_TIMEOUT_SECONDS` | `120` | Per request to the model |
 | `PRIMER_CONTROL_URL` | `http://control-api:8000` | Cluster-internal |
@@ -97,24 +96,14 @@ object.
 
 ### Offering more than one model
 
-`PRIMER_CHAT_MODELS` is a JSON list of further model names on the same
-endpoint, and it is what a user picks between:
+Chat's model picker lists whatever `PRIMER_CHAT_BASE_URL` itself reports
+from `/models`, `PRIMER_CHAT_MODEL` marked as the default. There is no
+separate list of Primer's own to keep in step with the endpoint's: point
+the endpoint at the models you want offered, and that is what the picker
+shows.
 
-```bash
-PRIMER_CHAT_MODEL=llama3.1:70b
-PRIMER_CHAT_MODELS='["qwen2.5-coder:32b", "mistral-small"]'
-```
-
-The list is yours rather than the endpoint's. An OpenAI-compatible server
-usually serves models nobody meant to offer here, and one of them being
-expensive or unreviewed is not something to find out from a dropdown, so
-Primer offers only what you name. A request for anything else is refused
-rather than quietly answered by the default: a user who chose a model and
-received an answer from another one has been misled about where it came
-from, and Primer records the model against the message.
-
-They share one endpoint, one API key, and one `PRIMER_RETRIEVAL_LIMIT`.
-They need not share a context window: see below.
+Every model offered this way shares one endpoint, one API key, and one
+`PRIMER_RETRIEVAL_LIMIT`. They need not share a context window: see below.
 
 
 ### Fitting the prompt into the context window

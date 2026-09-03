@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+import httpx2
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from primer_contracts.base import WireModel
 from primer_contracts.chat import (
@@ -26,6 +28,8 @@ from primer_chat.identity import CurrentPrincipal
 from primer_chat.repository import ChatRepository, summarize_conversation
 from primer_chat.sse import encode
 from primer_chat.streaming import Answering, Responder
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
@@ -123,20 +127,51 @@ async def delete_conversation(
 
 
 @router.get("/models", summary="Models this deployment offers")
-def list_models(request: Request) -> ChatModelList:
-    """What a user may choose between.
+async def list_models(request: Request) -> ChatModelList:
+    """What a user may choose between: everything the chat endpoint serves.
 
-    The operator's list, not the endpoint's. An OpenAI-compatible server
-    often serves models nobody meant to expose here, and finding one of them
-    in a dropdown is not how an operator should learn that.
+    Asked live rather than kept as a list of Primer's own, so a model added
+    or removed on the endpoint shows up here without redeploying Primer to
+    match.
     """
     settings: Settings = request.app.state.settings
+    names = await _discover_models(settings)
     return ChatModelList(
-        models=tuple(
-            ChatModel(id=name, default=name == settings.chat_model)
-            for name in settings.selectable_models
-        )
+        models=tuple(ChatModel(id=name, default=name == settings.chat_model) for name in names)
     )
+
+
+async def _discover_models(settings: Settings) -> tuple[str, ...]:
+    """Ask the chat endpoint what it serves, the configured default first.
+
+    Falls back to just the configured default on any failure - unreachable,
+    refused, unparsable - because a model picker that cannot be built is a
+    reason to hide it, not a reason the rest of the page should fail to load.
+    """
+    if not settings.chat_base_url:
+        return (settings.chat_model,)
+    try:
+        async with httpx2.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.chat_base_url.rstrip('/')}/models",
+                headers={
+                    "Authorization": "Bearer "
+                    + (
+                        settings.chat_api_key.get_secret_value()
+                        if settings.chat_api_key
+                        else "none"
+                    )
+                },
+            )
+        response.raise_for_status()
+        served = [entry["id"] for entry in response.json().get("data", []) if entry.get("id")]
+    except Exception:
+        logger.warning("could not list models from %s", settings.chat_base_url, exc_info=True)
+        served = []
+    if not served:
+        return (settings.chat_model,)
+    ordered = [settings.chat_model, *served]
+    return tuple(dict.fromkeys(ordered))
 
 
 @router.post(
@@ -159,7 +194,7 @@ async def ask(
     404 here would be equally correct; the stream is chosen so a client has
     exactly one place to handle failures.
     """
-    model = resolve_model(request, payload.model)
+    model = request.app.state.settings.resolve_model(payload.model)
     conversation = await ChatRepository(session).create_conversation(
         library_id=payload.library_id,
         owner_user_id=principal.user_id,
@@ -202,27 +237,9 @@ async def follow_up(
         principal=principal,
         conversation=conversation,
         question=payload.message,
-        model=resolve_model(request, payload.model),
+        model=request.app.state.settings.resolve_model(payload.model),
     )
     return stream_response(responder, session, turn)
-
-
-def resolve_model(request: Request, requested: str | None) -> str | None:
-    """Check a requested model against what this deployment offers.
-
-    Refused rather than quietly replaced with the default. A user who chose a
-    model and received an answer from a different one has been misled about
-    where it came from, and Primer records the model against the message as
-    provenance. It is also the boundary that stops a caller naming any model
-    the endpoint happens to serve.
-    """
-    resolved = request.app.state.settings.resolve_model(requested)
-    if resolved is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"This deployment does not offer a model called {requested!r}.",
-        )
-    return resolved
 
 
 def stream_response(

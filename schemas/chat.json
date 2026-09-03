@@ -784,7 +784,7 @@
     },
     "/api/v1/models": {
       "get": {
-        "description": "What a user may choose between.\n\nThe operator's list, not the endpoint's. An OpenAI-compatible server\noften serves models nobody meant to expose here, and finding one of them\nin a dropdown is not how an operator should learn that.",
+        "description": "What a user may choose between: everything the chat endpoint serves.\n\nAsked live rather than kept as a list of Primer's own, so a model added\nor removed on the endpoint shows up here without redeploying Primer to\nmatch.",
         "operationId": "list_models_api_v1_models_get",
         "responses": {
           "200": {
