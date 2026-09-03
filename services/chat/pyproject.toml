@@ -6,6 +6,9 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic",
     "asyncpg",
+    # Provider API keys added through the settings page are encrypted at rest;
+    # a database backup or a replica must not be a credential leak.
+    "cryptography",
     "fastapi",
     "haystack-ai",
     "httpx2",

@@ -54,11 +54,16 @@ class AskRequest(WireModel):
     library_id: UUID | None = None
     #: One of the models this deployment offers, or none for its default.
     model: str | None = Field(default=None, max_length=200)
+    #: Which provider serves that model. Model names are not unique across
+    #: providers, so a model alone can be ambiguous; without this the first
+    #: provider serving the name answers.
+    provider_id: UUID | None = None
     message: Message
 
 
 class FollowUpRequest(WireModel):
     model: str | None = Field(default=None, max_length=200)
+    provider_id: UUID | None = None
     message: Message
 
 

@@ -61,6 +61,16 @@ class ChatModel(WireModel):
     id: str = Field(min_length=1, max_length=200)
     #: True for the one used when a request expresses no preference.
     default: bool = False
+    #: Which provider serves it. A deployment can hold several at once, and
+    #: model names are not unique across them - two endpoints serving
+    #: `llama3.1:8b` is the ordinary case, not a corner one - so a model is
+    #: only fully named by the pair. A request that gives a model without a
+    #: provider is resolved against the first that serves it.
+    provider_id: UUID | None = None
+    #: The operator's label for that provider, so a picker can say where a
+    #: model runs without a second lookup. A hostname would not do: what a
+    #: user needs to tell apart is "my machine" from "the paid one".
+    provider_name: str | None = Field(default=None, max_length=80)
 
 
 class ChatModelList(WireModel):
@@ -76,11 +86,19 @@ class ChatModelList(WireModel):
     """
 
     models: tuple[ChatModel, ...] = ()
-    #: Whether the inference endpoint answered. False means nothing here can
-    #: be asked, and the interface must say so rather than offer a model.
+    #: Whether any enabled provider answered. False means nothing here can be
+    #: asked, and the interface must say so rather than offer a model. With
+    #: several providers this is true when any one of them replied: the
+    #: deployment can still answer, and the ones that did not are reported
+    #: individually in `unreachable`.
     endpoint_reachable: bool = True
     #: What went wrong, for an operator reading it. Never a stack trace.
     detail: str | None = Field(default=None, max_length=500)
+    #: Providers that did not answer, by name, while others did. A partial
+    #: outage is not the same as an outage, and a deployment that quietly
+    #: dropped a provider from the picker would look like one that had never
+    #: been configured with it.
+    unreachable: tuple[str, ...] = ()
 
 
 class MessageRole(StrEnum):
