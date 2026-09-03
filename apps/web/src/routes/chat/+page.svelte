@@ -5,21 +5,20 @@
 		Conversation,
 		Markdown,
 		Message,
+		Progress,
 		PromptComposer,
-		Sheet,
 		Spinner
 	} from '@sivir-ui/svelte';
-	import { Check, FileText, History, Plus } from '@lucide/svelte';
+	import { Check, FileText, Plus } from '@lucide/svelte';
 	import { goto, invalidateAll, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import CitationPanel from '$lib/components/CitationPanel.svelte';
-	import ConversationList from '$lib/components/ConversationList.svelte';
 	import LibraryLink from '$lib/components/LibraryLink.svelte';
 	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
-	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
+	import type { MessageSummary } from '$lib/api/types';
 	import { notify } from '$lib/notifications.svelte';
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { turnsFrom, type Turn } from '$lib/transcript';
@@ -74,11 +73,14 @@
 	//: the one case where the user should be asked whether to keep it.
 	let offered = $state<{ id: string; name: string; documents: number } | null>(null);
 
-	let historyOpen = $state(false);
-	let deleting = $state<ConversationSummary | null>(null);
 	//: Which stored conversation this screen is currently showing, so that
 	//: reloading the list does not look like opening a different thread.
 	let shown = $state<string | null>(null);
+
+	//: An answer that has been asked for but has not started arriving. Once
+	//: the first token lands the text itself is the progress, so the bar
+	//: gives way to it rather than running alongside.
+	let thinking = $derived(streaming && (turns.at(-1)?.stream.text ?? '') === '');
 
 	// Load decides which conversation is on screen; this follows it. Guarded
 	// on the id rather than on the data, so refreshing the list after a turn
@@ -200,6 +202,8 @@
 
 		question = '';
 		streaming = true;
+		// The bar is a picture of this, and a picture announces nothing.
+		announcement = 'Waiting for an answer.';
 		const turn = { question: asked, stream: emptyStream() };
 		turns = [...turns, turn];
 
@@ -247,6 +251,7 @@
 			turns = [...turns];
 		} finally {
 			streaming = false;
+			announcement = turn.stream.error ? 'The answer stopped early.' : 'Answer received.';
 		}
 	}
 
@@ -266,26 +271,6 @@
 		// The conversation that was open is in the URL, and leaving it there
 		// would restore the thread on the next reload.
 		if (page.url.searchParams.has('conversation')) await goto('/chat');
-	}
-
-	async function remove(conversation: ConversationSummary) {
-		deleting = conversation;
-		try {
-			const response = await fetch(`/chat/conversations/${conversation.id}`, {
-				method: 'DELETE'
-			});
-			if (!response.ok) throw new Error('That conversation could not be deleted.');
-			announcement = 'Conversation deleted.';
-			// Leaving the screen showing a thread that no longer exists would
-			// be a transcript nothing stands behind.
-			if (conversation.id === shown) await startOver();
-			else await invalidateAll();
-		} catch (error) {
-			uploadError = error instanceof Error ? error.message : 'That conversation could not be deleted.';
-			announcement = uploadError;
-		} finally {
-			deleting = null;
-		}
 	}
 
 	function completed(stream: StreamState): MessageSummary | null {
@@ -311,40 +296,23 @@
   of the frame rather than under the conversation wherever that happens to
   end.
 -->
-<div class="flex h-full min-h-0 gap-6">
+<div class="flex h-full min-h-0 flex-col">
 	<!--
-	  A second rail, beside the frame's own. Conversations are the thing this
-	  screen accumulates, and a list you have to leave the screen to see is a
-	  list nobody looks at. It is the width of a title and no wider: the
-	  answers are what the space is for.
+	  A header for the thread, above the thread. What answers a question is
+	  the model, and which model that is was previously never on screen at
+	  all - the picker hid itself whenever a deployment served only one, so
+	  the common case showed nothing. It is stated here whether or not there
+	  is a choice to make, because "which model wrote this" is a question
+	  about the answer in front of you rather than a setting.
 	-->
-	<aside class="hidden w-64 shrink-0 xl:block">
-		<ConversationList
-			conversations={data.conversations}
-			libraries={data.libraries}
-			openId={shown}
-			busyId={deleting?.id ?? null}
-			ondelete={remove}
-		/>
-	</aside>
+	<header class="shrink-0 border-b border-border pb-2">
+		<div class="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+			<ModelPicker
+				models={data.models}
+				unavailable={data.modelsUnavailable}
+				bind:value={model}
+			/>
 
-	<div class="flex min-w-0 flex-1 flex-col">
-	<div class="flex shrink-0 items-center justify-end gap-4">
-		<div class="flex items-center gap-1">
-			<!--
-			  The same list in a drawer where the rail does not fit, rather
-			  than a second way of listing conversations that could drift from
-			  the first.
-			-->
-			<Button
-				size="sm"
-				variant="ghost"
-				class="xl:hidden"
-				onclick={() => (historyOpen = true)}
-			>
-				<History size={14} aria-hidden="true" />
-				History
-			</Button>
 			<!--
 			  The way back to a blank page, and the only way to change the
 			  library a conversation is answered from. Absent until there is
@@ -357,7 +325,24 @@
 				</Button>
 			{/if}
 		</div>
-	</div>
+
+		<!--
+		  A question can sit unanswered for a long time on a small model, and
+		  until now nothing on the page moved while it did: the composer went
+		  quiet and the conversation simply stopped, which reads as a request
+		  that was dropped rather than one being worked on. The bar runs from
+		  asking until the first token arrives, and then hands over to the
+		  text, which is a better progress indicator than any bar.
+
+		  It keeps its height when idle so the header does not jump by a
+		  pixel and a half every time a question is asked.
+		-->
+		<div class="mx-auto mt-2 h-[3px] w-full max-w-3xl">
+			{#if thinking}
+				<Progress indeterminate class="h-[3px]" />
+			{/if}
+		</div>
+	</header>
 
 	{#if data.unopened}
 		<!--
@@ -497,7 +482,6 @@
 	<div class="mt-2 flex flex-wrap items-center justify-between gap-3">
 		<div class="flex flex-wrap items-center gap-2">
 			<LibraryLink libraries={data.libraries} bind:value={libraryId} locked={started} />
-			<ModelPicker models={data.models} unavailable={data.modelsUnavailable} bind:value={model} />
 			{#each uploads as upload (upload.id)}
 				<!--
 				  A preview of the document it is about to become, greyed out
@@ -573,22 +557,7 @@
 		</div>
 	{/if}
 </div>
-
-	</div>
 </div>
-
-<Sheet.Root bind:open={historyOpen}>
-	<Sheet.Content side="right" class="w-80 p-4">
-		<ConversationList
-			conversations={data.conversations}
-			libraries={data.libraries}
-			openId={shown}
-			busyId={deleting?.id ?? null}
-			ondelete={remove}
-			onopen={() => (historyOpen = false)}
-		/>
-	</Sheet.Content>
-</Sheet.Root>
 
 {#if sourcesFor}
 	<CitationPanel citations={sourcesFor.citations} bind:open={sourcesOpen} />

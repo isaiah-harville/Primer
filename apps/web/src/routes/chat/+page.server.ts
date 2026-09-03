@@ -6,8 +6,8 @@ import type { PageServerLoad } from './$types';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The chat screen: which models are offered, which conversations exist, and
- * the one being read, if any.
+ * The chat screen: which models are offered, and which conversation is
+ * being read, if any.
  *
  * The conversation is a search parameter rather than page state, so a thread
  * survives a refresh and can be linked to. Which one is open is exactly the
@@ -24,17 +24,20 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * that silently appears blank looks like a thread that lost its messages, so
  * the reason is returned and said on the page.
  */
-export const load: PageServerLoad = async ({ request, fetch, url }) => {
+export const load: PageServerLoad = async ({ request, fetch, url, parent }) => {
 	const chat = chatFor(request, fetch);
 	const asked = url.searchParams.get('conversation');
 	const wanted = asked && UUID.test(asked) ? asked : null;
 
-	const [modelsResult, conversations] = await Promise.all([
+	// The list comes from the layout, which loads it for the sidebar. Asking
+	// again here would be a second request for the same thing on every
+	// question, and two lists that could disagree about what exists.
+	const [modelsResult, { conversations }] = await Promise.all([
 		chat
 			.models()
 			.then((body) => ({ models: body.models ?? [], unavailable: false }))
 			.catch(() => ({ models: [] as { id: string; default: boolean }[], unavailable: true })),
-		chat.conversations().catch((): ConversationSummary[] => []),
+		parent(),
 	]);
 	const { models, unavailable: modelsUnavailable } = modelsResult;
 
@@ -55,5 +58,5 @@ export const load: PageServerLoad = async ({ request, fetch, url }) => {
 		}
 	}
 
-	return { models, modelsUnavailable, conversations, opened, unopened };
+	return { models, modelsUnavailable, opened, unopened };
 };
