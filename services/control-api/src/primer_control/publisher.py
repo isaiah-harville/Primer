@@ -30,6 +30,22 @@ TASK_NAMES: dict[StageName, str] = {
     StageName.DELETE: "ingestion.delete",
 }
 
+#: Also part of that wire protocol, and not optional: RabbitMQ refuses to
+#: redeclare an existing queue with arguments that disagree with the ones it
+#: was created with (406 PRECONDITION_FAILED) rather than ignoring the
+#: mismatch. A publisher that declares these queues with the worker's
+#: defaults - no dead-letter exchange, a classic rather than a quorum queue -
+#: does not get a different queue; it gets every publish refused, silently,
+#: after the upload it belongs to has already returned 200. Keep this equal
+#: to `primer_ingestion.celery_app.build_queues()`; the two are duplicated
+#: because Control does not depend on the worker package, not because the
+#: topology is allowed to differ.
+QUEUE_ARGUMENTS: dict[str, object] = {
+    "x-queue-type": "quorum",
+    "x-dead-letter-exchange": "ingestion.dlx",
+    "x-dead-letter-routing-key": "dead",
+}
+
 
 class JobPublisher(Protocol):
     def publish(self, stage: StageName, job_id: UUID) -> None: ...
@@ -52,13 +68,23 @@ class CeleryJobPublisher:
 
     def __init__(self, broker_url: str) -> None:
         from celery import Celery
+        from kombu import Exchange, Queue
 
+        exchange = Exchange("ingestion", type="direct")
         self._app = Celery("primer_control_publisher", broker=broker_url)
         self._app.conf.update(
             task_serializer="json",
             # Without confirms, a broker that drops the message says nothing,
             # and the job sits queued forever with no sign it was never sent.
             broker_transport_options={"confirm_publish": True},
+            # Declared with the worker's own queue arguments, so a publish
+            # against a queue the worker already created is a no-op rather
+            # than a rejected redeclaration - see QUEUE_ARGUMENTS above.
+            task_queues=tuple(
+                Queue(name, exchange, routing_key=name, queue_arguments=QUEUE_ARGUMENTS)
+                for name in TASK_NAMES.values()
+            ),
+            task_default_exchange="ingestion",
         )
 
     def publish(self, stage: StageName, job_id: UUID) -> None:
