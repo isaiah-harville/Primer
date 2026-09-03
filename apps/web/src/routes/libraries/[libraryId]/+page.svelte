@@ -44,13 +44,23 @@
 		await invalidateAll();
 	}
 
+	//: Whether anything is still being worked on. A boolean rather than the
+	//: list itself, because the effect below watches it: reading the list
+	//: there means every reload it triggers is a new value, so the effect
+	//: tears itself down and starts again on each one - and the backoff,
+	//: which lives in that scope, restarts from zero every time. The promise
+	//: of backing off then buys nothing: measured against a stub, a document
+	//: left parsing cost a request a second indefinitely.
+	let awaitingWork = $derived(pending.length > 0);
+
 	// Poll only while something is unfinished, backing off as it drags on: a
 	// ten-minute document should not cost hundreds of requests, and a
 	// finished one should stop costing anything at all.
 	$effect(() => {
-		if (pending.length === 0) return;
+		if (!awaitingWork) return;
 		let attempt = 0;
 		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout>;
 
 		const tick = async () => {
 			if (cancelled) return;
@@ -59,7 +69,7 @@
 			if (!cancelled) timer = setTimeout(tick, pollDelayMs(attempt));
 		};
 
-		let timer = setTimeout(tick, pollDelayMs(attempt));
+		timer = setTimeout(tick, pollDelayMs(attempt));
 		return () => {
 			cancelled = true;
 			clearTimeout(timer);
