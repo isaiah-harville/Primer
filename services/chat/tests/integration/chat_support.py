@@ -17,6 +17,7 @@ from uuid import UUID
 from httpx2 import AsyncClient, Response
 from primer_chat.clients import LibraryForbidden
 from primer_chat.rag import HistoryTurn
+from primer_chat.reasoning import Channel, Fragment
 from primer_contracts.identity import Principal
 from primer_contracts.indexing import LibraryScope, SearchRequest, SearchResult
 from primer_contracts.retrieval import RetrievedChunk, SourceLocator
@@ -72,8 +73,17 @@ class FakeGenerator:
 
     model = "fake-model"
 
-    def __init__(self, fragments: list[str] | None = None, fail: bool = False) -> None:
-        self.fragments = fragments if fragments is not None else ["Grounded ", "answer [1]."]
+    def __init__(self, fragments: list[str | Fragment] | None = None, fail: bool = False) -> None:
+        #: Plain strings are answer text, which is what almost every test
+        #: wants. A test about a reasoning model passes `Fragment`s and says
+        #: which channel each belongs to.
+        raw: list[str | Fragment] = (
+            fragments if fragments is not None else ["Grounded ", "answer [1]."]
+        )
+        self.fragments = [
+            piece if isinstance(piece, Fragment) else Fragment(Channel.ANSWER, piece)
+            for piece in raw
+        ]
         self.fail = fail
         self.prompts: list[tuple[str, str]] = []
         #: The conversation each call was given, so a test can prove the
@@ -83,6 +93,18 @@ class FakeGenerator:
         #: reached the provider rather than stopping at the request.
         self.models: list[str | None] = []
 
+    @property
+    def answer(self) -> str:
+        """What the fake will have written as the answer, for comparison.
+
+        Tests assert a stored message against this. Reassembling it at each
+        call site would mean every one of them deciding again which channel
+        counts, and getting it wrong quietly.
+        """
+        return "".join(
+            fragment.text for fragment in self.fragments if fragment.channel is Channel.ANSWER
+        )
+
     async def stream(
         self,
         system_prompt: str,
@@ -90,7 +112,7 @@ class FakeGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[Fragment]:
         self.prompts.append((system_prompt, user_prompt))
         self.histories.append(tuple((turn.role.value, turn.content) for turn in history))
         self.models.append(model)

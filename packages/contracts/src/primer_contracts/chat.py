@@ -139,6 +139,14 @@ class MessageSummary(WireModel):
     role: MessageRole
     state: MessageState
     content: str
+    #: What the model worked through before answering, for a model that
+    #: shows it. Stored beside the answer rather than mixed into it: it is
+    #: scratch work, it is not what the answer says, and a reader who copies
+    #: an answer must not carry it away with them.
+    #:
+    #: None means a model that does not reason aloud, which is most of them.
+    #: Empty means one that does and had nothing to say this turn.
+    reasoning: str | None = Field(default=None)
     citations: tuple[Citation, ...] = ()
     #: Which model produced this, recorded per message. A deployment can
     #: offer several and a user can switch between turns, so this is part of
@@ -178,6 +186,24 @@ class MessageDelta(StreamEvent):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
 
     type: Literal["message.delta"] = "message.delta"
+    text: str
+
+
+class ReasoningDelta(StreamEvent):
+    """A fragment of the model's thinking, on its own channel.
+
+    Separate from `MessageDelta` rather than a flag on it, so a client that
+    predates reasoning renders the answer correctly and simply ignores this:
+    an unknown event is skipped, whereas an unknown field on a known event
+    would have been concatenated into the answer.
+
+    Whitespace is preserved for the same reason as `MessageDelta` - these
+    fragments are concatenated too.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
+
+    type: Literal["reasoning.delta"] = "reasoning.delta"
     text: str
 
 

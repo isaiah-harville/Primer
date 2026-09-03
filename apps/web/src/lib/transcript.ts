@@ -20,6 +20,9 @@ function answered(message: MessageSummary): StreamState {
 		messageId: message.id,
 		conversationId: message.conversation_id,
 		text: message.content,
+		// Stored with the answer, so reopening a thread shows the thinking
+		// that produced it rather than only the conclusion.
+		reasoning: message.reasoning ?? null,
 		citations: message.citations,
 		message,
 		// A failed answer is still failed when it is read back, and the half

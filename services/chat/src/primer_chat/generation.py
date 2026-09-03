@@ -20,10 +20,32 @@ from primer_contracts.chat import MessageRole
 
 from primer_chat.config import Settings
 from primer_chat.rag import HistoryTurn
+from primer_chat.reasoning import Channel, Fragment, ReasoningSplitter
+
+#: Where an endpoint that separates thinking itself puts it. There is no
+#: standard for this - it is not in the OpenAI API - so the field is whatever
+#: a given server chose. These are the two in circulation: `reasoning_content`
+#: from vLLM's reasoning parsers and DeepSeek, `reasoning` from others.
+REASONING_FIELDS = ("reasoning_content", "reasoning")
+
+
+def _reasoning_of(chunk: object) -> str:
+    """Thinking a provider handed over already separated, if it did.
+
+    Haystack keeps fields it does not model itself in `meta`, so both are
+    looked at: the attribute for a client that grew one, and the bag for
+    everything else.
+    """
+    meta = getattr(chunk, "meta", None) or {}
+    for field in REASONING_FIELDS:
+        value = getattr(chunk, field, None) or (meta.get(field) if isinstance(meta, dict) else None)
+        if isinstance(value, str) and value:
+            return value
+    return ""
 
 
 class ChatGenerator(Protocol):
-    """Yields text fragments as the model produces them."""
+    """Yields fragments as the model produces them, thinking and answer apart."""
 
     def stream(
         self,
@@ -32,7 +54,7 @@ class ChatGenerator(Protocol):
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[Fragment]: ...
 
 
 class HaystackChatGenerator:
@@ -76,19 +98,33 @@ class HaystackChatGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[Fragment]:
         """Bridge Haystack's synchronous callback into an async iterator.
 
         Haystack streams by invoking a callback on a worker thread. The
         fragments are handed across a memory channel so the event loop keeps
         serving other connections while a slow model produces tokens.
+
+        Thinking and answer come out on separate channels. An endpoint
+        running a reasoning parser hands them over already separated, in a
+        field beside the content; one without a parser puts the thinking in
+        the content inside `<think>` tags, which the splitter pulls back
+        apart. Both are handled, because which of the two a deployment gets
+        is a property of how its endpoint was launched, not of Primer.
         """
-        send, receive = anyio.create_memory_object_stream[str | None](max_buffer_size=64)
+        send, receive = anyio.create_memory_object_stream[Fragment | None](max_buffer_size=64)
+        splitter = ReasoningSplitter()
 
         def on_chunk(chunk: object) -> None:
+            # A provider that separates thinking itself needs no parsing, and
+            # must not be fed through the splitter: its content field carries
+            # no tags, and its reasoning is not the answer.
+            thought = _reasoning_of(chunk)
+            if thought:
+                anyio.from_thread.run(send.send, Fragment(Channel.REASONING, thought))
             text = getattr(chunk, "content", "") or ""
-            if text:
-                anyio.from_thread.run(send.send, text)
+            for fragment in splitter.feed(text):
+                anyio.from_thread.run(send.send, fragment)
 
         async def produce() -> None:
             try:
@@ -96,6 +132,10 @@ class HaystackChatGenerator:
                     lambda: self._run(system_prompt, user_prompt, history, on_chunk, model)
                 )
             finally:
+                # Anything the splitter was holding back for a tag that never
+                # arrived belongs to the reader, not to the parser.
+                for fragment in splitter.finish():
+                    await send.send(fragment)
                 await send.send(None)
 
         async with anyio.create_task_group() as group:
@@ -141,10 +181,20 @@ def _replay(history: tuple[HistoryTurn, ...]) -> list[ChatMessage]:
 
 
 class StaticGenerator:
-    """A generator that replays fixed fragments. For tests and for offline use."""
+    """A generator that replays fixed fragments. For tests and for offline use.
 
-    def __init__(self, fragments: Iterator[str] | list[str], model: str = "static") -> None:
-        self._fragments = list(fragments)
+    Plain strings are answer text, which is what almost every caller wants.
+    A caller exercising a reasoning model passes `Fragment`s instead and says
+    which channel each belongs to.
+    """
+
+    def __init__(
+        self, fragments: Iterator[str | Fragment] | list[str | Fragment], model: str = "static"
+    ) -> None:
+        self._fragments = [
+            fragment if isinstance(fragment, Fragment) else Fragment(Channel.ANSWER, fragment)
+            for fragment in fragments
+        ]
         self.model = model
 
     async def stream(
@@ -154,6 +204,6 @@ class StaticGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[Fragment]:
         for fragment in self._fragments:
             yield fragment

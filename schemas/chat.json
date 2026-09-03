@@ -314,6 +314,17 @@
             ],
             "title": "Provider Model"
           },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning"
+          },
           "role": {
             "$ref": "#/components/schemas/MessageRole"
           },

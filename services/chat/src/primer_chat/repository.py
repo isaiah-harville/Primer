@@ -128,6 +128,7 @@ class ChatRepository:
         *,
         state: MessageState,
         content: str,
+        reasoning: str | None = None,
         citations: tuple[Citation, ...] = (),
         error_code: str | None = None,
     ) -> Message:
@@ -135,10 +136,14 @@ class ChatRepository:
 
         A failed stream keeps the text it managed to write. Discarding it
         would throw away the only evidence of what went wrong, and a reader
-        can see for themselves that the answer stops mid-thought.
+        can see for themselves that the answer stops mid-thought. The
+        thinking is kept for the same reason, and for a failure it is often
+        the more useful half: a model that never stopped deliberating
+        produced no answer to look at.
         """
         message.state = state.value
         message.content = content
+        message.reasoning = reasoning
         message.error_code = error_code
         for ordinal, citation in enumerate(citations, start=1):
             self._session.add(
@@ -259,6 +264,7 @@ def summarize_message(message: Message, citations: tuple[Citation, ...] = ()) ->
         role=MessageRole(message.role),
         state=MessageState(message.state),
         content=message.content,
+        reasoning=message.reasoning,
         citations=citations,
         provider_model=message.provider_model,
         error_code=message.error_code,

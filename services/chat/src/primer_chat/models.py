@@ -126,6 +126,10 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     state: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    #: What a reasoning model worked through before answering. Nullable with
+    #: no default, because the three states differ: null is a model that does
+    #: not reason aloud, empty is one that does and said nothing this turn.
+    reasoning: Mapped[str | None] = mapped_column(Text)
     #: Which endpoint and model produced this, recorded per message: a
     #: deployment can change models between turns, and an answer's provenance
     #: is part of the answer.

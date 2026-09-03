@@ -13,6 +13,14 @@ export interface StreamState {
 	conversationId: string | null;
 	/** Accumulated text, in arrival order. */
 	text: string;
+	/**
+	 * What the model worked through, for one that thinks aloud.
+	 *
+	 * Null until a reasoning event arrives, so a model that does not think
+	 * aloud is distinguishable from one that does and has not started. The
+	 * interface shows nothing at all for the former.
+	 */
+	reasoning: string | null;
 	citations: Citation[];
 	message: MessageSummary | null;
 	error: { code: string; detail: string | null } | null;
@@ -26,6 +34,7 @@ export function emptyStream(): StreamState {
 		messageId: null,
 		conversationId: null,
 		text: '',
+		reasoning: null,
 		citations: [],
 		message: null,
 		error: null,
@@ -62,12 +71,20 @@ export function reduce(state: StreamState, event: RawEvent): StreamState {
 			// routinely arrives as one fragment's trailing character.
 			next.text = state.text + String(event.text ?? '');
 			return next;
+		case 'reasoning.delta':
+			// Its own channel, never folded into the answer: the answer is
+			// what a reader copies, exports, and cites.
+			next.reasoning = (state.reasoning ?? '') + String(event.text ?? '');
+			return next;
 		case 'citation':
 			next.citations = [...state.citations, event.citation as Citation];
 			return next;
 		case 'message.completed':
 			next.message = event.message as MessageSummary;
 			next.text = next.message.content;
+			// The stored value wins, so a reopened thread and a freshly
+			// streamed one show the same thing.
+			next.reasoning = next.message.reasoning ?? next.reasoning;
 			next.citations = next.message.citations;
 			next.done = true;
 			return next;

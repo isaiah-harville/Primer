@@ -93,3 +93,41 @@ describe('SSE reduction', () => {
 		expect(parseFrame(': keepalive')).toBeNull();
 	});
 });
+
+describe('a model that thinks aloud', () => {
+	it('keeps thinking out of the answer', () => {
+		// The one that matters: the answer is what a reader copies and cites.
+		const events = [
+			{ id: 0, type: 'reasoning.delta', text: 'weighing the passages' },
+			{ id: 1, type: 'message.delta', text: 'The dosage was 40mg.' },
+		];
+		const state = events.reduce(reduce, emptyStream());
+
+		expect(state.text).toBe('The dosage was 40mg.');
+		expect(state.reasoning).toBe('weighing the passages');
+	});
+
+	it('concatenates thinking fragments in arrival order', () => {
+		const events = [
+			{ id: 0, type: 'reasoning.delta', text: 'first ' },
+			{ id: 1, type: 'reasoning.delta', text: 'second' },
+		];
+		expect(events.reduce(reduce, emptyStream()).reasoning).toBe('first second');
+	});
+
+	it('leaves reasoning null for a model that does not think aloud', () => {
+		// Null is what keeps the disclosure off the screen entirely, so it
+		// has to stay distinguishable from an empty thought.
+		const state = [{ id: 0, type: 'message.delta', text: 'Answer.' }].reduce(reduce, emptyStream());
+		expect(state.reasoning).toBeNull();
+	});
+
+	it('drops a replayed reasoning fragment after a reconnect', () => {
+		// Same rule as the answer: applying a delta twice duplicates it.
+		const state = [
+			{ id: 0, type: 'reasoning.delta', text: 'thought' },
+			{ id: 0, type: 'reasoning.delta', text: 'thought' },
+		].reduce(reduce, emptyStream());
+		expect(state.reasoning).toBe('thought');
+	});
+});

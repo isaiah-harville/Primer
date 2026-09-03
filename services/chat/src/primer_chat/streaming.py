@@ -20,6 +20,7 @@ from primer_contracts.chat import (
     MessageRole,
     MessageStarted,
     MessageState,
+    ReasoningDelta,
     StreamError,
 )
 from primer_contracts.identity import Principal
@@ -41,6 +42,7 @@ from primer_chat.rag import (
     build_prompt,
     with_summary,
 )
+from primer_chat.reasoning import Channel
 from primer_chat.repository import ChatRepository, summarize_message
 
 logger = logging.getLogger(__name__)
@@ -132,7 +134,12 @@ class Responder:
     async def respond(
         self, session: AsyncSession, turn: Answering
     ) -> AsyncIterator[
-        MessageStarted | MessageDelta | CitationEvent | MessageCompleted | StreamError
+        MessageStarted
+        | MessageDelta
+        | ReasoningDelta
+        | CitationEvent
+        | MessageCompleted
+        | StreamError
     ]:
         """Answer one question, emitting events as the answer takes shape."""
         repository = ChatRepository(session)
@@ -304,12 +311,19 @@ class Responder:
         system_prompt = with_summary(system_prompt, summary)
 
         text = ""
+        #: None until the model actually reasons aloud, so a model that does
+        #: not is stored as null rather than as an empty thought.
+        thinking: str | None = None
         try:
             async for fragment in self._generator.stream(
                 system_prompt, prompt, history=history, model=turn.model
             ):
-                text += fragment
-                yield MessageDelta(id=next_id(), text=fragment)
+                if fragment.channel is Channel.REASONING:
+                    thinking = (thinking or "") + fragment.text
+                    yield ReasoningDelta(id=next_id(), text=fragment.text)
+                    continue
+                text += fragment.text
+                yield MessageDelta(id=next_id(), text=fragment.text)
         except Exception:
             # Whatever was written is kept: it is the only evidence of what
             # went wrong, and a reader can see the answer stops mid-thought.
@@ -318,6 +332,7 @@ class Responder:
                 message,
                 state=MessageState.FAILED,
                 content=text,
+                reasoning=thinking,
                 citations=context.citations,
                 error_code="generation_failed",
             )
@@ -333,6 +348,7 @@ class Responder:
             message,
             state=MessageState.COMPLETED,
             content=text,
+            reasoning=thinking,
             citations=context.citations,
         )
         await session.commit()

@@ -6,6 +6,7 @@
 		Markdown,
 		Message,
 		Progress,
+		Reasoning,
 		PromptComposer,
 		Spinner
 	} from '@sivir-ui/svelte';
@@ -107,6 +108,27 @@
 	//: user's time on a request that cannot succeed, so the composer is shut
 	//: rather than left inviting.
 	let answerable = $derived(data.models.length > 0);
+
+	//: Whether each turn's thinking is expanded, once someone has said so.
+	//: Absent means nobody has touched it, and the default applies: open
+	//: while the model is still working, folded away once it has answered.
+	//: Keyed by position, which is stable for the life of a transcript -
+	//: turns are only ever appended.
+	let thinkingOpen = $state<Record<number, boolean>>({});
+	function showingThinking(index: number, done: boolean): boolean {
+		return thinkingOpen[index] ?? !done;
+	}
+
+	//: A line of the thinking, shown on the folded header so it is worth
+	//: opening. Newlines are flattened because the header is one line and a
+	//: model's scratch work is full of them.
+	const PREVIEW_CHARACTERS = 110;
+	function thinkingPreview(reasoning: string): string {
+		const flattened = reasoning.replace(/\s+/g, ' ').trim();
+		return flattened.length > PREVIEW_CHARACTERS
+			? `${flattened.slice(0, PREVIEW_CHARACTERS).trimEnd()}…`
+			: flattened;
+	}
 
 	// Shown for a few seconds rather than cleared right away, and guarded by
 	// a token so an upload that finishes later than a fresher one cannot
@@ -419,6 +441,51 @@
 				</Message.Root>
 
 				<Message.Root from="assistant" status={turn.stream.done ? 'idle' : 'streaming'}>
+					{#if turn.stream.reasoning !== null}
+						<!--
+						  What the model worked through, above the answer it
+						  produced and folded away once it has. Null rather
+						  than empty is what keeps this off the screen
+						  entirely for the models that do not think aloud,
+						  which is most of them.
+
+						  Quiet on purpose: it is scratch work, not the
+						  answer, and it must not compete with the thing the
+						  reader actually asked for.
+						-->
+						<Reasoning.Root
+							streaming={!turn.stream.done}
+							open={showingThinking(index, turn.stream.done)}
+							onOpenChange={(open) => (thinkingOpen[index] = open)}
+							class="mb-2"
+						>
+							<!--
+							  The folded header carries a line of the thinking
+							  itself. Without a title the kit prints the word
+							  "Draft", which tells a reader nothing about
+							  whether this one is worth opening.
+
+							  That preview is the trigger's last child and
+							  carries no colour of its own, so it inherits the
+							  button's and arrives as loud as the answer. It is
+							  selected directly here because a plain colour on
+							  the trigger loses: the kit merges its own classes
+							  after the caller's, so the caller's is dropped.
+							-->
+							<Reasoning.Trigger
+								title={thinkingPreview(turn.stream.reasoning)}
+								class="[&>span:last-child]:text-xs [&>span:last-child]:font-normal
+									[&>span:last-child]:text-muted-foreground"
+							/>
+							<Reasoning.Content
+								class="whitespace-pre-wrap border-l border-border pl-3 text-xs
+									leading-relaxed text-muted-foreground"
+							>
+								{turn.stream.reasoning}
+							</Reasoning.Content>
+						</Reasoning.Root>
+					{/if}
+
 					<Message.Content>
 						<!--
 						  Rendered as Markdown, since models write it. The text
