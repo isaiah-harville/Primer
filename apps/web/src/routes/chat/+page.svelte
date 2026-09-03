@@ -21,6 +21,7 @@
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
 	import type { MessageSummary } from '$lib/api/types';
 	import { formatBytes, rejectionFor } from '$lib/upload';
+	import { unqualify } from '$lib/models';
 	import { turnsFrom, type Turn } from '$lib/transcript';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
 	import type { PageData } from './$types';
@@ -228,7 +229,10 @@
 					message: asked,
 					...(conversationId ? { conversation_id: conversationId } : {}),
 					...(libraryId ? { library_id: libraryId } : {}),
-					...(model ? { model } : {})
+					// Split back into the two fields the request carries. The
+					// picker's value names both, because a model name alone
+					// cannot say which provider serves it.
+					...unqualify(model)
 				})
 			});
 			if (!response.ok || !response.body) throw new Error('The server refused the question.');
