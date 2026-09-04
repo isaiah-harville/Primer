@@ -31,9 +31,15 @@
 	let fallback = $derived(models.find((model) => model.default) ?? models[0]);
 	let shown = $derived(chosen ?? fallback);
 
-	//: Whether there is anything to pick between. Most deployments serve one
-	//: model, and a menu with a single entry is a control that does nothing.
-	let choosable = $derived(models.length > 1);
+	//: A menu whenever there is a model at all, even the only one.
+	//:
+	//: It used to flatten to plain text with one model, on the reasoning that
+	//: a menu of one is a control that does nothing. That was true when a
+	//: deployment had one endpoint. It is not now: the menu is where a
+	//: reader sees which provider is answering and where more of them appear
+	//: as they are added, so hiding it hides the feature from exactly the
+	//: deployments that have not used it yet.
+	let choosable = $derived(models.length > 0);
 
 	//: Grouped so a reader can see where each model runs. With one provider
 	//: the heading would be noise, so it is only drawn when there are two.
@@ -80,6 +86,15 @@
 			>
 				{shown.id}
 			</span>
+			{#if byProvider.length === 1 && shown.provider_name}
+				<!--
+				  With one provider the menu draws no heading, so the trigger
+				  is the only place a reader learns where the model runs.
+				-->
+				<span class="hidden text-xs text-muted-foreground sm:inline">
+					{shown.provider_name}
+				</span>
+			{/if}
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Content>
 			<DropdownMenu.RadioGroup
@@ -114,18 +129,4 @@
 			</DropdownMenu.RadioGroup>
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
-{:else}
-	<!--
-	  One model: plain text rather than a dead menu, so nothing invites a
-	  click that leads nowhere.
-	-->
-	<span
-		class="flex items-center gap-2 px-1 py-1.5 text-sm text-muted-foreground"
-		title="Answered by {shown.id}{shown.provider_name
-			? ` on ${shown.provider_name}`
-			: ''}. This deployment serves one model."
-	>
-		<Cpu size={14} aria-hidden="true" />
-		<span class="max-w-[16rem] truncate font-mono text-xs">{shown.id}</span>
-	</span>
 {/if}

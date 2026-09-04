@@ -105,6 +105,18 @@ export class ChatApi {
 		return this.request('/api/v1/conversations');
 	}
 
+	/**
+	 * One conversation, asked for directly.
+	 *
+	 * Not found by searching the list. The list is loaded for the sidebar
+	 * and can be stale or, on a transient failure, empty - and a thread that
+	 * was just answered is exactly the one most likely to be missing from
+	 * it. Searching it made a fresh answer look like a deleted conversation.
+	 */
+	conversation(conversationId: string): Promise<ConversationSummary> {
+		return this.request(`/api/v1/conversations/${conversationId}`);
+	}
+
 	messages(conversationId: string): Promise<MessageSummary[]> {
 		return this.request(`/api/v1/conversations/${conversationId}/messages`);
 	}

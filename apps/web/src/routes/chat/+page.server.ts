@@ -1,3 +1,4 @@
+import { ApiError } from '$lib/api/client';
 import type { ChatModelList, ConversationSummary, MessageSummary } from '$lib/api/types';
 import { chatFor } from '$lib/server/chat';
 import type { PageServerLoad } from './$types';
@@ -47,24 +48,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * that silently appears blank looks like a thread that lost its messages, so
  * the reason is returned and said on the page.
  */
-export const load: PageServerLoad = async ({ request, fetch, url, parent }) => {
+export const load: PageServerLoad = async ({ request, fetch, url }) => {
 	const chat = chatFor(request, fetch);
 	const asked = url.searchParams.get('conversation');
 	const wanted = asked && UUID.test(asked) ? asked : null;
 
-	// The list comes from the layout, which loads it for the sidebar. Asking
-	// again here would be a second request for the same thing on every
-	// question, and two lists that could disagree about what exists.
-	const [modelsResult, { conversations }] = await Promise.all([
-		chat
-			.models()
-			.then((body) => ({ models: body.models ?? [], problem: whyUnanswerable(body) }))
-			.catch(() => ({
-				models: [] as ChatModelList['models'],
-				problem: 'The chat service could not be reached, so no model can answer.',
-			})),
-		parent(),
-	]);
+	// The sidebar's list is loaded by the layout and is not read here. This
+	// page asks for the one conversation it needs by id, so a stale or
+	// briefly empty list cannot make an open thread look deleted.
+	const modelsResult = await chat
+		.models()
+		.then((body) => ({ models: body.models ?? [], problem: whyUnanswerable(body) }))
+		.catch(() => ({
+			models: [] as ChatModelList['models'],
+			problem: 'The chat service could not be reached, so no model can answer.',
+		}));
 	const { models, problem: modelsProblem } = modelsResult;
 
 	let opened: { conversation: ConversationSummary; messages: MessageSummary[] } | null = null;
@@ -74,13 +72,22 @@ export const load: PageServerLoad = async ({ request, fetch, url, parent }) => {
 	let unopened: 'missing' | 'unavailable' | null = null;
 
 	if (wanted) {
-		const conversation = conversations.find((candidate) => candidate.id === wanted);
-		if (!conversation) {
-			unopened = 'missing';
+		// Asked for directly rather than found in the list above. That list
+		// is loaded for the sidebar and can be stale, or empty after a
+		// transient failure - and the thread most likely to be missing from
+		// it is the one just answered, which is precisely the one on screen.
+		const [conversation, messages] = await Promise.all([
+			chat.conversation(wanted).catch((error) => (error instanceof ApiError ? error : null)),
+			chat.messages(wanted).catch((): MessageSummary[] | null => null),
+		]);
+		if (conversation instanceof ApiError) {
+			// 404 is a thread that is genuinely gone; anything else is Chat
+			// being unable to answer, which is temporary and worded as such.
+			unopened = conversation.status === 404 ? 'missing' : 'unavailable';
+		} else if (conversation && messages) {
+			opened = { conversation, messages };
 		} else {
-			const messages = await chat.messages(wanted).catch((): MessageSummary[] | null => null);
-			if (messages) opened = { conversation, messages };
-			else unopened = 'unavailable';
+			unopened = 'unavailable';
 		}
 	}
 

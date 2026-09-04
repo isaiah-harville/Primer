@@ -2,8 +2,9 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Library, Link2Off, Trash2, TriangleAlert } from '@lucide/svelte';
-	import { Button } from '@sivir-ui/svelte';
+	import { Button, Spinner } from '@sivir-ui/svelte';
 	import type { ConversationSummary, LibrarySummary } from '$lib/api/types';
+	import { draft } from '$lib/draft.svelte';
 	import { notify } from '$lib/notifications.svelte';
 	import { exactly, timeAgo } from '$lib/when';
 
@@ -76,7 +77,7 @@
 	}
 </script>
 
-{#if conversations.length === 0}
+{#if conversations.length === 0 && !draft.title}
 	<!--
 	  Said rather than left blank. An empty column reads as something that
 	  failed to load, and the first thing a new user sees here is nothing.
@@ -87,6 +88,26 @@
 {/if}
 
 <ul class="-mx-1 min-h-0 space-y-0.5 overflow-y-auto px-1">
+	{#if draft.title}
+		<!--
+		  The thread being written, before it has been stored. It is not a
+		  link: there is nowhere else to go, it is already what is on screen.
+		  Shown so the timeline says where you are from the first question
+		  rather than from the first answer.
+		-->
+		<li>
+			<span
+				aria-current="page"
+				class="block rounded-md bg-secondary px-2.5 py-1.5 font-medium text-foreground"
+			>
+				<span class="block truncate text-sm leading-snug">{draft.title}</span>
+				<span class="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+					<Spinner size={11} aria-hidden="true" />
+					Saving…
+				</span>
+			</span>
+		</li>
+	{/if}
 	{#each conversations as conversation (conversation.id)}
 		{@const asked = grounding(conversation)}
 		{@const open = conversation.id === openId}

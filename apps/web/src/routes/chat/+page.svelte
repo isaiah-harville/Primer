@@ -21,6 +21,7 @@
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
 	import type { MessageSummary } from '$lib/api/types';
 	import { formatBytes, rejectionFor } from '$lib/upload';
+	import { draft } from '$lib/draft.svelte';
 	import { unqualify } from '$lib/models';
 	import { turnsFrom, type Turn } from '$lib/transcript';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
@@ -90,6 +91,13 @@
 		const opened = data.opened;
 		const id = opened?.conversation.id ?? null;
 		if (untrack(() => shown) === id) return;
+		// A load that tried to open a thread and could not is not a reason to
+		// throw away the one on screen. It is the same shape as switching to
+		// a different conversation - nothing opened - but the turns just
+		// streamed are the only copy the reader has, and clearing them looks
+		// exactly like the answer being lost. Only a load that opened
+		// something, or that was not asked to, replaces what is here.
+		if (id === null && data.unopened !== null && untrack(() => turns).length > 0) return;
 		untrack(() => {
 			shown = id;
 			conversationId = id;
@@ -212,6 +220,10 @@
 
 		question = '';
 		streaming = true;
+		// The timeline should say where you are from the first question, not
+		// from the first answer. A conversation is not stored until the
+		// question is asked, so until it is, this stands in for it.
+		if (!conversationId) draft.begin(asked);
 		// The bar is a picture of this, and a picture announces nothing.
 		announcement = 'Waiting for an answer.';
 		const turn = { question: asked, stream: emptyStream() };
@@ -255,6 +267,8 @@
 			}
 			// The history list is a page load away from knowing this happened.
 			await invalidateAll();
+			// Stored now, so the real entry takes over from the stand-in.
+			draft.settle();
 		} catch {
 			turn.stream = {
 				...turn.stream,
@@ -264,6 +278,10 @@
 			turns = [...turns];
 		} finally {
 			streaming = false;
+			// Cleared however the turn ended. A question that failed left no
+			// conversation behind, so a stand-in for one would be a row
+			// pointing at nothing.
+			draft.settle();
 			announcement = turn.stream.error ? 'The answer stopped early.' : 'Answer received.';
 		}
 	}
@@ -280,6 +298,7 @@
 		uploadError = '';
 		uploadSuccess = '';
 		uploads = [];
+		draft.settle();
 		announcement = 'Started a new chat.';
 		// The conversation that was open is in the URL, and leaving it there
 		// would restore the thread on the next reload.
