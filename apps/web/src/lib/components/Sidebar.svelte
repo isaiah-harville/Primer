@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { ChevronRight, Library, MessageSquare, Search, SquarePen } from '@lucide/svelte';
+	import { ChevronRight, Library, MessageSquare, Search, Settings, SquarePen } from '@lucide/svelte';
 	import { Shortcut } from '@sivir-ui/svelte';
 	import { untrack } from 'svelte';
 	import type {
@@ -260,6 +260,27 @@
 
 	<div class="flex flex-col gap-2 border-t border-border px-1 pt-3">
 		<AuthModeWarning authEnabled={capabilities.auth_enabled} />
+
+		{#if capabilities.is_admin}
+			<!--
+			  Only for administrators, and only because Control says so - the
+			  browser cannot see the group policy. Hiding it is a courtesy;
+			  every route behind it checks again.
+			-->
+			<a
+				href="/settings"
+				onclick={onnavigate}
+				aria-current={page.url.pathname === '/settings' ? 'page' : undefined}
+				class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors
+					focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]
+					{page.url.pathname === '/settings'
+					? 'bg-secondary font-medium text-foreground'
+					: 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+			>
+				<Settings size={15} aria-hidden="true" />
+				Settings
+			</a>
+		{/if}
 
 		{#if identity}
 			<!--

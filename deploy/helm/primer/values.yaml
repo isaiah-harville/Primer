@@ -29,6 +29,14 @@ image:
 # ingress below strips those headers from inbound requests: without that,
 # anyone could set them and be anyone.
 auth:
+  # The group whose members may open the settings page and change which
+  # inference providers this deployment answers from. Asserted by the proxy
+  # from the identity provider; Primer only reads it.
+  #
+  # Unset means nobody, deliberately. With authentication on, the alternative
+  # to naming no one is naming everyone, and on a shared deployment that lets
+  # any user repoint every question at an endpoint of their own.
+  adminGroup: ""
   # Required. There is no default, because a chart that silently deployed a
   # shared, unauthenticated Primer into a cluster would be a trap.
   mode: oidc

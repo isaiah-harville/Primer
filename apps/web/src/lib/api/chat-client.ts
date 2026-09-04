@@ -1,5 +1,14 @@
 import { ApiError, asProblem } from './client';
-import type { ChatModelList, ConversationSummary, MessageSummary, ProblemDetail } from './types';
+import type {
+	ChatModelList,
+	ConversationSummary,
+	MessageSummary,
+	ProblemDetail,
+	ProviderCheck,
+	ProviderCreate,
+	ProviderSummary,
+	ProviderUpdate,
+} from './types';
 
 /**
  * Talking to Chat.
@@ -59,6 +68,36 @@ export class ChatApi {
 	 */
 	models(): Promise<ChatModelList> {
 		return this.request('/api/v1/models');
+	}
+
+	/** Every endpoint this deployment can ask. Administrators only. */
+	providers(): Promise<ProviderSummary[]> {
+		return this.request('/api/v1/admin/providers');
+	}
+
+	addProvider(payload: ProviderCreate): Promise<ProviderSummary> {
+		return this.request('/api/v1/admin/providers', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		});
+	}
+
+	updateProvider(id: string, payload: ProviderUpdate): Promise<ProviderSummary> {
+		return this.request(`/api/v1/admin/providers/${id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		});
+	}
+
+	removeProvider(id: string): Promise<void> {
+		return this.request(`/api/v1/admin/providers/${id}`, { method: 'DELETE' });
+	}
+
+	/** Ask an endpoint what it serves, now. */
+	checkProvider(id: string): Promise<ProviderCheck> {
+		return this.request(`/api/v1/admin/providers/${id}/check`, { method: 'POST' });
 	}
 
 	/** The caller's own conversations, most recently updated first. */

@@ -62,6 +62,25 @@ with read access to the namespace has it.
     secretKeyRef:
       name: {{ include "primer.fullname" . }}-internal
       key: internal-token
+{{- /*
+Encrypts the API keys of providers added through the settings page. Given to
+every service rather than only the one that uses it, so that moving where
+providers are held later does not mean a chart change and a restart.
+*/}}
+- name: PRIMER_SETTINGS_ENCRYPTION_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "primer.fullname" . }}-internal
+      key: settings-key
+{{- if .Values.auth.adminGroup }}
+{{- /*
+Who may see and change how this deployment is wired. Unset means nobody,
+which is the safe reading of an operator who has not made the decision -
+the alternative is that every user of a shared deployment can repoint it.
+*/}}
+- name: PRIMER_ADMIN_GROUP
+  value: {{ .Values.auth.adminGroup | quote }}
+{{- end }}
 {{- include "primer.extraEnv" . }}
 {{- end -}}
 

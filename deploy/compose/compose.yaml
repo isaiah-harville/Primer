@@ -183,8 +183,15 @@ services:
       PRIMER_AUTH_MODE: disabled
       PRIMER_CONTROL_URL: http://control:8000
       PRIMER_RETRIEVAL_URL: http://retrieval:8000
+      # Encrypts the API keys of providers added through the settings page.
+      # Optional here: without it, a provider that needs no key still works
+      # and one that does is refused rather than stored in the clear.
+      # Generate with: openssl rand -base64 32
+      PRIMER_SETTINGS_ENCRYPTION_KEY: ${PRIMER_SETTINGS_ENCRYPTION_KEY:-}
       PRIMER_CHAT_BASE_URL: ${PRIMER_CHAT_BASE_URL:?set PRIMER_CHAT_BASE_URL}
-      PRIMER_CHAT_MODEL: ${PRIMER_CHAT_MODEL:?set PRIMER_CHAT_MODEL}
+      # Optional. Primer asks each provider what it serves, so this only
+      # says which model to offer first; a name nothing serves is ignored.
+      PRIMER_CHAT_MODEL: ${PRIMER_CHAT_MODEL:-}
       PRIMER_CHAT_API_KEY: ${PRIMER_CHAT_API_KEY:-}
     command:
       ["uvicorn", "primer_chat.app:create_app", "--factory",

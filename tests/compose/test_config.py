@@ -145,16 +145,33 @@ def test_no_model_server_is_bundled(compose_config: dict[str, Any]) -> None:
 
 
 def test_inference_settings_are_required(compose_config: dict[str, Any]) -> None:
-    """A wrong embedding dimension is not detectable later; make it explicit."""
+    """A wrong embedding dimension is not detectable later; make it explicit.
+
+    The embedding settings have no safe default and no way to be checked
+    after the fact: a wrong dimension is accepted by everything and shows up
+    as answers that cite nothing, long after the vectors were written. The
+    chat endpoint is required for a different reason - a single-user stack
+    started with nowhere to send a question is a mistake rather than a
+    choice.
+    """
     text = BASE.read_text()
     for variable in (
         "PRIMER_CHAT_BASE_URL",
-        "PRIMER_CHAT_MODEL",
         "PRIMER_EMBEDDING_BASE_URL",
         "PRIMER_EMBEDDING_MODEL",
         "PRIMER_EMBEDDING_DIMENSIONS",
     ):
         assert f"${{{variable}:?" in text
+
+
+def test_the_chat_model_is_not_required(compose_config: dict[str, Any]) -> None:
+    """Primer asks each provider what it serves, so naming one is optional.
+
+    It was required, and that made a deployment fail to start over a value
+    it did not need - while a name nothing served was offered in the picker
+    as though it did. Naming a model now only says which to offer first.
+    """
+    assert "${PRIMER_CHAT_MODEL:?" not in BASE.read_text()
 
 
 def test_the_profile_is_single_user_and_says_so(compose_config: dict[str, Any]) -> None:

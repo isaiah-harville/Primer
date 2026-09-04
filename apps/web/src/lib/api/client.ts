@@ -1,5 +1,6 @@
 import type {
 	DeploymentCapabilities,
+	DeploymentStatus,
 	DocumentSummary,
 	LibrarySummary,
 	Principal,
@@ -104,6 +105,11 @@ export class PrimerApi {
 	/** Who the trusted proxy says is making this request. */
 	me(): Promise<Principal> {
 		return this.request('/api/v1/me');
+	}
+
+	/** How this deployment is wired. Administrators only; Control decides. */
+	deploymentStatus(): Promise<DeploymentStatus> {
+		return this.request('/api/v1/admin/status');
 	}
 
 	libraries(): Promise<LibrarySummary[]> {
