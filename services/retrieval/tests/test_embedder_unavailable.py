@@ -38,7 +38,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         ),
         store=object(),  # ty: ignore[invalid-argument-type]
         document_embedder=object(),  # ty: ignore[invalid-argument-type]
-        text_embedder=UnreachableEmbedder(),  # ty: ignore[invalid-argument-type]
+        text_embedder=UnreachableEmbedder(),
         retriever=object(),
     )
     return TestClient(app, raise_server_exceptions=False)

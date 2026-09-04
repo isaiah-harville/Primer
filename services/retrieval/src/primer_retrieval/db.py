@@ -1,28 +1,17 @@
-"""Connection string handling shared by the service and its migrations."""
+"""Connection string handling shared by the service and its migrations.
+
+Retrieval owns no async session - it hands its connection string straight to
+the vector integration - so only the driver rewriting is wanted here, and
+that now comes from `primer_service.db` along with everyone else's.
+
+`PRIMER_DATABASE_URL` usually carries no driver at all, and SQLAlchemy reads
+a bare `postgresql://` as psycopg 2, which is not installed and should not
+be. One deployment may hand every service the same string, so an async driver
+is rewritten rather than rejected.
+"""
 
 from __future__ import annotations
 
-#: The driver migrations run under. Synchronous, and the same one the vector
-#: integration itself speaks, so a deployment needs one Postgres driver
-#: installed rather than two.
-SYNC_DRIVER = "psycopg"
+from primer_service.db import SYNC_DRIVER, as_sync_url
 
-
-def as_sync_url(url: str) -> str:
-    """Name the driver SQLAlchemy should use, rewriting only the scheme.
-
-    The service hands its connection string straight to the vector
-    integration, so `PRIMER_DATABASE_URL` usually carries no driver at all,
-    and SQLAlchemy reads a bare `postgresql://` as psycopg 2 - which is not
-    installed and should not be. An async driver is replaced rather than
-    rejected, because one deployment may hand every service the same string
-    and the services that serve requests do want asyncpg.
-
-    Only the part before `://` is touched. A password is free to contain
-    anything, `+asyncpg` included, and rewriting the whole string would
-    quietly corrupt it into an authentication failure with no visible cause.
-    """
-    scheme, separator, rest = url.partition("://")
-    if not separator or not scheme.startswith("postgresql"):
-        return url
-    return f"postgresql+{SYNC_DRIVER}{separator}{rest}"
+__all__ = ["SYNC_DRIVER", "as_sync_url"]

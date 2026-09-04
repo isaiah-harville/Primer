@@ -13,7 +13,7 @@ the transcript said the model stopped.
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 import openai
 import pytest
 from primer_chat.failures import GENERIC, describe
@@ -22,14 +22,15 @@ from primer_chat.generation import NoEndpoint
 
 def status_error(kind: type[openai.APIStatusError], code: int) -> openai.APIStatusError:
     """One of the openai errors that carries an HTTP response."""
-    request = httpx.Request("POST", "http://endpoint/v1/chat/completions")
-    response = httpx.Response(code, request=request, json={"error": {"message": "nope"}})
+    request = httpx2.Request("POST", "http://endpoint/v1/chat/completions")
+    response = httpx2.Response(code, request=request, json={"error": {"message": "nope"}})
     return kind("nope", response=response, body=None)
 
 
 def grouped(error: BaseException) -> BaseException:
     """As anyio delivers it: wrapped, and nested more than once."""
-    return ExceptionGroup("unhandled errors in a TaskGroup", [ExceptionGroup("inner", [error])])
+    inner: BaseExceptionGroup[BaseException] = BaseExceptionGroup("inner", [error])
+    return BaseExceptionGroup("unhandled errors in a TaskGroup", [inner])
 
 
 def test_a_rejected_api_key_says_so() -> None:
@@ -41,7 +42,7 @@ def test_a_rejected_api_key_says_so() -> None:
 
 
 def test_an_unreachable_endpoint_is_not_a_stopped_model() -> None:
-    request = httpx.Request("POST", "http://endpoint/v1/chat/completions")
+    request = httpx2.Request("POST", "http://endpoint/v1/chat/completions")
     code, _ = describe(openai.APIConnectionError(request=request))
 
     assert code == "endpoint_unreachable"
@@ -53,7 +54,7 @@ def test_a_timeout_is_told_apart_from_a_refused_connection() -> None:
     An endpoint that accepted the question and went quiet is a different
     problem from one that was never there.
     """
-    request = httpx.Request("POST", "http://endpoint/v1/chat/completions")
+    request = httpx2.Request("POST", "http://endpoint/v1/chat/completions")
     code, _ = describe(openai.APITimeoutError(request=request))
 
     assert code == "endpoint_timed_out"
@@ -102,8 +103,8 @@ def test_the_underlying_error_text_is_never_forwarded() -> None:
     these details are written here rather than taken from the response.
     """
     secret = "sk-abcdef123456"  # noqa: S105 - the point is that it must not be echoed
-    request = httpx.Request("POST", "http://endpoint/v1/chat/completions")
-    response = httpx.Response(
+    request = httpx2.Request("POST", "http://endpoint/v1/chat/completions")
+    response = httpx2.Response(
         401, request=request, json={"error": {"message": f"Invalid API Key: {secret}"}}
     )
     _, detail = describe(
