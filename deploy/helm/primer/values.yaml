@@ -137,6 +137,23 @@ inference:
     existingSecret: ""
     apiKeyKey: embedding-api-key
 
+  # Optional. A reranker reads a question and a passage together and scores
+  # the pair, which a vector search cannot do - its two embeddings were made
+  # without knowing about each other, so the passage that answers a question
+  # is often inside the first twenty results and outside the first six.
+  #
+  # Leave baseUrl empty and nothing changes: retrieval returns the vector
+  # ordering exactly as before. A reranker that is configured and then goes
+  # down also falls back to that ordering rather than failing the search.
+  rerank:
+    baseUrl: ""
+    model: ""
+    existingSecret: ""
+    apiKeyKey: rerank-api-key
+    # How many the vector search fetches before reranking. Wider than the
+    # answer needs on purpose; the shortlist is what the reranker reads.
+    candidates: 20
+
 vectorStore:
   kind: pgvector          # pgvector | qdrant
   qdrantUrl: ""

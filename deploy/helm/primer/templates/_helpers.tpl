@@ -139,6 +139,25 @@ post-renderer.
       name: {{ .Values.inference.embeddings.existingSecret }}
       key: {{ .Values.inference.embeddings.apiKeyKey }}
 {{- end }}
+{{- /*
+Reranking is optional and off unless an endpoint is named. Emitting nothing
+is what keeps a deployment without one behaving exactly as it did before.
+*/}}
+{{- if .Values.inference.rerank.baseUrl }}
+- name: PRIMER_RERANK_BASE_URL
+  value: {{ .Values.inference.rerank.baseUrl | quote }}
+- name: PRIMER_RERANK_MODEL
+  value: {{ required "inference.rerank.model is required when a rerank endpoint is set" .Values.inference.rerank.model | quote }}
+- name: PRIMER_RERANK_CANDIDATES
+  value: {{ .Values.inference.rerank.candidates | quote }}
+{{- if .Values.inference.rerank.existingSecret }}
+- name: PRIMER_RERANK_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.inference.rerank.existingSecret }}
+      key: {{ .Values.inference.rerank.apiKeyKey }}
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{/*
