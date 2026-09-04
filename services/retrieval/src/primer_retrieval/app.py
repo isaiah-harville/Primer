@@ -32,7 +32,7 @@ from primer_contracts.indexing import (
 
 from primer_retrieval import __version__
 from primer_retrieval.config import Settings
-from primer_retrieval.errors import ProblemError, problem_response
+from primer_retrieval.errors import ProblemError, dependency_unavailable, problem_response
 from primer_retrieval.pipelines import (
     GENERATION_ID,
     DocumentEmbedder,
@@ -178,7 +178,19 @@ def search(payload: SearchRequest, state: State) -> SearchResult:
     Filtering after the fact would silently return fewer results than asked
     for, and would depend on this code never being reordered.
     """
-    embedded = state.text_embedder.run(payload.query)
+    try:
+        embedded = state.text_embedder.run(payload.query)
+    except Exception as error:
+        # An unreachable embedding endpoint is a deployment fault, not a bad
+        # request, and it is the single most likely thing to be wrong on a
+        # self-hosted install: the embedder is a separate process that has to
+        # be running and reachable. Left unhandled it surfaced as a bare 500
+        # with a stack trace, which Chat then reported to the reader as an
+        # answer that stopped - sending whoever read it to look at the model.
+        logger.warning("the embedding endpoint could not be reached", exc_info=True)
+        raise dependency_unavailable(
+            "The embedding endpoint could not be reached, so this library cannot be searched."
+        ) from error
     # Fetch wider than the answer needs when a reranker will read them: the
     # passage that answers the question is often inside the first twenty and
     # outside the first six. Without one, the vector ordering is the answer,

@@ -28,7 +28,12 @@ from primer_contracts.indexing import SearchRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.budget import estimate_tokens, passages_that_fit, split_history
-from primer_chat.clients import LibraryAuthority, LibraryForbidden, PassageSource
+from primer_chat.clients import (
+    LibraryAuthority,
+    LibraryForbidden,
+    PassageSource,
+    SearchUnavailable,
+)
 from primer_chat.compaction import Compactor
 from primer_chat.config import Settings
 from primer_chat.generation import ChatGenerator, Endpoint, NoEndpoint
@@ -232,15 +237,34 @@ class Responder:
 
             chunks = ()
             if scope.generation_ids:
-                result = await self._retrieval.search(
-                    SearchRequest(
-                        principal=turn.principal,
-                        library_id=conversation.library_id,
-                        generation_ids=scope.generation_ids,
-                        query=turn.question,
-                        limit=self._settings.retrieval_limit,
+                try:
+                    result = await self._retrieval.search(
+                        SearchRequest(
+                            principal=turn.principal,
+                            library_id=conversation.library_id,
+                            generation_ids=scope.generation_ids,
+                            query=turn.question,
+                            limit=self._settings.retrieval_limit,
+                        )
                     )
-                )
+                except SearchUnavailable as unavailable:
+                    # The library is fine and the question is fine; the thing
+                    # that reads them is not. Said plainly, and terminally -
+                    # answering from the model alone would produce an
+                    # uncited answer for a question asked of a library.
+                    await repository.finish_message(
+                        message,
+                        state=MessageState.FAILED,
+                        content="",
+                        error_code="search_unavailable",
+                    )
+                    await session.commit()
+                    yield StreamError(
+                        id=next_id(),
+                        code="search_unavailable",
+                        detail=str(unavailable),
+                    )
+                    return
                 chunks = result.chunks
 
             retrieved = build_context(chunks)
