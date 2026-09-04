@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-from chat_support import ChatUser, FakeGenerator
+from chat_support import ChatUser, FakeGenerator, deployment
 from httpx2 import AsyncClient
 from primer_chat.config import Settings
 from primer_chat.db import Database
@@ -101,7 +101,7 @@ class TestALongConversation:
     @pytest.fixture
     def settings(self) -> Settings:
         """A window a handful of these turns cannot all fit in."""
-        return Settings(auth_mode="oidc", chat_context_tokens=1024, chat_reply_tokens=64)
+        return deployment(chat_context_tokens=1024, chat_reply_tokens=64)
 
     @pytest.fixture
     def generator(self) -> Summarizer:
@@ -219,8 +219,7 @@ class TestAConversationThatFits:
 class TestCompactionTurnedOff:
     @pytest.fixture
     def settings(self) -> Settings:
-        return Settings(
-            auth_mode="oidc",
+        return deployment(
             chat_context_tokens=1024,
             chat_reply_tokens=64,
             chat_compact_history=False,

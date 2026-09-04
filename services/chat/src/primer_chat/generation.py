@@ -45,6 +45,16 @@ def _reasoning_of(chunk: object) -> str:
     return ""
 
 
+class NoEndpoint(Exception):
+    """There is nowhere to send a question, so none is sent.
+
+    Its own type because the caller turns it into a message a person can act
+    on. Falling through to the generic failure would report it as a model
+    that stopped mid-answer, which sends whoever reads it looking at the
+    wrong thing entirely.
+    """
+
+
 @dataclass(frozen=True)
 class Endpoint:
     """Where to send a question, and what to authenticate with.
@@ -110,9 +120,18 @@ class HaystackChatGenerator:
         )
         name = model or self._settings.chat_model
         if name is None:
-            raise ValueError("no model was chosen and this deployment configures no default")
+            raise NoEndpoint("No model was chosen and this deployment configures no default.")
+        # Refused rather than defaulted. The OpenAI client reads a null base
+        # URL as its own hosted API, so a deployment that has simply not been
+        # pointed anywhere would send its users' questions - and the passages
+        # retrieved from their private documents - to a third party. Primer
+        # is self-hosted; that failure has to be loud.
+        if not target.base_url:
+            raise NoEndpoint(
+                "No inference endpoint is configured, so there is nowhere to send this question."
+            )
 
-        key = (target.base_url or "", name)
+        key = (target.base_url, name)
         if key not in self._generators:
             self._generators[key] = OpenAIChatGenerator(
                 # Many local servers ignore the key but require the header.

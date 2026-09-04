@@ -13,7 +13,7 @@ import os
 from typing import Any
 
 import pytest
-from chat_support import ChatUser
+from chat_support import ChatUser, deployment
 from httpx2 import AsyncClient
 from primer_chat.config import Settings
 
@@ -126,7 +126,7 @@ class TestWithNoEncryptionKeyConfigured:
 
     @pytest.fixture
     def settings(self) -> Settings:
-        return Settings(auth_mode="oidc", admin_group=ADMINS)
+        return deployment(admin_group=ADMINS)
 
     async def test_adding_a_provider_with_a_key_is_refused(self, admin: GroupedUser) -> None:
         response = await add(admin, api_key="sk-value")

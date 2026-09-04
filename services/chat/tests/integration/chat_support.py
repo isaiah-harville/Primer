@@ -16,6 +16,7 @@ from uuid import UUID
 
 from httpx2 import AsyncClient, Response
 from primer_chat.clients import LibraryForbidden
+from primer_chat.config import Settings
 from primer_chat.generation import Endpoint
 from primer_chat.rag import HistoryTurn
 from primer_chat.reasoning import Channel, Fragment
@@ -67,6 +68,30 @@ class FakeRetrieval:
                 for index, content in enumerate(self.contents)
             )
         )
+
+
+def deployment(**overrides: object) -> Settings:
+    """A plausible deployment, with whatever this test needs changed.
+
+    Chat used to default its model to a hosted one's name, so a test could
+    configure nothing and still be answered. Neither the model nor the
+    endpoint is defaulted now - a deployment pointed nowhere is refused
+    rather than sent to whoever owns the default - so the baseline has to
+    say what it is, in one place rather than in every override.
+
+    The generator is faked, so nothing is sent to this address; naming it is
+    what makes the deployment under test a configured one.
+    """
+    # Overrides win, so a test naming its own model is not fighting the
+    # baseline for the same keyword.
+    return Settings(
+        **{
+            "auth_mode": "oidc",
+            "chat_base_url": "http://model.invalid/v1",
+            "chat_model": "test-model",
+            **overrides,
+        }  # ty: ignore[invalid-argument-type]
+    )
 
 
 class FakeGenerator:

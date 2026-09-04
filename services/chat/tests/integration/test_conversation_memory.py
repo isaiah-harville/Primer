@@ -9,7 +9,7 @@ be replayed are not.
 from __future__ import annotations
 
 import pytest
-from chat_support import LIBRARY_ID, ChatUser, FakeGenerator, parse_events
+from chat_support import LIBRARY_ID, ChatUser, FakeGenerator, deployment, parse_events
 from httpx2 import AsyncClient
 from primer_chat.config import Settings
 
@@ -102,7 +102,7 @@ class TestABoundedHistory:
     @pytest.fixture
     def settings(self) -> Settings:
         """Two messages: one exchange, so the turn before last falls off."""
-        return Settings(auth_mode="oidc", chat_history_messages=2)
+        return deployment(chat_history_messages=2)
 
     async def test_only_the_most_recent_messages_are_replayed(
         self, user: ChatUser, generator: FakeGenerator
@@ -119,7 +119,7 @@ class TestABoundedHistory:
 class TestHistoryTurnedOff:
     @pytest.fixture
     def settings(self) -> Settings:
-        return Settings(auth_mode="oidc", chat_history_messages=0)
+        return deployment(chat_history_messages=0)
 
     async def test_each_question_is_answered_alone(
         self, user: ChatUser, generator: FakeGenerator

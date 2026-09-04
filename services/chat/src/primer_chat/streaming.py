@@ -31,7 +31,7 @@ from primer_chat.budget import estimate_tokens, passages_that_fit, split_history
 from primer_chat.clients import LibraryAuthority, LibraryForbidden, PassageSource
 from primer_chat.compaction import Compactor
 from primer_chat.config import Settings
-from primer_chat.generation import ChatGenerator, Endpoint
+from primer_chat.generation import ChatGenerator, Endpoint, NoEndpoint
 from primer_chat.models import Conversation
 from primer_chat.rag import (
     NO_CONTEXT_REPLY,
@@ -62,6 +62,23 @@ class Answering:
     #: None falls back to the endpoint configured for the deployment, which
     #: is what every request did before a deployment could hold several.
     endpoint: Endpoint | None = None
+
+
+def _no_endpoint_within(error: BaseException) -> NoEndpoint | None:
+    """Find a `NoEndpoint` inside whatever the task group raised.
+
+    anyio wraps a failing task in an ExceptionGroup, and those nest, so this
+    walks rather than checking the outermost type. Without it a deployment
+    pointed nowhere reports itself as a model that stopped mid-answer.
+    """
+    if isinstance(error, NoEndpoint):
+        return error
+    if isinstance(error, BaseExceptionGroup):
+        for nested in error.exceptions:
+            found = _no_endpoint_within(nested)
+            if found is not None:
+                return found
+    return None
 
 
 class Responder:
@@ -328,24 +345,36 @@ class Responder:
                     continue
                 text += fragment.text
                 yield MessageDelta(id=next_id(), text=fragment.text)
-        except Exception:
-            # Whatever was written is kept: it is the only evidence of what
-            # went wrong, and a reader can see the answer stops mid-thought.
-            logger.exception("message %s: generation failed", message.id)
+        except Exception as error:
+            # Two different failures share this path, and they send whoever
+            # reads them to different places. A deployment with nowhere to
+            # send the question is a configuration fault, not a model that
+            # stopped mid-answer, so it is reported as itself.
+            #
+            # The generator runs inside a task group, so what arrives here is
+            # an ExceptionGroup rather than the exception itself.
+            missing = _no_endpoint_within(error)
+            if missing is not None:
+                logger.error("message %s: %s", message.id, missing)
+                code, detail = "no_endpoint", str(missing)
+            else:
+                # Whatever was written is kept: it is the only evidence of
+                # what went wrong, and a reader can see the answer stops
+                # mid-thought.
+                logger.exception("message %s: generation failed", message.id)
+                code = "generation_failed"
+                detail = "The model stopped before finishing this answer."
+
             await repository.finish_message(
                 message,
                 state=MessageState.FAILED,
                 content=text,
                 reasoning=thinking,
                 citations=context.citations,
-                error_code="generation_failed",
+                error_code=code,
             )
             await session.commit()
-            yield StreamError(
-                id=next_id(),
-                code="generation_failed",
-                detail="The model stopped before finishing this answer.",
-            )
+            yield StreamError(id=next_id(), code=code, detail=detail)
             return
 
         completed = await repository.finish_message(

@@ -148,33 +148,66 @@ async def list_models(request: Request, session: Session) -> ChatModelList:
     return await catalog(await store.enabled(), preferred_model=settings.chat_model)
 
 
-async def endpoint_for(
-    request: Request, session: AsyncSession, provider_id: UUID | None
-) -> Endpoint | None:
-    """Where to send this question.
+async def route_for(
+    request: Request,
+    session: AsyncSession,
+    requested_model: str | None,
+    provider_id: UUID | None,
+) -> tuple[str | None, Endpoint | None]:
+    """Which model answers this question, and where it is sent.
 
-    None when the request named no provider, which falls back to the endpoint
-    configured for the deployment - what every request did before a
-    deployment could hold more than one.
+    Three cases, in order of how much the request said.
 
-    An id that names nothing is refused rather than quietly answered by the
-    default. The caller picked from a list Primer gave it, so a name that is
-    not in it means the list has changed underneath them, and answering from
-    somewhere else would attribute one provider's answer to another.
+    A request that names a provider gets that provider - it picked from a
+    list Primer gave it. An id naming nothing is refused rather than quietly
+    answered by the default: the list has changed underneath the caller, and
+    answering from somewhere else would attribute one provider's answer to
+    another.
+
+    A request that names only a model goes to the deployment's own endpoint,
+    which is what every request did before a deployment could hold more than
+    one, so older clients keep working.
+
+    A request that names neither, on a deployment that configures no default
+    model, is resolved from the catalog: the model that would be shown as
+    the default, together with the provider serving it. That costs a listing
+    round trip, and it is only paid by the deployments that need it.
     """
-    if provider_id is None:
-        return None
     settings: Settings = request.app.state.settings
     store = ProviderStore(session, settings, request.app.state.secret_box)
-    provider = await store.find(provider_id)
-    if provider is None or not provider.enabled:
-        raise ProblemError(
-            code=ErrorCode.NOT_FOUND,
-            title="Provider not found",
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="That provider is not available on this deployment.",
+
+    if provider_id is not None:
+        provider = await store.find(provider_id)
+        if provider is None or not provider.enabled:
+            raise ProblemError(
+                code=ErrorCode.NOT_FOUND,
+                title="Provider not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="That provider is not available on this deployment.",
+            )
+        return settings.resolve_model(requested_model), Endpoint(
+            base_url=provider.base_url, api_key=provider.api_key
         )
-    return Endpoint(base_url=provider.base_url, api_key=provider.api_key)
+
+    model = settings.resolve_model(requested_model)
+    if model is not None:
+        # The deployment's own endpoint, as before. None here means nothing
+        # is configured, which the generator refuses rather than defaulting.
+        return model, None
+
+    listed = await catalog(await store.enabled(), preferred_model=None)
+    default = next((entry for entry in listed.models if entry.default), None)
+    if default is None:
+        raise ProblemError(
+            code=ErrorCode.DEPENDENCY_UNAVAILABLE,
+            title="No model can answer",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=listed.detail or "No provider is serving a model.",
+        )
+    serving = await store.find(default.provider_id) if default.provider_id else None
+    return default.id, (
+        Endpoint(base_url=serving.base_url, api_key=serving.api_key) if serving else None
+    )
 
 
 @router.post(
@@ -197,8 +230,7 @@ async def ask(
     404 here would be equally correct; the stream is chosen so a client has
     exactly one place to handle failures.
     """
-    model = request.app.state.settings.resolve_model(payload.model)
-    endpoint = await endpoint_for(request, session, payload.provider_id)
+    model, endpoint = await route_for(request, session, payload.model, payload.provider_id)
     conversation = await ChatRepository(session).create_conversation(
         library_id=payload.library_id,
         owner_user_id=principal.user_id,
@@ -238,12 +270,13 @@ async def follow_up(
     )
     if conversation is None:
         raise not_found("Conversation")
+    routed = await route_for(request, session, payload.model, payload.provider_id)
     turn = Answering(
         principal=principal,
         conversation=conversation,
         question=payload.message,
-        model=request.app.state.settings.resolve_model(payload.model),
-        endpoint=await endpoint_for(request, session, payload.provider_id),
+        model=routed[0],
+        endpoint=routed[1],
     )
     return stream_response(responder, session, turn)
 

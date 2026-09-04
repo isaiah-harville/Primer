@@ -98,8 +98,23 @@ def generator() -> FakeGenerator:
 
 @pytest.fixture
 def settings() -> Settings:
-    """The deployment under test. Overridden by tests that need a different one."""
-    return Settings(auth_mode="oidc")
+    """The deployment under test. Overridden by tests that need a different one.
+
+    An endpoint and a model are named because a real deployment names them,
+    and because neither is defaulted any more. Chat used to fall back to a
+    hosted model's name, which meant these tests passed while representing a
+    deployment that had been configured with nothing - and the routing that
+    now refuses to send a question nowhere had no way to tell that apart
+    from a genuine misconfiguration.
+
+    The generator is a fake, so nothing is actually sent here; what these
+    values do is make the deployment under test a plausible one.
+    """
+    return Settings(
+        auth_mode="oidc",
+        chat_base_url="http://model.invalid/v1",
+        chat_model="test-model",
+    )
 
 
 @pytest.fixture
