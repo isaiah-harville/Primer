@@ -11,7 +11,7 @@
 		Spinner
 	} from '@sivir-ui/svelte';
 	import { Check, FileText, Plus } from '@lucide/svelte';
-	import { goto, invalidate, replaceState } from '$app/navigation';
+	import { afterNavigate, goto, invalidateAll, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import CitationPanel from '$lib/components/CitationPanel.svelte';
@@ -19,7 +19,7 @@
 	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
-	import type { MessageSummary } from '$lib/api/types';
+	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { draft } from '$lib/draft.svelte';
 	import { unqualify } from '$lib/models';
@@ -79,51 +79,70 @@
 	//: reloading the list does not look like opening a different thread.
 	let shown = $state<string | null>(null);
 
-	//: Which thread the URL is asking for, which is not the same question as
-	//: which one the load managed to open. The gap between those two is
-	//: exactly where a transcript gets thrown away.
-	let wanted = $derived(page.url.searchParams.get('conversation'));
-
 	//: An answer that has been asked for but has not started arriving. Once
 	//: the first token lands the text itself is the progress, so the bar
 	//: gives way to it rather than running alongside.
 	let thinking = $derived(streaming && (turns.at(-1)?.stream.text ?? '') === '');
 
-	// Load decides which conversation is on screen; this follows it. Guarded
-	// on the id rather than on the data, so refreshing the list after a turn
-	// does not throw away the turn that was just streamed into it.
+	/**
+	 * Show a stored conversation, replacing whatever is on screen.
+	 *
+	 * The only thing that writes over a transcript, and it is only ever
+	 * called with one that a load actually returned.
+	 */
+	function show(
+		opened: { conversation: ConversationSummary; messages: MessageSummary[] } | null
+	) {
+		shown = opened?.conversation.id ?? null;
+		conversationId = shown;
+		turns = opened ? turnsFrom(opened.messages) : [];
+		libraryId = opened?.conversation.library_id ?? '';
+		question = '';
+		sourcesFor = null;
+		sourcesOpen = false;
+		uploadError = '';
+		uploadSuccess = '';
+		uploads = [];
+		offered = null;
+	}
+
+	// Follows the load, and deliberately cannot clear anything.
+	//
+	// It used to also handle the empty case - a load that opened nothing
+	// meant "clear the screen" - and that is what was throwing answers away.
+	// Three quite different things arrive here looking identical: a new chat
+	// being started, a load that failed to open the thread it was asked for,
+	// and a refresh that had not yet caught up with a conversation written a
+	// moment earlier. Only the first means clear, and the effect cannot tell
+	// them apart, because by the time it runs the difference is gone.
+	//
+	// So it no longer tries. Adopting a conversation is the only thing that
+	// happens here; clearing is `afterNavigate`'s job below, which knows
+	// something this does not - that a person deliberately went somewhere.
 	$effect(() => {
 		const opened = data.opened;
-		const id = opened?.conversation.id ?? null;
-		if (untrack(() => shown) === id) return;
-		// A load that opened nothing is not a reason to throw away what is on
-		// screen. It is the same shape as switching to a new chat - nothing
-		// opened - but the turns just streamed are the only copy the reader
-		// has, and clearing them looks exactly like the answer being lost.
-		//
-		// The URL decides which of the two this is, because the URL is what
-		// actually asks for a thread. Still naming one means the load failed
-		// to open it and the transcript stands; naming none means a new chat
-		// was genuinely started, and starting one clears its own screen.
-		//
-		// This used to test `data.unopened`, which is only set when a load
-		// was asked for a thread and refused - so every other way of coming
-		// back empty, including a refresh that simply had not caught up with
-		// a thread written a moment earlier, fell through and wiped it.
-		if (id === null && untrack(() => turns).length > 0 && wanted !== null) return;
-		untrack(() => {
-			shown = id;
-			conversationId = id;
-			turns = opened ? turnsFrom(opened.messages) : [];
-			libraryId = opened?.conversation.library_id ?? '';
-			question = '';
-			sourcesFor = null;
-			sourcesOpen = false;
-			uploadError = '';
-			uploadSuccess = '';
-			uploads = [];
-			offered = null;
-		});
+		if (!opened) return;
+		if (untrack(() => shown) === opened.conversation.id) return;
+		untrack(() => show(opened));
+	});
+
+	// Starting a new chat, when it is a link rather than the button.
+	//
+	// The sidebar's "New chat" is an anchor to /chat, so nothing on this page
+	// runs when it is clicked - the component is already mounted and only the
+	// data changes. This is the signal that was missing.
+	//
+	// A navigation is exactly the right thing to listen for, and the reason
+	// the effect above cannot do this job: invalidating the sidebar is not a
+	// navigation, and neither is the shallow URL update after an answer, so
+	// neither of them reaches here. Only a person going somewhere does.
+	afterNavigate(({ to }) => {
+		if (to?.url.pathname !== '/chat') return;
+		if (to.url.searchParams.get('conversation') !== null) return;
+		// Already blank - and this fires on the shallow update too, where
+		// clearing would throw away the answer that just arrived.
+		if (untrack(() => shown) === null && untrack(() => turns).length === 0) return;
+		show(null);
 	});
 
 	//: True when nothing can answer a question. Asking anyway would spend a
@@ -210,11 +229,10 @@
 				uploads = uploads.filter((upload) => upload.id !== id);
 			}
 		}
-		// The sidebar counts documents, and it is on this page too. Targeted
-		// rather than a blanket refresh: re-running every load re-runs this
-		// page's, and that load decides which conversation is on screen - so
-		// dropping a file into a library cleared the answers above it.
-		await invalidate('primer:libraries');
+		// The sidebar counts documents, and it is on this page too. Safe to
+		// refresh everything now: the effect above adopts conversations and
+		// never clears them, so a reload cannot take the answers off screen.
+		await invalidateAll();
 	}
 
 	async function discard() {
@@ -227,7 +245,7 @@
 		} catch (error) {
 			uploadError = error instanceof Error ? error.message : 'That library could not be removed.';
 		}
-		await invalidate('primer:libraries');
+		await invalidateAll();
 	}
 
 	async function ask() {
@@ -281,13 +299,11 @@
 				shown = conversationId;
 				replaceState(`/chat?conversation=${conversationId}`, page.state);
 			}
-			// The history list is a page load away from knowing this happened -
-			// but only the history list. A blanket refresh re-ran this page's
-			// load too, and that load decides which conversation is on screen,
-			// so announcing a new row handed the transcript's fate to a round
-			// trip: a load that came back without the thread just written
-			// cleared the answer off the screen.
-			await invalidate('primer:conversations');
+			// The history list is a page load away from knowing this happened.
+			// It is also, now, guaranteed to see it: Control commits a write
+			// before answering, so this reload cannot race the conversation
+			// that was just created.
+			await invalidateAll();
 			// Stored now, so the real entry takes over from the stand-in.
 			draft.settle();
 		} catch {

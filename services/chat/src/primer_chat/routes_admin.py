@@ -29,6 +29,7 @@ from primer_contracts.providers import (
     ProviderSummary,
     ProviderUpdate,
 )
+from primer_service.durable import DurableRoute
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +42,7 @@ from primer_chat.models import Provider
 from primer_chat.providers_store import ProviderStore, ResolvedProvider
 from primer_chat.secrets import SecretBox, SecretsUnavailable
 
-router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+router = APIRouter(prefix="/api/v1/admin", tags=["admin"], route_class=DurableRoute)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 

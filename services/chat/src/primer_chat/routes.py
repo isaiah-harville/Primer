@@ -17,6 +17,7 @@ from primer_contracts.chat import (
     MessageSummary,
 )
 from primer_contracts.errors import ErrorCode
+from primer_service.durable import DurableRoute
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +34,7 @@ from primer_chat.streaming import Answering, Responder
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["chat"])
+router = APIRouter(prefix="/api/v1", tags=["chat"], route_class=DurableRoute)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 

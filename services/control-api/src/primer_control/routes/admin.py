@@ -23,12 +23,13 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx2
 from fastapi import APIRouter, Depends, Request, status
 from primer_contracts.deployment import DependencyStatus, DeploymentStatus
+from primer_service.durable import DurableRoute
 
 from primer_control.config import Settings
 from primer_control.health import DependencyRegistry
 from primer_control.identity import CurrentAdmin
 
-router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+router = APIRouter(prefix="/api/v1/admin", tags=["admin"], route_class=DurableRoute)
 
 #: Short. This runs to render a page, and a dependency that is wedged should
 #: show as unreachable quickly rather than hold the whole page open.

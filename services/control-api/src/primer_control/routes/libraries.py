@@ -14,6 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, stat
 from primer_contracts.errors import ErrorCode
 from primer_contracts.ingestion import StageName
 from primer_contracts.libraries import LibrarySummary
+from primer_service.durable import DurableRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +28,7 @@ from primer_control.repositories.users import UserRepository
 from primer_control.services.duplication import LibraryDuplicator, copy_name
 from primer_control.services.library_access import LibraryAccess
 
-router = APIRouter(prefix="/api/v1/libraries", tags=["libraries"])
+router = APIRouter(prefix="/api/v1/libraries", tags=["libraries"], route_class=DurableRoute)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 

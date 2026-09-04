@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidate } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Library, Link2Off, Trash2, TriangleAlert } from '@lucide/svelte';
 	import { Button, Spinner } from '@sivir-ui/svelte';
@@ -64,9 +64,7 @@
 			// Leaving the screen showing a thread that no longer exists would
 			// be a transcript nothing stands behind.
 			if (conversation.id === openId) await goto('/chat');
-			// Only the list. Deleting one conversation must not re-decide
-			// what the chat screen is showing of another.
-			else await invalidate('primer:conversations');
+			else await invalidateAll();
 		} catch (error) {
 			notify(
 				'error',

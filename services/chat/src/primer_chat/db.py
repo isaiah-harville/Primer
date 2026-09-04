@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Request
+from primer_service.durable import SESSION_STATE
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -69,4 +70,9 @@ class Database:
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     database: Database = request.app.state.database
     async with database.session() as session:
+        # Left where `DurableRoute` can find it, so the write is
+        # committed before the response is sent rather than in this
+        # dependency's teardown - which FastAPI runs afterwards, so a
+        # client that read its own write back could miss it.
+        setattr(request.state, SESSION_STATE, session)
         yield session

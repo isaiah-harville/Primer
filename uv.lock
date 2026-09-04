@@ -21,6 +21,7 @@ members = [
     "primer-ingestion",
     "primer-observability",
     "primer-retrieval",
+    "primer-service",
     "primer-storage",
 ]
 
@@ -2553,6 +2554,7 @@ dependencies = [
     { name = "httpx2" },
     { name = "primer-contracts" },
     { name = "primer-observability" },
+    { name = "primer-service" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -2579,6 +2581,7 @@ requires-dist = [
     { name = "httpx2" },
     { name = "primer-contracts", editable = "packages/contracts" },
     { name = "primer-observability", editable = "packages/observability" },
+    { name = "primer-service", editable = "packages/service" },
     { name = "psycopg", extras = ["binary"] },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extras = ["asyncio"] },
@@ -2611,6 +2614,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "primer-contracts" },
     { name = "primer-observability" },
+    { name = "primer-service" },
     { name = "primer-storage" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
@@ -2635,6 +2639,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "primer-contracts", editable = "packages/contracts" },
     { name = "primer-observability", editable = "packages/observability" },
+    { name = "primer-service", editable = "packages/service" },
     { name = "primer-storage", editable = "packages/storage" },
     { name = "psycopg", extras = ["binary"] },
     { name = "pydantic-settings" },
@@ -2757,6 +2762,17 @@ dev = [
     { name = "testcontainers", extras = ["postgres", "qdrant"] },
 ]
 server = [{ name = "uvicorn", extras = ["standard"] }]
+
+[[package]]
+name = "primer-service"
+version = "0.1.0"
+source = { editable = "packages/service" }
+dependencies = [
+    { name = "fastapi" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "fastapi" }]
 
 [[package]]
 name = "primer-storage"

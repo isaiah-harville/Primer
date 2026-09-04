@@ -13,6 +13,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 from primer_contracts.chat import ToolCallSummary, ToolPhase
+from primer_service.durable import DurableRoute
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.db import get_session
@@ -20,7 +21,7 @@ from primer_chat.errors import ProblemError, not_found
 from primer_chat.identity import CurrentPrincipal
 from primer_chat.tool_repository import ToolRepository, summarize_call
 
-router = APIRouter(prefix="/api/v1/tool-requests", tags=["tools"])
+router = APIRouter(prefix="/api/v1/tool-requests", tags=["tools"], route_class=DurableRoute)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 

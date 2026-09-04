@@ -21,6 +21,7 @@ from primer_contracts.ingestion import (
     StageFailure,
     TransitionResult,
 )
+from primer_service.durable import DurableRoute
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_control.config import Settings
@@ -35,6 +36,8 @@ router = APIRouter(
     tags=["internal"],
     dependencies=[Depends(require_service_credential)],
     include_in_schema=False,
+    # Commit before the response is sent; see primer_*.durable.
+    route_class=DurableRoute,
 )
 
 Session = Annotated[AsyncSession, Depends(get_session)]
