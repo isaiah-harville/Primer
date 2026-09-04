@@ -3,6 +3,44 @@
 # This is the multi-user story. Compose is deliberately single-user; here is
 # where the ingress, the identity provider, and the trusted-header boundary
 # live.
+#
+# --- The short version --------------------------------------------------
+#
+# Nine values have no default and cannot have one: they name things that
+# exist outside this chart, and a chart that guessed at them would deploy
+# something that looks installed and answers nothing. Everything else below
+# has a working default.
+#
+#   ingress.host                     what the deployment is called
+#   auth.oidc.issuerUrl              your identity provider
+#   auth.oidc.clientId
+#   auth.oidc.existingSecret         holding client-secret and cookie-secret
+#   auth.adminGroup                  who may open the settings page
+#   postgresql.existingSecret        holding a connection URI
+#   rabbitmq.existingSecret          holding a broker URL
+#   sourceStore.existingSecret       credentials for the document bucket
+#   inference.embeddings.baseUrl     an OpenAI-compatible /v1/embeddings
+#   inference.embeddings.model       and `dimensions` MUST match it
+#
+# Two of those are worth saying twice, because both deploy cleanly and fail
+# later as something else:
+#
+#   `inference.embeddings.dimensions` must match the model exactly - 384 for
+#   bge-small-en-v1.5, 1024 for Qwen3-Embedding-0.6B. It is not checked at
+#   startup; the first document indexed is what fails. And it cannot be
+#   changed later by editing it: the vector column keeps the width it was
+#   created with, so a change means dropping the table and reindexing.
+#
+#   `auth.adminGroup` gates the settings page, and the settings page is the
+#   only way to add an inference provider through the UI. Unset means nobody,
+#   which is the safe default and also a deployment where that page 403s for
+#   its own administrator.
+#
+# Notably NOT required: a chat endpoint. Primer reports having nowhere to
+# send a question as itself, so a deployment with no model configured is one
+# you can log into and finish setting up.
+#
+# `helm install` prints what it read and what it thinks is missing.
 
 image:
   # One image for the three API services, another for the worker: Docling
