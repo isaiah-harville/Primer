@@ -146,7 +146,15 @@ extraEnv: []
 # Primer ships no model. These point at whatever you already run.
 inference:
   chat:
+    # Both optional. An endpoint is not required because Primer reports
+    # having nowhere to send a question as itself, and providers can be added
+    # from the settings page instead.
     baseUrl: ""
+    # Not how a deployment is made to work: this only says which of the
+    # models the endpoint serves a new conversation starts on. Left unset,
+    # Primer asks what is served and starts on the first. Naming one the
+    # endpoint does not serve is worse than naming none - it is offered as
+    # though it were available, and every question on it is refused.
     model: ""
     existingSecret: ""
     apiKeyKey: chat-api-key
