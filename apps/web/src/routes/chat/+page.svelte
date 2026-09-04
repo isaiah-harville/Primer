@@ -11,7 +11,7 @@
 		Spinner
 	} from '@sivir-ui/svelte';
 	import { Check, FileText, Plus } from '@lucide/svelte';
-	import { goto, invalidateAll, replaceState } from '$app/navigation';
+	import { goto, invalidate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import CitationPanel from '$lib/components/CitationPanel.svelte';
@@ -79,6 +79,11 @@
 	//: reloading the list does not look like opening a different thread.
 	let shown = $state<string | null>(null);
 
+	//: Which thread the URL is asking for, which is not the same question as
+	//: which one the load managed to open. The gap between those two is
+	//: exactly where a transcript gets thrown away.
+	let wanted = $derived(page.url.searchParams.get('conversation'));
+
 	//: An answer that has been asked for but has not started arriving. Once
 	//: the first token lands the text itself is the progress, so the bar
 	//: gives way to it rather than running alongside.
@@ -91,13 +96,21 @@
 		const opened = data.opened;
 		const id = opened?.conversation.id ?? null;
 		if (untrack(() => shown) === id) return;
-		// A load that tried to open a thread and could not is not a reason to
-		// throw away the one on screen. It is the same shape as switching to
-		// a different conversation - nothing opened - but the turns just
-		// streamed are the only copy the reader has, and clearing them looks
-		// exactly like the answer being lost. Only a load that opened
-		// something, or that was not asked to, replaces what is here.
-		if (id === null && data.unopened !== null && untrack(() => turns).length > 0) return;
+		// A load that opened nothing is not a reason to throw away what is on
+		// screen. It is the same shape as switching to a new chat - nothing
+		// opened - but the turns just streamed are the only copy the reader
+		// has, and clearing them looks exactly like the answer being lost.
+		//
+		// The URL decides which of the two this is, because the URL is what
+		// actually asks for a thread. Still naming one means the load failed
+		// to open it and the transcript stands; naming none means a new chat
+		// was genuinely started, and starting one clears its own screen.
+		//
+		// This used to test `data.unopened`, which is only set when a load
+		// was asked for a thread and refused - so every other way of coming
+		// back empty, including a refresh that simply had not caught up with
+		// a thread written a moment earlier, fell through and wiped it.
+		if (id === null && untrack(() => turns).length > 0 && wanted !== null) return;
 		untrack(() => {
 			shown = id;
 			conversationId = id;
@@ -197,8 +210,11 @@
 				uploads = uploads.filter((upload) => upload.id !== id);
 			}
 		}
-		// The sidebar counts documents, and it is on this page too.
-		await invalidateAll();
+		// The sidebar counts documents, and it is on this page too. Targeted
+		// rather than a blanket refresh: re-running every load re-runs this
+		// page's, and that load decides which conversation is on screen - so
+		// dropping a file into a library cleared the answers above it.
+		await invalidate('primer:libraries');
 	}
 
 	async function discard() {
@@ -211,7 +227,7 @@
 		} catch (error) {
 			uploadError = error instanceof Error ? error.message : 'That library could not be removed.';
 		}
-		await invalidateAll();
+		await invalidate('primer:libraries');
 	}
 
 	async function ask() {
@@ -265,8 +281,13 @@
 				shown = conversationId;
 				replaceState(`/chat?conversation=${conversationId}`, page.state);
 			}
-			// The history list is a page load away from knowing this happened.
-			await invalidateAll();
+			// The history list is a page load away from knowing this happened -
+			// but only the history list. A blanket refresh re-ran this page's
+			// load too, and that load decides which conversation is on screen,
+			// so announcing a new row handed the transcript's fate to a round
+			// trip: a load that came back without the thread just written
+			// cleared the answer off the screen.
+			await invalidate('primer:conversations');
 			// Stored now, so the real entry takes over from the stand-in.
 			draft.settle();
 		} catch {
