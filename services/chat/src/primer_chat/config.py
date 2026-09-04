@@ -128,8 +128,17 @@ class Settings(BaseSettings):
         None when neither is set, which a deployment configuring no default
         is entitled to be: the caller picked from a list it was given, and a
         deployment need not have an opinion about what to do when nobody did.
+
+        The trailing `or None` is what makes that true in practice. An unset
+        environment variable arrives as an empty string rather than as None,
+        and an empty string is a value: it flowed through the caller's
+        `is not None` check as though a model had been named, and was sent to
+        the endpoint, which answered `Model '' not found`. So a deployment
+        that had configured no model got a 404 instead of the catalog default
+        it was entitled to - and the fix looked like setting the variable,
+        which is exactly the requirement this was meant to remove.
         """
-        return requested or self.chat_model
+        return requested or self.chat_model or None
 
     #: Encrypts API keys for providers added through the settings page. The
     #: chart generates it; without one, keys cannot be stored at all and the

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Cpu, TriangleAlert } from '@lucide/svelte';
+	import { ChevronDown, Cpu, TriangleAlert } from '@lucide/svelte';
+	import { untrack } from 'svelte';
 	import { DropdownMenu } from '@sivir-ui/svelte';
 	import type { ChatModel } from '$lib/api/types';
 	import { qualify } from '$lib/models';
@@ -31,6 +32,26 @@
 	let fallback = $derived(models.find((model) => model.default) ?? models[0]);
 	let shown = $derived(chosen ?? fallback);
 
+	// Say out loud which model is shown, rather than only displaying it.
+	//
+	// This used to display `fallback` while leaving `value` empty, so a
+	// question carried no model unless someone opened the menu and picked a
+	// different one - picking the one already highlighted changes nothing
+	// and fires no event. An empty value means the request omits the model
+	// entirely and the server falls back to whatever it was configured with,
+	// which is how a deployment ends up answering from a model other than
+	// the one named on screen. The name shown and the name sent have to be
+	// the same name.
+	//
+	// Runs when `value` names nothing on offer, which covers both the empty
+	// start and a stale choice whose provider has since been removed.
+	$effect(() => {
+		const settled = shown ? qualify(shown) : '';
+		if (settled && chosen === undefined && untrack(() => value) !== settled) {
+			value = settled;
+		}
+	});
+
 	//: A menu whenever there is a model at all, even the only one.
 	//:
 	//: It used to flatten to plain text with one model, on the reasoning that
@@ -41,8 +62,14 @@
 	//: deployments that have not used it yet.
 	let choosable = $derived(models.length > 0);
 
-	//: Grouped so a reader can see where each model runs. With one provider
-	//: the heading would be noise, so it is only drawn when there are two.
+	//: Grouped so a reader can see where each model runs.
+	//:
+	//: The heading is drawn even when there is only one group. It used to be
+	//: suppressed as noise, which pushed the provider name onto the trigger
+	//: beside the model - two names of different kinds sitting side by side,
+	//: reading as one long label rather than as a thing and where it runs.
+	//: Inside the menu it has a column to head, which is what a provider
+	//: name is: the answer to "where do these come from".
 	let byProvider = $derived.by(() => {
 		const groups = new Map<string, ChatModel[]>();
 		for (const model of models) {
@@ -86,15 +113,13 @@
 			>
 				{shown.id}
 			</span>
-			{#if byProvider.length === 1 && shown.provider_name}
-				<!--
-				  With one provider the menu draws no heading, so the trigger
-				  is the only place a reader learns where the model runs.
-				-->
-				<span class="hidden text-xs text-muted-foreground sm:inline">
-					{shown.provider_name}
-				</span>
-			{/if}
+			<!--
+			  The affordance. Without it this is a model name that happens to
+			  be clickable, and nobody clicks a label: the menu was reported
+			  missing by someone looking straight at it. The chevron is the
+			  convention for "this opens", and it costs one glyph.
+			-->
+			<ChevronDown size={13} aria-hidden="true" class="shrink-0 opacity-60" />
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Content>
 			<DropdownMenu.RadioGroup
@@ -102,19 +127,21 @@
 				onValueChange={(next) => (value = next)}
 			>
 				{#each byProvider as [provider, offered], index (provider)}
-					{#if byProvider.length > 1}
-						<!--
-						  Which machine each model runs on is the thing being
-						  chosen between as much as the model is: the local one
-						  is free and private, the hosted one is neither.
-						-->
-						<p
-							class="px-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.09em]
-								text-muted-foreground {index > 0 ? 'pt-2' : 'pt-1'}"
-						>
-							{provider}
-						</p>
-					{/if}
+					<!--
+					  Which machine each model runs on is the thing being
+					  chosen between as much as the model is: the local one is
+					  free and private, the hosted one is neither. Always
+					  drawn, including for a lone provider - it is the column
+					  heading for the models under it, and a list whose
+					  heading appears only once a second one exists teaches
+					  nobody where the first came from.
+					-->
+					<p
+						class="px-2.5 pb-1 text-[10px] font-medium uppercase tracking-[0.09em]
+							text-muted-foreground {index > 0 ? 'mt-1 border-t border-border pt-2' : 'pt-1'}"
+					>
+						{provider}
+					</p>
 					{#each offered as model (qualify(model))}
 						<DropdownMenu.RadioItem value={qualify(model)}>
 							<span class="flex w-full items-center justify-between gap-4">
