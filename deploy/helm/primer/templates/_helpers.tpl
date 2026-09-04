@@ -62,6 +62,25 @@ with read access to the namespace has it.
     secretKeyRef:
       name: {{ include "primer.fullname" . }}-internal
       key: internal-token
+{{- /*
+Encrypts the API keys of providers added through the settings page. Given to
+every service rather than only the one that uses it, so that moving where
+providers are held later does not mean a chart change and a restart.
+*/}}
+- name: PRIMER_SETTINGS_ENCRYPTION_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "primer.fullname" . }}-internal
+      key: settings-key
+{{- if .Values.auth.adminGroup }}
+{{- /*
+Who may see and change how this deployment is wired. Unset means nobody,
+which is the safe reading of an operator who has not made the decision -
+the alternative is that every user of a shared deployment can repoint it.
+*/}}
+- name: PRIMER_ADMIN_GROUP
+  value: {{ .Values.auth.adminGroup | quote }}
+{{- end }}
 {{- include "primer.extraEnv" . }}
 {{- end -}}
 
@@ -119,6 +138,25 @@ post-renderer.
     secretKeyRef:
       name: {{ .Values.inference.embeddings.existingSecret }}
       key: {{ .Values.inference.embeddings.apiKeyKey }}
+{{- end }}
+{{- /*
+Reranking is optional and off unless an endpoint is named. Emitting nothing
+is what keeps a deployment without one behaving exactly as it did before.
+*/}}
+{{- if .Values.inference.rerank.baseUrl }}
+- name: PRIMER_RERANK_BASE_URL
+  value: {{ .Values.inference.rerank.baseUrl | quote }}
+- name: PRIMER_RERANK_MODEL
+  value: {{ required "inference.rerank.model is required when a rerank endpoint is set" .Values.inference.rerank.model | quote }}
+- name: PRIMER_RERANK_CANDIDATES
+  value: {{ .Values.inference.rerank.candidates | quote }}
+{{- if .Values.inference.rerank.existingSecret }}
+- name: PRIMER_RERANK_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.inference.rerank.existingSecret }}
+      key: {{ .Values.inference.rerank.apiKeyKey }}
+{{- end }}
 {{- end }}
 {{- end -}}
 

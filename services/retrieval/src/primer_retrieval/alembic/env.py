@@ -16,7 +16,7 @@ import os
 
 from alembic import context
 from primer_retrieval.config import Settings
-from primer_retrieval.db import as_sync_url
+from primer_service.db import as_sync_url
 from sqlalchemy import engine_from_config, pool, text
 
 config = context.config

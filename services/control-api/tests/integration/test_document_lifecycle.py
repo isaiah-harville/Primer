@@ -13,8 +13,8 @@ from dataclasses import dataclass
 import pytest
 import pytest_asyncio
 from control_support import ServiceClient, UserClient
-from primer_control.db import Database
 from primer_control.models import Document, DocumentVersion, IngestionJob, SourceObject
+from primer_service.db import Database
 from sqlalchemy import func, select
 
 

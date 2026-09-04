@@ -14,11 +14,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, stat
 from primer_contracts.errors import ErrorCode
 from primer_contracts.ingestion import StageName
 from primer_contracts.libraries import LibrarySummary
+from primer_service.db import get_session
+from primer_service.durable import DurableRoute
+from primer_service.errors import ProblemError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from primer_control.db import get_session
-from primer_control.errors import ProblemError
 from primer_control.identity import CurrentPrincipal
 from primer_control.models import Library
 from primer_control.publisher import JobPublisher
@@ -27,7 +28,7 @@ from primer_control.repositories.users import UserRepository
 from primer_control.services.duplication import LibraryDuplicator, copy_name
 from primer_control.services.library_access import LibraryAccess
 
-router = APIRouter(prefix="/api/v1/libraries", tags=["libraries"])
+router = APIRouter(prefix="/api/v1/libraries", tags=["libraries"], route_class=DurableRoute)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 
@@ -70,20 +71,36 @@ def not_found() -> ProblemError:
     )
 
 
-def summarize(library: Library) -> LibrarySummary:
+def summarize(library: Library, document_count: int) -> LibrarySummary:
+    """Describe a library, including how much is in it.
+
+    The count is a parameter rather than a default, because the web app
+    prints it everywhere a library is named and a library that silently
+    reported zero would look like one that had lost its documents.
+    """
     return LibrarySummary(
         id=library.id,
         name=library.name,
         owner_user_id=library.owner_user_id,
+        document_count=document_count,
         created_at=library.created_at,
         updated_at=library.updated_at,
     )
 
 
+async def summarize_one(repository: LibraryRepository, library: Library) -> LibrarySummary:
+    counts = await repository.document_counts([library.id])
+    return summarize(library, counts[library.id])
+
+
 @router.get("", summary="List the caller's libraries")
 async def list_libraries(principal: CurrentPrincipal, session: Session) -> list[LibrarySummary]:
-    libraries = await LibraryRepository(session).find_all(where=access.readable(principal.user_id))
-    return [summarize(library) for library in libraries]
+    repository = LibraryRepository(session)
+    libraries = await repository.find_all(where=access.readable(principal.user_id))
+    # One grouped query for the whole list rather than one per library: this
+    # is the layout's load on every page, not a detail view.
+    counts = await repository.document_counts([library.id for library in libraries])
+    return [summarize(library, counts[library.id]) for library in libraries]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Create a private library")
@@ -94,7 +111,7 @@ async def create_library(
     library = await LibraryRepository(session).create(
         name=payload.name, owner_user_id=principal.user_id
     )
-    return summarize(library)
+    return summarize(library, document_count=0)
 
 
 class LibraryDuplicate(BaseModel):
@@ -129,8 +146,9 @@ async def duplicate_library(
     published to the broker until the transaction commits.
     """
     await UserRepository(session).ensure(principal)
+    repository = LibraryRepository(session)
     readable = access.readable(principal.user_id)
-    source = await LibraryRepository(session).get(library_id, where=readable)
+    source = await repository.get(library_id, where=readable)
     if source is None:
         raise not_found()
 
@@ -142,19 +160,18 @@ async def duplicate_library(
     )
     for job in duplication.jobs:
         background.add_task(publisher.publish, StageName.PARSE, job.id)
-    return summarize(duplication.library)
+    return await summarize_one(repository, duplication.library)
 
 
 @router.get("/{library_id}", summary="Read one library")
 async def read_library(
     library_id: UUID, principal: CurrentPrincipal, session: Session
 ) -> LibrarySummary:
-    library = await LibraryRepository(session).get(
-        library_id, where=access.readable(principal.user_id)
-    )
+    repository = LibraryRepository(session)
+    library = await repository.get(library_id, where=access.readable(principal.user_id))
     if library is None:
         raise not_found()
-    return summarize(library)
+    return await summarize_one(repository, library)
 
 
 @router.patch("/{library_id}", summary="Rename a library")
@@ -177,7 +194,7 @@ async def rename_library(
             detail="Reload the library and reapply the change.",
         )
 
-    return summarize(await repository.rename(library, payload.name))
+    return await summarize_one(repository, await repository.rename(library, payload.name))
 
 
 @router.delete("/{library_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a library")

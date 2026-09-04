@@ -28,6 +28,7 @@ from primer_chat.budget import truncate_to_tokens
 from primer_chat.config import Settings
 from primer_chat.generation import ChatGenerator
 from primer_chat.rag import SUMMARY_SYSTEM_PROMPT, HistoryTurn, build_summary_prompt
+from primer_chat.reasoning import Channel
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +59,16 @@ class Compactor:
 
         prompt = build_summary_prompt(previous, dropped)
         try:
+            # The answer channel only. A reasoning model's deliberation is
+            # not its summary, and folding it in would put scratch work into
+            # the memory every later turn is built on.
             written = "".join(
                 [
-                    fragment
+                    fragment.text
                     async for fragment in self._generator.stream(
                         SUMMARY_SYSTEM_PROMPT, prompt, model=model
                     )
+                    if fragment.channel is Channel.ANSWER
                 ]
             ).strip()
         except Exception:

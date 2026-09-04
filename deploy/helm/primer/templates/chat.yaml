@@ -42,10 +42,30 @@ spec:
               value: http://{{ include "primer.fullname" . }}-control:8000
             - name: PRIMER_RETRIEVAL_URL
               value: http://{{ include "primer.fullname" . }}-retrieval:8000
+            {{- /*
+            Optional, like the model below and for the same reason. Primer
+            reports having nowhere to send a question as itself - the picker
+            says no model is available and the composer shuts - so an install
+            without an endpoint yet is a deployment an operator can log into
+            and finish configuring, rather than a chart that refuses to
+            render. Providers can also be added from the settings page, which
+            is a path that never touches this value at all.
+            */}}
+            {{- if .Values.inference.chat.baseUrl }}
             - name: PRIMER_CHAT_BASE_URL
-              value: {{ required "inference.chat.baseUrl is required" .Values.inference.chat.baseUrl | quote }}
+              value: {{ .Values.inference.chat.baseUrl | quote }}
+            {{- end }}
+            {{- /*
+            Optional. Primer asks each provider what it serves, so naming a
+            model here only says which to offer first - and a name nothing
+            serves is ignored rather than put in the picker as though it were
+            available. Requiring it made a deployment fail over a value it
+            did not need.
+            */}}
+            {{- if .Values.inference.chat.model }}
             - name: PRIMER_CHAT_MODEL
-              value: {{ required "inference.chat.model is required" .Values.inference.chat.model | quote }}
+              value: {{ .Values.inference.chat.model | quote }}
+            {{- end }}
             - name: PRIMER_CHAT_HISTORY_MESSAGES
               value: {{ .Values.inference.chat.historyMessages | quote }}
             - name: PRIMER_CHAT_CONTEXT_TOKENS

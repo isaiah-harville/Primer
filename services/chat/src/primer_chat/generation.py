@@ -8,6 +8,7 @@ without one, and so swapping Haystack's client later touches one class.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass
 from typing import Protocol
 
 import anyio
@@ -20,10 +21,55 @@ from primer_contracts.chat import MessageRole
 
 from primer_chat.config import Settings
 from primer_chat.rag import HistoryTurn
+from primer_chat.reasoning import Channel, Fragment, ReasoningSplitter
+
+#: Where an endpoint that separates thinking itself puts it. There is no
+#: standard for this - it is not in the OpenAI API - so the field is whatever
+#: a given server chose. These are the two in circulation: `reasoning_content`
+#: from vLLM's reasoning parsers and DeepSeek, `reasoning` from others.
+REASONING_FIELDS = ("reasoning_content", "reasoning")
+
+
+def _reasoning_of(chunk: object) -> str:
+    """Thinking a provider handed over already separated, if it did.
+
+    Haystack keeps fields it does not model itself in `meta`, so both are
+    looked at: the attribute for a client that grew one, and the bag for
+    everything else.
+    """
+    meta = getattr(chunk, "meta", None) or {}
+    for field in REASONING_FIELDS:
+        value = getattr(chunk, field, None) or (meta.get(field) if isinstance(meta, dict) else None)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+class NoEndpoint(Exception):
+    """There is nowhere to send a question, so none is sent.
+
+    Its own type because the caller turns it into a message a person can act
+    on. Falling through to the generic failure would report it as a model
+    that stopped mid-answer, which sends whoever reads it looking at the
+    wrong thing entirely.
+    """
+
+
+@dataclass(frozen=True)
+class Endpoint:
+    """Where to send a question, and what to authenticate with.
+
+    Passed per request rather than read from settings, because which endpoint
+    answers is now a property of the question - a deployment may hold several
+    and the asker chose one.
+    """
+
+    base_url: str | None
+    api_key: str | None = None
 
 
 class ChatGenerator(Protocol):
-    """Yields text fragments as the model produces them."""
+    """Yields fragments as the model produces them, thinking and answer apart."""
 
     def stream(
         self,
@@ -32,7 +78,8 @@ class ChatGenerator(Protocol):
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]: ...
+        endpoint: Endpoint | None = None,
+    ) -> AsyncIterator[Fragment]: ...
 
 
 class HaystackChatGenerator:
@@ -45,29 +92,55 @@ class HaystackChatGenerator:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._generators: dict[str, OpenAIChatGenerator] = {}
+        #: Keyed by endpoint as well as model. A deployment can hold several
+        #: providers serving the same model name, and keying on the name
+        #: alone would send a question to whichever of them happened to be
+        #: asked first - and keep doing so after an administrator changed
+        #: the endpoint, because the cached client would still be there.
+        self._generators: dict[tuple[str, str], OpenAIChatGenerator] = {}
 
     @property
-    def model(self) -> str:
+    def model(self) -> str | None:
         return self._settings.chat_model
 
-    def _for(self, model: str | None) -> OpenAIChatGenerator:
-        """A client for one model.
+    def _for(self, model: str | None, endpoint: Endpoint | None = None) -> OpenAIChatGenerator:
+        """A client for one model at one endpoint.
 
         The name is not validated here. Whether a user may ask for a model is
         a question about the request, answered where the request is handled;
         by this point it has been.
         """
+        target = endpoint or Endpoint(
+            base_url=self._settings.chat_base_url,
+            api_key=(
+                self._settings.chat_api_key.get_secret_value()
+                if self._settings.chat_api_key
+                else None
+            ),
+        )
         name = model or self._settings.chat_model
-        if name not in self._generators:
-            key = self._settings.chat_api_key
-            self._generators[name] = OpenAIChatGenerator(
-                api_key=Secret.from_token(key.get_secret_value() if key else "none"),
+        if name is None:
+            raise NoEndpoint("No model was chosen and this deployment configures no default.")
+        # Refused rather than defaulted. The OpenAI client reads a null base
+        # URL as its own hosted API, so a deployment that has simply not been
+        # pointed anywhere would send its users' questions - and the passages
+        # retrieved from their private documents - to a third party. Primer
+        # is self-hosted; that failure has to be loud.
+        if not target.base_url:
+            raise NoEndpoint(
+                "No inference endpoint is configured, so there is nowhere to send this question."
+            )
+
+        key = (target.base_url, name)
+        if key not in self._generators:
+            self._generators[key] = OpenAIChatGenerator(
+                # Many local servers ignore the key but require the header.
+                api_key=Secret.from_token(target.api_key or "none"),
                 model=name,
-                api_base_url=self._settings.chat_base_url,
+                api_base_url=target.base_url,
                 timeout=self._settings.chat_timeout_seconds,
             )
-        return self._generators[name]
+        return self._generators[key]
 
     async def stream(
         self,
@@ -76,26 +149,47 @@ class HaystackChatGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]:
+        endpoint: Endpoint | None = None,
+    ) -> AsyncIterator[Fragment]:
         """Bridge Haystack's synchronous callback into an async iterator.
 
         Haystack streams by invoking a callback on a worker thread. The
         fragments are handed across a memory channel so the event loop keeps
         serving other connections while a slow model produces tokens.
+
+        Thinking and answer come out on separate channels. An endpoint
+        running a reasoning parser hands them over already separated, in a
+        field beside the content; one without a parser puts the thinking in
+        the content inside `<think>` tags, which the splitter pulls back
+        apart. Both are handled, because which of the two a deployment gets
+        is a property of how its endpoint was launched, not of Primer.
         """
-        send, receive = anyio.create_memory_object_stream[str | None](max_buffer_size=64)
+        send, receive = anyio.create_memory_object_stream[Fragment | None](max_buffer_size=64)
+        splitter = ReasoningSplitter()
 
         def on_chunk(chunk: object) -> None:
+            # A provider that separates thinking itself needs no parsing, and
+            # must not be fed through the splitter: its content field carries
+            # no tags, and its reasoning is not the answer.
+            thought = _reasoning_of(chunk)
+            if thought:
+                anyio.from_thread.run(send.send, Fragment(Channel.REASONING, thought))
             text = getattr(chunk, "content", "") or ""
-            if text:
-                anyio.from_thread.run(send.send, text)
+            for fragment in splitter.feed(text):
+                anyio.from_thread.run(send.send, fragment)
 
         async def produce() -> None:
             try:
                 await anyio.to_thread.run_sync(
-                    lambda: self._run(system_prompt, user_prompt, history, on_chunk, model)
+                    lambda: self._run(
+                        system_prompt, user_prompt, history, on_chunk, model, endpoint
+                    )
                 )
             finally:
+                # Anything the splitter was holding back for a tag that never
+                # arrived belongs to the reader, not to the parser.
+                for fragment in splitter.finish():
+                    await send.send(fragment)
                 await send.send(None)
 
         async with anyio.create_task_group() as group:
@@ -113,8 +207,9 @@ class HaystackChatGenerator:
         history: tuple[HistoryTurn, ...],
         on_chunk: object,
         model: str | None,
+        endpoint: Endpoint | None = None,
     ) -> None:
-        self._for(model).run(
+        self._for(model, endpoint).run(
             messages=[
                 ChatMessage.from_system(system_prompt),
                 *_replay(history),
@@ -141,10 +236,20 @@ def _replay(history: tuple[HistoryTurn, ...]) -> list[ChatMessage]:
 
 
 class StaticGenerator:
-    """A generator that replays fixed fragments. For tests and for offline use."""
+    """A generator that replays fixed fragments. For tests and for offline use.
 
-    def __init__(self, fragments: Iterator[str] | list[str], model: str = "static") -> None:
-        self._fragments = list(fragments)
+    Plain strings are answer text, which is what almost every caller wants.
+    A caller exercising a reasoning model passes `Fragment`s instead and says
+    which channel each belongs to.
+    """
+
+    def __init__(
+        self, fragments: Iterator[str | Fragment] | list[str | Fragment], model: str = "static"
+    ) -> None:
+        self._fragments = [
+            fragment if isinstance(fragment, Fragment) else Fragment(Channel.ANSWER, fragment)
+            for fragment in fragments
+        ]
         self.model = model
 
     async def stream(
@@ -154,6 +259,7 @@ class StaticGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]:
+        endpoint: Endpoint | None = None,
+    ) -> AsyncIterator[Fragment]:
         for fragment in self._fragments:
             yield fragment

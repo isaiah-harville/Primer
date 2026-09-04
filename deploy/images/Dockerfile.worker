@@ -18,6 +18,13 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/var/cache/primer/huggingface
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 primer \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin primer
 
@@ -32,8 +39,10 @@ COPY packages/ packages/
 COPY services/ingestion/ services/ingestion/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --package primer-ingestion \
-    && mkdir -p /var/cache/primer/huggingface \
-    && chown -R 10001:10001 /app /var/cache/primer
+    && mkdir -p /var/cache/primer/huggingface
+
+RUN python -c "from rapidocr import RapidOCR; RapidOCR()"
+RUN chown -R 10001:10001 /app /var/cache/primer
 
 USER 10001:10001
 CMD ["celery", "-A", "primer_ingestion.worker", "worker", "--loglevel", "info"]

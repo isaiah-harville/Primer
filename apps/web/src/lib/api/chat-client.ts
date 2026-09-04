@@ -1,5 +1,14 @@
-import { ApiError } from './client';
-import type { ConversationSummary, MessageSummary, ProblemDetail } from './types';
+import { ApiError, asProblem } from './client';
+import type {
+	ChatModelList,
+	ConversationSummary,
+	MessageSummary,
+	ProblemDetail,
+	ProviderCheck,
+	ProviderCreate,
+	ProviderSummary,
+	ProviderUpdate,
+} from './types';
 
 /**
  * Talking to Chat.
@@ -31,7 +40,9 @@ export class ChatApi {
 		if (!response.ok) {
 			let problem: ProblemDetail;
 			try {
-				problem = (await response.json()) as ProblemDetail;
+				// Read rather than cast, so a body that is not the contract's
+				// shape cannot reach a user as "[object Object]".
+				problem = asProblem(await response.json(), response.status);
 			} catch {
 				problem = {
 					code: 'unexpected_response',
@@ -47,13 +58,63 @@ export class ChatApi {
 		return (await response.json()) as T;
 	}
 
-	models(): Promise<{ models: { id: string; default: boolean }[] }> {
+	/**
+	 * What can answer a question, and whether anything can.
+	 *
+	 * The reachability of the inference endpoint travels with the list
+	 * rather than being inferred from its emptiness: those are different
+	 * facts with different fixes, and a caller that guessed would tell an
+	 * operator to restart the wrong thing.
+	 */
+	models(): Promise<ChatModelList> {
 		return this.request('/api/v1/models');
+	}
+
+	/** Every endpoint this deployment can ask. Administrators only. */
+	providers(): Promise<ProviderSummary[]> {
+		return this.request('/api/v1/admin/providers');
+	}
+
+	addProvider(payload: ProviderCreate): Promise<ProviderSummary> {
+		return this.request('/api/v1/admin/providers', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		});
+	}
+
+	updateProvider(id: string, payload: ProviderUpdate): Promise<ProviderSummary> {
+		return this.request(`/api/v1/admin/providers/${id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+		});
+	}
+
+	removeProvider(id: string): Promise<void> {
+		return this.request(`/api/v1/admin/providers/${id}`, { method: 'DELETE' });
+	}
+
+	/** Ask an endpoint what it serves, now. */
+	checkProvider(id: string): Promise<ProviderCheck> {
+		return this.request(`/api/v1/admin/providers/${id}/check`, { method: 'POST' });
 	}
 
 	/** The caller's own conversations, most recently updated first. */
 	conversations(): Promise<ConversationSummary[]> {
 		return this.request('/api/v1/conversations');
+	}
+
+	/**
+	 * One conversation, asked for directly.
+	 *
+	 * Not found by searching the list. The list is loaded for the sidebar
+	 * and can be stale or, on a transient failure, empty - and a thread that
+	 * was just answered is exactly the one most likely to be missing from
+	 * it. Searching it made a fresh answer look like a deleted conversation.
+	 */
+	conversation(conversationId: string): Promise<ConversationSummary> {
+		return this.request(`/api/v1/conversations/${conversationId}`);
 	}
 
 	messages(conversationId: string): Promise<MessageSummary[]> {

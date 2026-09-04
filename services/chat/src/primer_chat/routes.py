@@ -7,31 +7,35 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-import httpx2
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from primer_contracts.base import WireModel
 from primer_contracts.chat import (
-    ChatModel,
     ChatModelList,
     ConversationSummary,
     Message,
     MessageSummary,
 )
+from primer_contracts.errors import ErrorCode
+from primer_service.db import get_session
+from primer_service.durable import DurableRoute
+from primer_service.errors import ProblemError
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.config import Settings
-from primer_chat.db import get_session
 from primer_chat.errors import not_found
+from primer_chat.generation import Endpoint
 from primer_chat.identity import CurrentPrincipal
+from primer_chat.model_catalog import catalog
+from primer_chat.providers_store import ProviderStore
 from primer_chat.repository import ChatRepository, summarize_conversation
 from primer_chat.sse import encode
 from primer_chat.streaming import Answering, Responder
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["chat"])
+router = APIRouter(prefix="/api/v1", tags=["chat"], route_class=DurableRoute)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 
@@ -54,11 +58,16 @@ class AskRequest(WireModel):
     library_id: UUID | None = None
     #: One of the models this deployment offers, or none for its default.
     model: str | None = Field(default=None, max_length=200)
+    #: Which provider serves that model. Model names are not unique across
+    #: providers, so a model alone can be ambiguous; without this the first
+    #: provider serving the name answers.
+    provider_id: UUID | None = None
     message: Message
 
 
 class FollowUpRequest(WireModel):
     model: str | None = Field(default=None, max_length=200)
+    provider_id: UUID | None = None
     message: Message
 
 
@@ -127,51 +136,80 @@ async def delete_conversation(
 
 
 @router.get("/models", summary="Models this deployment offers")
-async def list_models(request: Request) -> ChatModelList:
-    """What a user may choose between: everything the chat endpoint serves.
+async def list_models(request: Request, session: Session) -> ChatModelList:
+    """Everything every configured provider serves, each tagged with its own.
 
-    Asked live rather than kept as a list of Primer's own, so a model added
-    or removed on the endpoint shows up here without redeploying Primer to
-    match.
+    A deployment may hold several providers at once, and model names are not
+    unique across them, so a model is only fully named by the pair. Each is
+    asked in parallel and allowed to fail alone: a hosted API plus a machine
+    at home that is asleep still answers, with the sleeping one named rather
+    than silently dropped.
     """
     settings: Settings = request.app.state.settings
-    names = await _discover_models(settings)
-    return ChatModelList(
-        models=tuple(ChatModel(id=name, default=name == settings.chat_model) for name in names)
-    )
+    store = ProviderStore(session, settings, request.app.state.secret_box)
+    return await catalog(await store.enabled(), preferred_model=settings.chat_model)
 
 
-async def _discover_models(settings: Settings) -> tuple[str, ...]:
-    """Ask the chat endpoint what it serves, the configured default first.
+async def route_for(
+    request: Request,
+    session: AsyncSession,
+    requested_model: str | None,
+    provider_id: UUID | None,
+) -> tuple[str | None, Endpoint | None]:
+    """Which model answers this question, and where it is sent.
 
-    Falls back to just the configured default on any failure - unreachable,
-    refused, unparsable - because a model picker that cannot be built is a
-    reason to hide it, not a reason the rest of the page should fail to load.
+    Three cases, in order of how much the request said.
+
+    A request that names a provider gets that provider - it picked from a
+    list Primer gave it. An id naming nothing is refused rather than quietly
+    answered by the default: the list has changed underneath the caller, and
+    answering from somewhere else would attribute one provider's answer to
+    another.
+
+    A request that names only a model goes to the deployment's own endpoint,
+    which is what every request did before a deployment could hold more than
+    one, so older clients keep working.
+
+    A request that names neither, on a deployment that configures no default
+    model, is resolved from the catalog: the model that would be shown as
+    the default, together with the provider serving it. That costs a listing
+    round trip, and it is only paid by the deployments that need it.
     """
-    if not settings.chat_base_url:
-        return (settings.chat_model,)
-    try:
-        async with httpx2.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{settings.chat_base_url.rstrip('/')}/models",
-                headers={
-                    "Authorization": "Bearer "
-                    + (
-                        settings.chat_api_key.get_secret_value()
-                        if settings.chat_api_key
-                        else "none"
-                    )
-                },
+    settings: Settings = request.app.state.settings
+    store = ProviderStore(session, settings, request.app.state.secret_box)
+
+    if provider_id is not None:
+        provider = await store.find(provider_id)
+        if provider is None or not provider.enabled:
+            raise ProblemError(
+                code=ErrorCode.NOT_FOUND,
+                title="Provider not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="That provider is not available on this deployment.",
             )
-        response.raise_for_status()
-        served = [entry["id"] for entry in response.json().get("data", []) if entry.get("id")]
-    except Exception:
-        logger.warning("could not list models from %s", settings.chat_base_url, exc_info=True)
-        served = []
-    if not served:
-        return (settings.chat_model,)
-    ordered = [settings.chat_model, *served]
-    return tuple(dict.fromkeys(ordered))
+        return settings.resolve_model(requested_model), Endpoint(
+            base_url=provider.base_url, api_key=provider.api_key
+        )
+
+    model = settings.resolve_model(requested_model)
+    if model is not None:
+        # The deployment's own endpoint, as before. None here means nothing
+        # is configured, which the generator refuses rather than defaulting.
+        return model, None
+
+    listed = await catalog(await store.enabled(), preferred_model=None)
+    default = next((entry for entry in listed.models if entry.default), None)
+    if default is None:
+        raise ProblemError(
+            code=ErrorCode.DEPENDENCY_UNAVAILABLE,
+            title="No model can answer",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=listed.detail or "No provider is serving a model.",
+        )
+    serving = await store.find(default.provider_id) if default.provider_id else None
+    return default.id, (
+        Endpoint(base_url=serving.base_url, api_key=serving.api_key) if serving else None
+    )
 
 
 @router.post(
@@ -194,7 +232,7 @@ async def ask(
     404 here would be equally correct; the stream is chosen so a client has
     exactly one place to handle failures.
     """
-    model = request.app.state.settings.resolve_model(payload.model)
+    model, endpoint = await route_for(request, session, payload.model, payload.provider_id)
     conversation = await ChatRepository(session).create_conversation(
         library_id=payload.library_id,
         owner_user_id=principal.user_id,
@@ -205,6 +243,7 @@ async def ask(
         conversation=conversation,
         question=payload.message,
         model=model,
+        endpoint=endpoint,
     )
     return stream_response(responder, session, turn)
 
@@ -233,11 +272,13 @@ async def follow_up(
     )
     if conversation is None:
         raise not_found("Conversation")
+    routed = await route_for(request, session, payload.model, payload.provider_id)
     turn = Answering(
         principal=principal,
         conversation=conversation,
         question=payload.message,
-        model=request.app.state.settings.resolve_model(payload.model),
+        model=routed[0],
+        endpoint=routed[1],
     )
     return stream_response(responder, session, turn)
 

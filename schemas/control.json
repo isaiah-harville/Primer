@@ -31,6 +31,46 @@
         "title": "Body_upload_document_api_v1_libraries__library_id__documents_post",
         "type": "object"
       },
+      "DependencyStatus": {
+        "additionalProperties": false,
+        "description": "One thing this deployment talks to.",
+        "properties": {
+          "detail": {
+            "maxLength": 500,
+            "title": "Detail",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "name",
+          "reachable",
+          "detail"
+        ],
+        "title": "DependencyStatus",
+        "type": "object"
+      },
       "DeploymentCapabilities": {
         "additionalProperties": false,
         "description": "What this deployment can actually do, as the browser needs to know it.\n\nSent to the web app so it can hide what will not work rather than\noffering it and failing. Every field is a checked fact or an operator's\ndeclaration - none is inferred from a model's name.",
@@ -45,6 +85,11 @@
           },
           "ingestion_available": {
             "title": "Ingestion Available",
+            "type": "boolean"
+          },
+          "is_admin": {
+            "default": false,
+            "title": "Is Admin",
             "type": "boolean"
           },
           "max_upload_bytes": {
@@ -73,6 +118,42 @@
           "max_upload_bytes"
         ],
         "title": "DeploymentCapabilities",
+        "type": "object"
+      },
+      "DeploymentStatus": {
+        "additionalProperties": false,
+        "description": "The deployment's own wiring, and how much of it is answering.",
+        "properties": {
+          "admin_group": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Group"
+          },
+          "auth_mode": {
+            "maxLength": 32,
+            "title": "Auth Mode",
+            "type": "string"
+          },
+          "dependencies": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DependencyStatus"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "auth_mode"
+        ],
+        "title": "DeploymentStatus",
         "type": "object"
       },
       "DocumentSummary": {
@@ -400,6 +481,28 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/status": {
+      "get": {
+        "description": "Every configured connection, and whether it is currently answering.\n\nControl's own dependencies are asked through the same registry the\nreadiness probe uses, so this page and Kubernetes cannot disagree about\nwhether the database is up. The other services are probed over HTTP,\nwhich is the only way one process learns about another.",
+        "operationId": "deployment_status_api_v1_admin_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "What this deployment is wired to",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/capabilities": {
       "get": {
         "description": "Report the deployment's shape.\n\nAuthenticated, because the answer describes a specific deployment's\nconfiguration and there is no reason for it to be readable by anyone who\ncannot already use it.\n\nChat and tool availability are reported by Control rather than probed\nhere: Control does not hold the inference configuration, and asking Chat\non every page load would make a browser refresh depend on a model\nendpoint being awake.",

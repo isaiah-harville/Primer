@@ -1,4 +1,6 @@
+import type { ConversationSummary } from '$lib/api/types';
 import { apiFor } from '$lib/server/api';
+import { chatFor } from '$lib/server/chat';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ request, fetch }) => {
@@ -8,5 +10,17 @@ export const load: LayoutServerLoad = async ({ request, fetch }) => {
 		api.libraries(),
 		api.me().catch(() => null),
 	]);
-	return { capabilities, libraries, principal };
+
+	// Conversations belong to the frame rather than to the chat screen: the
+	// sidebar lists them from wherever you are, the same way it lists
+	// libraries. Asked for only when this deployment has a Chat to ask, and
+	// an empty list rather than a broken page when it will not answer -
+	// nothing here is worth failing a page load over.
+	const conversations: ConversationSummary[] = capabilities.chat_available
+		? await chatFor(request, fetch)
+				.conversations()
+				.catch(() => [])
+		: [];
+
+	return { capabilities, libraries, principal, conversations };
 };

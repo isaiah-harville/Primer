@@ -3,6 +3,44 @@
 # This is the multi-user story. Compose is deliberately single-user; here is
 # where the ingress, the identity provider, and the trusted-header boundary
 # live.
+#
+# --- The short version --------------------------------------------------
+#
+# Nine values have no default and cannot have one: they name things that
+# exist outside this chart, and a chart that guessed at them would deploy
+# something that looks installed and answers nothing. Everything else below
+# has a working default.
+#
+#   ingress.host                     what the deployment is called
+#   auth.oidc.issuerUrl              your identity provider
+#   auth.oidc.clientId
+#   auth.oidc.existingSecret         holding client-secret and cookie-secret
+#   auth.adminGroup                  who may open the settings page
+#   postgresql.existingSecret        holding a connection URI
+#   rabbitmq.existingSecret          holding a broker URL
+#   sourceStore.existingSecret       credentials for the document bucket
+#   inference.embeddings.baseUrl     an OpenAI-compatible /v1/embeddings
+#   inference.embeddings.model       and `dimensions` MUST match it
+#
+# Two of those are worth saying twice, because both deploy cleanly and fail
+# later as something else:
+#
+#   `inference.embeddings.dimensions` must match the model exactly - 384 for
+#   bge-small-en-v1.5, 1024 for Qwen3-Embedding-0.6B. It is not checked at
+#   startup; the first document indexed is what fails. And it cannot be
+#   changed later by editing it: the vector column keeps the width it was
+#   created with, so a change means dropping the table and reindexing.
+#
+#   `auth.adminGroup` gates the settings page, and the settings page is the
+#   only way to add an inference provider through the UI. Unset means nobody,
+#   which is the safe default and also a deployment where that page 403s for
+#   its own administrator.
+#
+# Notably NOT required: a chat endpoint. Primer reports having nowhere to
+# send a question as itself, so a deployment with no model configured is one
+# you can log into and finish setting up.
+#
+# `helm install` prints what it read and what it thinks is missing.
 
 image:
   # One image for the three API services, another for the worker: Docling
@@ -29,6 +67,14 @@ image:
 # ingress below strips those headers from inbound requests: without that,
 # anyone could set them and be anyone.
 auth:
+  # The group whose members may open the settings page and change which
+  # inference providers this deployment answers from. Asserted by the proxy
+  # from the identity provider; Primer only reads it.
+  #
+  # Unset means nobody, deliberately. With authentication on, the alternative
+  # to naming no one is naming everyone, and on a shared deployment that lets
+  # any user repoint every question at an endpoint of their own.
+  adminGroup: ""
   # Required. There is no default, because a chart that silently deployed a
   # shared, unauthenticated Primer into a cluster would be a trap.
   mode: oidc
@@ -100,7 +146,15 @@ extraEnv: []
 # Primer ships no model. These point at whatever you already run.
 inference:
   chat:
+    # Both optional. An endpoint is not required because Primer reports
+    # having nowhere to send a question as itself, and providers can be added
+    # from the settings page instead.
     baseUrl: ""
+    # Not how a deployment is made to work: this only says which of the
+    # models the endpoint serves a new conversation starts on. Left unset,
+    # Primer asks what is served and starts on the first. Naming one the
+    # endpoint does not serve is worse than naming none - it is offered as
+    # though it were available, and every question on it is refused.
     model: ""
     existingSecret: ""
     apiKeyKey: chat-api-key
@@ -128,6 +182,23 @@ inference:
     dimensions: 1536
     existingSecret: ""
     apiKeyKey: embedding-api-key
+
+  # Optional. A reranker reads a question and a passage together and scores
+  # the pair, which a vector search cannot do - its two embeddings were made
+  # without knowing about each other, so the passage that answers a question
+  # is often inside the first twenty results and outside the first six.
+  #
+  # Leave baseUrl empty and nothing changes: retrieval returns the vector
+  # ordering exactly as before. A reranker that is configured and then goes
+  # down also falls back to that ordering rather than failing the search.
+  rerank:
+    baseUrl: ""
+    model: ""
+    existingSecret: ""
+    apiKeyKey: rerank-api-key
+    # How many the vector search fetches before reranking. Wider than the
+    # answer needs on purpose; the shortlist is what the reranker reads.
+    candidates: 20
 
 vectorStore:
   kind: pgvector          # pgvector | qdrant

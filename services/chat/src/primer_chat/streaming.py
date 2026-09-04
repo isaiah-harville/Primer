@@ -20,6 +20,7 @@ from primer_contracts.chat import (
     MessageRole,
     MessageStarted,
     MessageState,
+    ReasoningDelta,
     StreamError,
 )
 from primer_contracts.identity import Principal
@@ -27,10 +28,16 @@ from primer_contracts.indexing import SearchRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.budget import estimate_tokens, passages_that_fit, split_history
-from primer_chat.clients import LibraryAuthority, LibraryForbidden, PassageSource
+from primer_chat.clients import (
+    LibraryAuthority,
+    LibraryForbidden,
+    PassageSource,
+    SearchUnavailable,
+)
 from primer_chat.compaction import Compactor
 from primer_chat.config import Settings
-from primer_chat.generation import ChatGenerator
+from primer_chat.failures import describe
+from primer_chat.generation import ChatGenerator, Endpoint
 from primer_chat.models import Conversation
 from primer_chat.rag import (
     NO_CONTEXT_REPLY,
@@ -41,6 +48,7 @@ from primer_chat.rag import (
     build_prompt,
     with_summary,
 )
+from primer_chat.reasoning import Channel
 from primer_chat.repository import ChatRepository, summarize_message
 
 logger = logging.getLogger(__name__)
@@ -56,6 +64,10 @@ class Answering:
     #: Already checked against what this deployment offers. None means its
     #: default, which is the same thing a request with no preference gets.
     model: str | None = None
+    #: Which provider serves that model, resolved before the turn begins.
+    #: None falls back to the endpoint configured for the deployment, which
+    #: is what every request did before a deployment could hold several.
+    endpoint: Endpoint | None = None
 
 
 class Responder:
@@ -132,7 +144,12 @@ class Responder:
     async def respond(
         self, session: AsyncSession, turn: Answering
     ) -> AsyncIterator[
-        MessageStarted | MessageDelta | CitationEvent | MessageCompleted | StreamError
+        MessageStarted
+        | MessageDelta
+        | ReasoningDelta
+        | CitationEvent
+        | MessageCompleted
+        | StreamError
     ]:
         """Answer one question, emitting events as the answer takes shape."""
         repository = ChatRepository(session)
@@ -204,15 +221,34 @@ class Responder:
 
             chunks = ()
             if scope.generation_ids:
-                result = await self._retrieval.search(
-                    SearchRequest(
-                        principal=turn.principal,
-                        library_id=conversation.library_id,
-                        generation_ids=scope.generation_ids,
-                        query=turn.question,
-                        limit=self._settings.retrieval_limit,
+                try:
+                    result = await self._retrieval.search(
+                        SearchRequest(
+                            principal=turn.principal,
+                            library_id=conversation.library_id,
+                            generation_ids=scope.generation_ids,
+                            query=turn.question,
+                            limit=self._settings.retrieval_limit,
+                        )
                     )
-                )
+                except SearchUnavailable as unavailable:
+                    # The library is fine and the question is fine; the thing
+                    # that reads them is not. Said plainly, and terminally -
+                    # answering from the model alone would produce an
+                    # uncited answer for a question asked of a library.
+                    await repository.finish_message(
+                        message,
+                        state=MessageState.FAILED,
+                        content="",
+                        error_code="search_unavailable",
+                    )
+                    await session.commit()
+                    yield StreamError(
+                        id=next_id(),
+                        code="search_unavailable",
+                        detail=str(unavailable),
+                    )
+                    return
                 chunks = result.chunks
 
             retrieved = build_context(chunks)
@@ -304,35 +340,54 @@ class Responder:
         system_prompt = with_summary(system_prompt, summary)
 
         text = ""
+        #: None until the model actually reasons aloud, so a model that does
+        #: not is stored as null rather than as an empty thought.
+        thinking: str | None = None
         try:
             async for fragment in self._generator.stream(
-                system_prompt, prompt, history=history, model=turn.model
+                system_prompt, prompt, history=history, model=turn.model, endpoint=turn.endpoint
             ):
-                text += fragment
-                yield MessageDelta(id=next_id(), text=fragment)
-        except Exception:
-            # Whatever was written is kept: it is the only evidence of what
-            # went wrong, and a reader can see the answer stops mid-thought.
-            logger.exception("message %s: generation failed", message.id)
+                if fragment.channel is Channel.REASONING:
+                    thinking = (thinking or "") + fragment.text
+                    yield ReasoningDelta(id=next_id(), text=fragment.text)
+                    continue
+                text += fragment.text
+                yield MessageDelta(id=next_id(), text=fragment.text)
+        except Exception as error:
+            # Many different failures share this path and they send whoever
+            # reads them to different places: a rejected key is fixed in
+            # settings, an unreachable endpoint by starting something, a
+            # missing model by choosing another. Reporting them all as a
+            # model that stopped mid-answer sends every one of those readers
+            # to look at the model, which is usually the one thing that is
+            # fine.
+            #
+            # The generator runs inside a task group, so what arrives here is
+            # an ExceptionGroup rather than the exception itself; `describe`
+            # walks it.
+            code, detail = describe(error)
+            # Whatever was written is kept whichever failure this was: it is
+            # the only evidence of what went wrong, and a reader can see the
+            # answer stops mid-thought.
+            logger.exception("message %s: generation failed (%s)", message.id, code)
+
             await repository.finish_message(
                 message,
                 state=MessageState.FAILED,
                 content=text,
+                reasoning=thinking,
                 citations=context.citations,
-                error_code="generation_failed",
+                error_code=code,
             )
             await session.commit()
-            yield StreamError(
-                id=next_id(),
-                code="generation_failed",
-                detail="The model stopped before finishing this answer.",
-            )
+            yield StreamError(id=next_id(), code=code, detail=detail)
             return
 
         completed = await repository.finish_message(
             message,
             state=MessageState.COMPLETED,
             content=text,
+            reasoning=thinking,
             citations=context.citations,
         )
         await session.commit()

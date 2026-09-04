@@ -10,6 +10,7 @@ dependencies = [
     "pgvector-haystack",
     "primer-contracts",
     "primer-observability",
+    "primer-service",
     "psycopg[binary]",
     "pydantic-settings",
     "qdrant-haystack",
@@ -32,3 +33,4 @@ build-backend = "uv_build"
 [tool.uv.sources]
 primer-contracts = { workspace = true }
 primer-observability = { workspace = true }
+primer-service = { workspace = true }

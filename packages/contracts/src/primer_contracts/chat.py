@@ -61,10 +61,44 @@ class ChatModel(WireModel):
     id: str = Field(min_length=1, max_length=200)
     #: True for the one used when a request expresses no preference.
     default: bool = False
+    #: Which provider serves it. A deployment can hold several at once, and
+    #: model names are not unique across them - two endpoints serving
+    #: `llama3.1:8b` is the ordinary case, not a corner one - so a model is
+    #: only fully named by the pair. A request that gives a model without a
+    #: provider is resolved against the first that serves it.
+    provider_id: UUID | None = None
+    #: The operator's label for that provider, so a picker can say where a
+    #: model runs without a second lookup. A hostname would not do: what a
+    #: user needs to tell apart is "my machine" from "the paid one".
+    provider_name: str | None = Field(default=None, max_length=80)
 
 
 class ChatModelList(WireModel):
+    """What this deployment can answer with, and whether it could be asked.
+
+    An empty list with `endpoint_reachable` false is not the same fact as an
+    empty list with it true, and the difference is the whole point of the
+    field. Primer used to answer an unreachable endpoint with its configured
+    default name, which put a model in the picker that nothing was serving:
+    the interface offered a choice that did not exist and the failure only
+    surfaced when someone asked a question and waited for an answer that was
+    never coming.
+    """
+
     models: tuple[ChatModel, ...] = ()
+    #: Whether any enabled provider answered. False means nothing here can be
+    #: asked, and the interface must say so rather than offer a model. With
+    #: several providers this is true when any one of them replied: the
+    #: deployment can still answer, and the ones that did not are reported
+    #: individually in `unreachable`.
+    endpoint_reachable: bool = True
+    #: What went wrong, for an operator reading it. Never a stack trace.
+    detail: str | None = Field(default=None, max_length=500)
+    #: Providers that did not answer, by name, while others did. A partial
+    #: outage is not the same as an outage, and a deployment that quietly
+    #: dropped a provider from the picker would look like one that had never
+    #: been configured with it.
+    unreachable: tuple[str, ...] = ()
 
 
 class MessageRole(StrEnum):
@@ -123,6 +157,14 @@ class MessageSummary(WireModel):
     role: MessageRole
     state: MessageState
     content: str
+    #: What the model worked through before answering, for a model that
+    #: shows it. Stored beside the answer rather than mixed into it: it is
+    #: scratch work, it is not what the answer says, and a reader who copies
+    #: an answer must not carry it away with them.
+    #:
+    #: None means a model that does not reason aloud, which is most of them.
+    #: Empty means one that does and had nothing to say this turn.
+    reasoning: str | None = Field(default=None)
     citations: tuple[Citation, ...] = ()
     #: Which model produced this, recorded per message. A deployment can
     #: offer several and a user can switch between turns, so this is part of
@@ -162,6 +204,24 @@ class MessageDelta(StreamEvent):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
 
     type: Literal["message.delta"] = "message.delta"
+    text: str
+
+
+class ReasoningDelta(StreamEvent):
+    """A fragment of the model's thinking, on its own channel.
+
+    Separate from `MessageDelta` rather than a flag on it, so a client that
+    predates reasoning renders the answer correctly and simply ignores this:
+    an unknown event is skipped, whereas an unknown field on a known event
+    would have been concatenated into the answer.
+
+    Whitespace is preserved for the same reason as `MessageDelta` - these
+    fragments are concatenated too.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
+
+    type: Literal["reasoning.delta"] = "reasoning.delta"
     text: str
 
 

@@ -4,6 +4,31 @@
  */
 
 export interface paths {
+    "/api/v1/admin/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this deployment is wired to
+         * @description Every configured connection, and whether it is currently answering.
+         *
+         *     Control's own dependencies are asked through the same registry the
+         *     readiness probe uses, so this page and Kubernetes cannot disagree about
+         *     whether the database is up. The other services are probed over HTTP,
+         *     which is the only way one process learns about another.
+         */
+        get: operations["deployment_status_api_v1_admin_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capabilities": {
         parameters: {
             query?: never;
@@ -280,6 +305,20 @@ export interface components {
             file: string;
         };
         /**
+         * DependencyStatus
+         * @description One thing this deployment talks to.
+         */
+        DependencyStatus: {
+            /** Detail */
+            detail: string;
+            /** Name */
+            name: string;
+            /** Reachable */
+            reachable: boolean;
+            /** Url */
+            url?: string | null;
+        };
+        /**
          * DeploymentCapabilities
          * @description What this deployment can actually do, as the browser needs to know it.
          *
@@ -294,6 +333,11 @@ export interface components {
             chat_available: boolean;
             /** Ingestion Available */
             ingestion_available: boolean;
+            /**
+             * Is Admin
+             * @default false
+             */
+            is_admin: boolean;
             /** Max Upload Bytes */
             max_upload_bytes: number;
             /**
@@ -303,6 +347,21 @@ export interface components {
             supported_extensions: string[];
             /** Tools Available */
             tools_available: boolean;
+        };
+        /**
+         * DeploymentStatus
+         * @description The deployment's own wiring, and how much of it is answering.
+         */
+        DeploymentStatus: {
+            /** Admin Group */
+            admin_group?: string | null;
+            /** Auth Mode */
+            auth_mode: string;
+            /**
+             * Dependencies
+             * @default []
+             */
+            dependencies: components["schemas"]["DependencyStatus"][];
         };
         /**
          * DocumentSummary
@@ -454,6 +513,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    deployment_status_api_v1_admin_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentStatus"];
+                };
+            };
+        };
+    };
     capabilities_api_v1_capabilities_get: {
         parameters: {
             query?: never;

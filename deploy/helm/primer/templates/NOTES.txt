@@ -1,0 +1,65 @@
+{{/*
+Printed after install and upgrade. This is the one moment an operator is
+guaranteed to be looking, so it answers the question they actually have -
+"is that everything?" - rather than restating what they just typed.
+
+Written as checks rather than prose. A chart with this many moving parts has
+a handful of settings that are individually valid and collectively useless
+(an embedding model whose dimensions do not match it; a settings page nobody
+can open), and those are exactly the ones nothing else will report: they
+deploy cleanly and fail later, somewhere else, as a different symptom.
+*/}}
+Primer {{ .Chart.AppVersion }} is installed as {{ include "primer.fullname" . }}.
+
+{{ if .Values.ingress.host -}}
+  Open it at https://{{ .Values.ingress.host }}
+{{- else -}}
+  No ingress host is set, so this release publishes no URL of its own.
+{{- end }}
+
+What is configured
+------------------
+  Identity      {{ if eq .Values.auth.mode "oidc" }}OIDC via {{ .Values.auth.oidc.issuerUrl }}{{ else }}{{ .Values.auth.mode }}{{ end }}
+  Chat          {{ .Values.inference.chat.baseUrl | default "not set - add a provider from the settings page" }}
+  Embeddings    {{ .Values.inference.embeddings.model }} ({{ .Values.inference.embeddings.dimensions }} dimensions)
+  Reranking     {{ if .Values.inference.rerank.baseUrl }}{{ .Values.inference.rerank.model }}, {{ .Values.inference.rerank.candidates }} candidates{{ else }}off - vector ordering is used as-is{{ end }}
+  Vector store  {{ .Values.vectorStore.kind }}
+  Documents     {{ .Values.sourceStore.url }}
+
+{{- $notes := list }}
+
+{{- if not .Values.inference.chat.baseUrl }}
+{{- $notes = append $notes "No chat endpoint is set. Primer will start and say that no model is available; add a provider from the settings page, or set inference.chat.baseUrl." }}
+{{- end }}
+
+{{- if and (eq .Values.auth.mode "oidc") (not .Values.auth.adminGroup) }}
+{{- $notes = append $notes "auth.adminGroup is unset, so nobody can open the settings page and no provider can be added through the UI. Set it to a group your identity provider asserts." }}
+{{- end }}
+
+{{- if and .Values.inference.rerank.baseUrl (not .Values.inference.rerank.model) }}
+{{- $notes = append $notes "A rerank endpoint is set with no model named. Retrieval will fall back to the vector ordering." }}
+{{- end }}
+
+{{- if eq (.Values.inference.embeddings.dimensions | int) 1536 }}
+{{- $notes = append $notes "inference.embeddings.dimensions is at the chart default of 1536. It must match your embedding model exactly - 384 for bge-small-en-v1.5, 1024 for Qwen3-Embedding-0.6B. A mismatch is not reported at startup; it fails on the first document indexed." }}
+{{- end }}
+
+{{- if .Values.autoscaling.enabled }}
+{{- if not .Values.podDisruptionBudgets.enabled }}
+{{- $notes = append $notes "Autoscaling is on without pod disruption budgets, so a node drain can take every replica of a service at once." }}
+{{- end }}
+{{- end }}
+
+{{- if $notes }}
+
+Worth your attention
+--------------------
+{{- range $index, $note := $notes }}
+  {{ add1 $index }}. {{ $note }}
+{{- end }}
+{{- end }}
+
+Changing the embedding model or its dimensions is not a configuration change:
+the vector column keeps the width it was created with, so it has to be
+dropped and every document reindexed. Everything else here can be changed
+with an upgrade.

@@ -20,9 +20,9 @@ import pytest
 from fastapi.testclient import TestClient
 from primer_control.app import create_app as control_app
 from primer_control.config import Settings as ControlSettings
-from primer_control.db import Database
 from primer_retrieval.app import create_app as retrieval_app
 from primer_retrieval.config import Settings as RetrievalSettings
+from primer_service.db import Database
 
 SECRET_URL = "postgresql://primer:hunter2@db.internal:5432/primer"  # noqa: S105 - a sentinel
 #: Any non-empty value; the credential check itself is tested elsewhere.

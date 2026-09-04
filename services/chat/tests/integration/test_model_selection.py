@@ -142,7 +142,12 @@ async def test_a_name_the_endpoint_no_longer_lists_is_still_forwarded(
 
 
 class TestWhenTheEndpointCannotBeReached:
-    """A picker that cannot be built is hidden, not a reason the page fails."""
+    """Nothing is offered, and the reason travels with the empty list.
+
+    This used to assert the opposite - that the configured default was
+    offered anyway - which is what made an endpoint that was down look
+    exactly like one that was up, right until somebody asked a question.
+    """
 
     @pytest.fixture
     def settings(self) -> Settings:
@@ -153,11 +158,17 @@ class TestWhenTheEndpointCannotBeReached:
             chat_base_url="http://127.0.0.1:1",
         )
 
-    async def test_only_the_configured_default_is_offered(self, user: ChatUser) -> None:
+    async def test_no_model_is_offered(self, user: ChatUser) -> None:
         body = (await user.get("/api/v1/models")).json()
 
-        assert [entry["id"] for entry in body["models"]] == ["only-model"]
-        assert body["models"][0]["default"] is True
+        assert body["models"] == []
+        assert body["endpoint_reachable"] is False
+
+    async def test_the_reason_names_the_endpoint(self, user: ChatUser) -> None:
+        """Whoever reads this is usually whoever has to go and fix it."""
+        body = (await user.get("/api/v1/models")).json()
+
+        assert "127.0.0.1:1" in body["detail"]
 
 
 class TestWithNoChatEndpointConfigured:
@@ -165,7 +176,10 @@ class TestWithNoChatEndpointConfigured:
     def settings(self) -> Settings:
         return Settings(auth_mode="oidc", chat_model="only-model")
 
-    async def test_only_the_configured_default_is_offered(self, user: ChatUser) -> None:
+    async def test_no_model_is_offered(self, user: ChatUser) -> None:
+        """A deployment with no endpoint configured can answer nothing."""
         body = (await user.get("/api/v1/models")).json()
 
-        assert [entry["id"] for entry in body["models"]] == ["only-model"]
+        assert body["models"] == []
+        assert body["endpoint_reachable"] is False
+        assert body["detail"]

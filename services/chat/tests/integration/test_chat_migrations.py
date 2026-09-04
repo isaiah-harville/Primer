@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
-from primer_chat.db import as_sync_url
 from primer_chat.migrations import check_for_drift, downgrade_to_base, upgrade_to_head
+from primer_service.db import as_sync_url
 from sqlalchemy import create_engine
 
 

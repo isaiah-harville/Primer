@@ -79,7 +79,7 @@ object.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `PRIMER_CHAT_BASE_URL` | unset | Any OpenAI-compatible endpoint |
-| `PRIMER_CHAT_MODEL` | `gpt-4o-mini` | The default a question gets |
+| `PRIMER_CHAT_MODEL` | unset | Optional. Which model a new chat starts on |
 | `PRIMER_CHAT_API_KEY` | unset | Many local servers ignore it |
 | `PRIMER_CHAT_TIMEOUT_SECONDS` | `120` | Per request to the model |
 | `PRIMER_CONTROL_URL` | `http://control-api:8000` | Cluster-internal |
@@ -96,11 +96,21 @@ object.
 
 ### Offering more than one model
 
-Chat's model picker lists whatever `PRIMER_CHAT_BASE_URL` itself reports
-from `/models`, `PRIMER_CHAT_MODEL` marked as the default. There is no
-separate list of Primer's own to keep in step with the endpoint's: point
-the endpoint at the models you want offered, and that is what the picker
-shows.
+Chat's model picker lists whatever the configured endpoints report from
+`/models`. There is no separate list of Primer's own to keep in step with
+them: point the endpoint at the models you want offered, and that is what
+the picker shows.
+
+`PRIMER_CHAT_MODEL` is **not required**, and setting it is not how a
+deployment is made to work. Its only job is to say which of the offered
+models a new conversation starts on - a preference, worth having when an
+endpoint serves several and the order it lists them in is not something to
+depend on. Left unset, Primer asks the providers what they serve and starts
+on the first, and a question always goes to whatever the picker is showing.
+
+Naming a model here that the endpoint does not serve is worse than naming
+none: it is offered as though it were available, and every question that
+lands on it is refused by the endpoint.
 
 Every model offered this way shares one endpoint, one API key, and one
 `PRIMER_RETRIEVAL_LIMIT`. They need not share a context window: see below.

@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from primer_control.app import create_app
 from primer_control.config import Settings
-from primer_control.db import Database
 from primer_control.health import DependencyRegistry
+from primer_service.db import Database
 
 
 class ReachableDatabase(Database):

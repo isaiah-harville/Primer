@@ -13,6 +13,7 @@ from typing import Any
 
 from primer_contracts.chat import MessageRole, MessageState, ToolPhase
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -88,6 +89,41 @@ class Conversation(Base):
     )
 
 
+class Provider(Base):
+    """An inference endpoint an administrator added through the settings page.
+
+    Only the added ones. The provider configured in the chart lives in the
+    environment and is reported alongside these rather than written here: a
+    row standing in for it would be a second place a deployment's own
+    configuration could be changed, and the two could then disagree.
+
+    The API key is stored encrypted and is never returned by any route. What
+    a caller can learn is whether one is held.
+    """
+
+    __tablename__ = "providers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    #: The operator's own label, and what a user sees beside a model name.
+    #: Unique, because it is how a person tells two endpoints apart and two
+    #: called "Local" would make the choice meaningless.
+    name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    base_url: Mapped[str] = mapped_column(String(2000), nullable=False)
+    #: Ciphertext, or null for an endpoint that needs no key. Never the key.
+    api_key_sealed: Mapped[str | None] = mapped_column(Text)
+    #: Disabled rather than deleted is the usual way to take an endpoint out
+    #: of service: it keeps the URL and the key for when it comes back.
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class Message(Base):
     """One turn. Content is immutable once the turn reaches a terminal state.
 
@@ -126,6 +162,10 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     state: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    #: What a reasoning model worked through before answering. Nullable with
+    #: no default, because the three states differ: null is a model that does
+    #: not reason aloud, empty is one that does and said nothing this turn.
+    reasoning: Mapped[str | None] = mapped_column(Text)
     #: Which endpoint and model produced this, recorded per message: a
     #: deployment can change models between turns, and an answer's provenance
     #: is part of the answer.

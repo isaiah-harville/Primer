@@ -1,0 +1,12 @@
+[project]
+name = "primer-service"
+version = "0.1.0"
+description = "HTTP plumbing shared by Primer's FastAPI services"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"

@@ -37,6 +37,23 @@ class PassageSource(Protocol):
     async def search(self, request: SearchRequest) -> SearchResult: ...
 
 
+class SearchUnavailable(Exception):
+    """A library could not be searched because Retrieval could not do it.
+
+    Distinct from a failed answer: nothing was wrong with the question, and
+    the thing to fix is a dependency rather than the model.
+    """
+
+
+def _detail_of(response: httpx2.Response) -> str:
+    """Retrieval's own words, when it sent any."""
+    try:
+        detail = response.json().get("detail")
+    except Exception:  # noqa: BLE001 - a body that is not JSON says nothing
+        detail = None
+    return detail or "This library could not be searched just now."
+
+
 class LibraryForbidden(Exception):
     """The principal may not read this library, or it does not exist.
 
@@ -93,5 +110,11 @@ class RetrievalClient(_Client):
         response = await self._client.post(
             "/internal/v1/search", json=request.model_dump(mode="json")
         )
+        if response.status_code == 503:
+            # Retrieval says which of its own dependencies is down, and that
+            # sentence is worth more to whoever reads it than anything this
+            # service could invent. Carried through rather than flattened to
+            # "the answer stopped", which points at the model instead.
+            raise SearchUnavailable(_detail_of(response))
         response.raise_for_status()
         return SearchResult.model_validate(response.json())

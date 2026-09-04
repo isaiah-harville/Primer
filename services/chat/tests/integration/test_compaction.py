@@ -16,13 +16,15 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-from chat_support import ChatUser, FakeGenerator
+from chat_support import ChatUser, FakeGenerator, deployment
 from httpx2 import AsyncClient
 from primer_chat.config import Settings
-from primer_chat.db import Database
+from primer_chat.generation import Endpoint
 from primer_chat.rag import SUMMARY_SYSTEM_PROMPT, HistoryTurn
+from primer_chat.reasoning import Channel, Fragment
 from primer_chat.repository import ChatRepository
 from primer_contracts.chat import MessageRole, MessageState
+from primer_service.db import Database
 from sqlalchemy import text
 
 #: Long enough that a few of them will not share a small window.
@@ -62,15 +64,16 @@ class Summarizer(FakeGenerator):
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]:
+        endpoint: Endpoint | None = None,
+    ) -> AsyncIterator[Fragment]:
         if system_prompt == SUMMARY_SYSTEM_PROMPT:
             self.summaries.append(user_prompt)
             if self.fail_summary:
                 raise RuntimeError("the summarizer went away")
-            yield self.summary
+            yield Fragment(Channel.ANSWER, self.summary)
             return
         async for fragment in super().stream(
-            system_prompt, user_prompt, history=history, model=model
+            system_prompt, user_prompt, history=history, model=model, endpoint=endpoint
         ):
             yield fragment
 
@@ -98,7 +101,7 @@ class TestALongConversation:
     @pytest.fixture
     def settings(self) -> Settings:
         """A window a handful of these turns cannot all fit in."""
-        return Settings(auth_mode="oidc", chat_context_tokens=1024, chat_reply_tokens=64)
+        return deployment(chat_context_tokens=1024, chat_reply_tokens=64)
 
     @pytest.fixture
     def generator(self) -> Summarizer:
@@ -216,8 +219,7 @@ class TestAConversationThatFits:
 class TestCompactionTurnedOff:
     @pytest.fixture
     def settings(self) -> Settings:
-        return Settings(
-            auth_mode="oidc",
+        return deployment(
             chat_context_tokens=1024,
             chat_reply_tokens=64,
             chat_compact_history=False,

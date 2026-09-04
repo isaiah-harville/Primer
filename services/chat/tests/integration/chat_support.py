@@ -16,7 +16,10 @@ from uuid import UUID
 
 from httpx2 import AsyncClient, Response
 from primer_chat.clients import LibraryForbidden
+from primer_chat.config import Settings
+from primer_chat.generation import Endpoint
 from primer_chat.rag import HistoryTurn
+from primer_chat.reasoning import Channel, Fragment
 from primer_contracts.identity import Principal
 from primer_contracts.indexing import LibraryScope, SearchRequest, SearchResult
 from primer_contracts.retrieval import RetrievedChunk, SourceLocator
@@ -67,13 +70,46 @@ class FakeRetrieval:
         )
 
 
+def deployment(**overrides: object) -> Settings:
+    """A plausible deployment, with whatever this test needs changed.
+
+    Chat used to default its model to a hosted one's name, so a test could
+    configure nothing and still be answered. Neither the model nor the
+    endpoint is defaulted now - a deployment pointed nowhere is refused
+    rather than sent to whoever owns the default - so the baseline has to
+    say what it is, in one place rather than in every override.
+
+    The generator is faked, so nothing is sent to this address; naming it is
+    what makes the deployment under test a configured one.
+    """
+    # Overrides win, so a test naming its own model is not fighting the
+    # baseline for the same keyword.
+    return Settings(
+        **{
+            "auth_mode": "oidc",
+            "chat_base_url": "http://model.invalid/v1",
+            "chat_model": "test-model",
+            **overrides,
+        }  # ty: ignore[invalid-argument-type]
+    )
+
+
 class FakeGenerator:
     """A model, recording the prompts it was given."""
 
     model = "fake-model"
 
-    def __init__(self, fragments: list[str] | None = None, fail: bool = False) -> None:
-        self.fragments = fragments if fragments is not None else ["Grounded ", "answer [1]."]
+    def __init__(self, fragments: list[str | Fragment] | None = None, fail: bool = False) -> None:
+        #: Plain strings are answer text, which is what almost every test
+        #: wants. A test about a reasoning model passes `Fragment`s and says
+        #: which channel each belongs to.
+        raw: list[str | Fragment] = (
+            fragments if fragments is not None else ["Grounded ", "answer [1]."]
+        )
+        self.fragments = [
+            piece if isinstance(piece, Fragment) else Fragment(Channel.ANSWER, piece)
+            for piece in raw
+        ]
         self.fail = fail
         self.prompts: list[tuple[str, str]] = []
         #: The conversation each call was given, so a test can prove the
@@ -83,6 +119,18 @@ class FakeGenerator:
         #: reached the provider rather than stopping at the request.
         self.models: list[str | None] = []
 
+    @property
+    def answer(self) -> str:
+        """What the fake will have written as the answer, for comparison.
+
+        Tests assert a stored message against this. Reassembling it at each
+        call site would mean every one of them deciding again which channel
+        counts, and getting it wrong quietly.
+        """
+        return "".join(
+            fragment.text for fragment in self.fragments if fragment.channel is Channel.ANSWER
+        )
+
     async def stream(
         self,
         system_prompt: str,
@@ -90,7 +138,8 @@ class FakeGenerator:
         *,
         history: tuple[HistoryTurn, ...] = (),
         model: str | None = None,
-    ) -> AsyncIterator[str]:
+        endpoint: Endpoint | None = None,
+    ) -> AsyncIterator[Fragment]:
         self.prompts.append((system_prompt, user_prompt))
         self.histories.append(tuple((turn.role.value, turn.content) for turn in history))
         self.models.append(model)
@@ -155,6 +204,9 @@ class ChatUser:
 
     async def get(self, path: str) -> Response:
         return await self._http.get(path, headers=self._headers)
+
+    async def patch(self, path: str, payload: dict[str, Any] | None = None) -> Response:
+        return await self._http.patch(path, json=payload or {}, headers=self._headers)
 
     async def delete(self, path: str) -> Response:
         return await self._http.delete(path, headers=self._headers)

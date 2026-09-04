@@ -14,10 +14,10 @@ import pytest
 import pytest_asyncio
 from chat_support import LIBRARY_ID, ChatUser
 from httpx2 import AsyncClient
-from primer_chat.db import Database
 from primer_chat.models import ToolCall
 from primer_chat.tool_repository import ToolRepository
 from primer_contracts.chat import ToolPhase
+from primer_service.db import Database
 from sqlalchemy import select
 
 

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { Button, CopyButton } from '@sivir-ui/svelte';
+	import { Button } from '@sivir-ui/svelte';
 	import type { MessageSummary } from '$lib/api/types';
+	import CopyAction from '$lib/components/CopyAction.svelte';
 	import { copyResponseText, exportResponseMarkdown } from '$lib/export/markdown';
 
 	interface Props {
@@ -28,12 +29,13 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
-	<CopyButton text={plain} variant="ghost" size="sm">Copy text</CopyButton>
+	<CopyAction text={plain} label="Copy text" />
 	<!--
 	  Markdown separately, because the two are genuinely different: pasting
 	  into a chat wants plain prose, pasting into notes wants the citations.
+	  Which is why they have to be told apart at a glance.
 	-->
-	<CopyButton text={markdown} variant="ghost" size="sm">Copy with sources</CopyButton>
+	<CopyAction text={markdown} label="Copy with sources" />
 	<Button variant="ghost" size="sm" onclick={download}>Export</Button>
 	{#if message.citations.length > 0}
 		<Button variant="ghost" size="sm" onclick={onshowsources}>

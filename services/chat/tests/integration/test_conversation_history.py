@@ -59,9 +59,9 @@ async def test_reopening_a_conversation_returns_its_turns_in_order(
 
     assert [(message["role"], message["content"]) for message in messages] == [
         ("user", "What did the trial establish?"),
-        ("assistant", "".join(generator.fragments)),
+        ("assistant", generator.answer),
         ("user", "And the dosage?"),
-        ("assistant", "".join(generator.fragments)),
+        ("assistant", generator.answer),
     ]
 
 

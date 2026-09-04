@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from primer_service.db import Database
+from primer_service.errors import ProblemError, problem_response, rendered, validation_problem
 from primer_storage import SourceStore
 
 from primer_control import __version__
 from primer_control.config import Settings
-from primer_control.db import Database
-from primer_control.errors import ProblemError, problem_response
 from primer_control.health import DependencyRegistry
 from primer_control.middleware import RequestIDMiddleware
 from primer_control.publisher import JobPublisher, build_publisher
+from primer_control.routes import admin as admin_routes
 from primer_control.routes import capabilities as capability_routes
 from primer_control.routes import documents as document_routes
 from primer_control.routes import health as health_routes
@@ -59,11 +61,22 @@ def create_app(
     async def _handle_problem(request: Request, exc: ProblemError) -> JSONResponse:
         return problem_response(request, exc)
 
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """Answer a malformed request in the shape every other failure uses.
+
+        Without this, FastAPI answers in its own: a list of objects under
+        `detail`, where the contract promises a string. Clients read it as
+        one, and a rejected field arrived on screen as "[object Object]".
+        """
+        return rendered(request, validation_problem(exc))
+
     app.include_router(health_routes.router)
     app.include_router(identity_routes.router)
     app.include_router(library_routes.router)
     app.include_router(document_routes.router)
     app.include_router(capability_routes.router)
+    app.include_router(admin_routes.router)
     app.include_router(internal_ingestion_routes.router)
     app.include_router(internal_authz_routes.router)
     return app

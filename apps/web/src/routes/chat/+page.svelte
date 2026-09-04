@@ -5,23 +5,24 @@
 		Conversation,
 		Markdown,
 		Message,
+		Progress,
+		Reasoning,
 		PromptComposer,
-		Sheet,
 		Spinner
 	} from '@sivir-ui/svelte';
-	import { Check, FileText, History, Plus } from '@lucide/svelte';
-	import { goto, invalidateAll, replaceState } from '$app/navigation';
+	import { Check, FileText, Plus } from '@lucide/svelte';
+	import { afterNavigate, goto, invalidateAll, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import CitationPanel from '$lib/components/CitationPanel.svelte';
-	import ConversationList from '$lib/components/ConversationList.svelte';
 	import LibraryLink from '$lib/components/LibraryLink.svelte';
 	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
 	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
 	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
-	import { notify } from '$lib/notifications.svelte';
 	import { formatBytes, rejectionFor } from '$lib/upload';
+	import { draft } from '$lib/draft.svelte';
+	import { unqualify } from '$lib/models';
 	import { turnsFrom, type Turn } from '$lib/transcript';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
 	import type { PageData } from './$types';
@@ -74,50 +75,101 @@
 	//: the one case where the user should be asked whether to keep it.
 	let offered = $state<{ id: string; name: string; documents: number } | null>(null);
 
-	let historyOpen = $state(false);
-	let deleting = $state<ConversationSummary | null>(null);
 	//: Which stored conversation this screen is currently showing, so that
 	//: reloading the list does not look like opening a different thread.
 	let shown = $state<string | null>(null);
 
-	// Load decides which conversation is on screen; this follows it. Guarded
-	// on the id rather than on the data, so refreshing the list after a turn
-	// does not throw away the turn that was just streamed into it.
+	//: An answer that has been asked for but has not started arriving. Once
+	//: the first token lands the text itself is the progress, so the bar
+	//: gives way to it rather than running alongside.
+	let thinking = $derived(streaming && (turns.at(-1)?.stream.text ?? '') === '');
+
+	/**
+	 * Show a stored conversation, replacing whatever is on screen.
+	 *
+	 * The only thing that writes over a transcript, and it is only ever
+	 * called with one that a load actually returned.
+	 */
+	function show(
+		opened: { conversation: ConversationSummary; messages: MessageSummary[] } | null
+	) {
+		shown = opened?.conversation.id ?? null;
+		conversationId = shown;
+		turns = opened ? turnsFrom(opened.messages) : [];
+		libraryId = opened?.conversation.library_id ?? '';
+		question = '';
+		sourcesFor = null;
+		sourcesOpen = false;
+		uploadError = '';
+		uploadSuccess = '';
+		uploads = [];
+		offered = null;
+	}
+
+	// Follows the load, and deliberately cannot clear anything.
+	//
+	// It used to also handle the empty case - a load that opened nothing
+	// meant "clear the screen" - and that is what was throwing answers away.
+	// Three quite different things arrive here looking identical: a new chat
+	// being started, a load that failed to open the thread it was asked for,
+	// and a refresh that had not yet caught up with a conversation written a
+	// moment earlier. Only the first means clear, and the effect cannot tell
+	// them apart, because by the time it runs the difference is gone.
+	//
+	// So it no longer tries. Adopting a conversation is the only thing that
+	// happens here; clearing is `afterNavigate`'s job below, which knows
+	// something this does not - that a person deliberately went somewhere.
 	$effect(() => {
 		const opened = data.opened;
-		const id = opened?.conversation.id ?? null;
-		if (untrack(() => shown) === id) return;
-		untrack(() => {
-			shown = id;
-			conversationId = id;
-			turns = opened ? turnsFrom(opened.messages) : [];
-			libraryId = opened?.conversation.library_id ?? '';
-			question = '';
-			sourcesFor = null;
-			sourcesOpen = false;
-			uploadError = '';
-			uploadSuccess = '';
-			uploads = [];
-			offered = null;
-		});
+		if (!opened) return;
+		if (untrack(() => shown) === opened.conversation.id) return;
+		untrack(() => show(opened));
 	});
 
-	//: Edge-triggered on the transition into failure, not on every reload
-	//: while it stays failed: `invalidateAll()` reruns this load after every
-	//: question, and a still-unreachable Chat should not toast again each
-	//: time.
-	let modelsWereUnavailable = $state(false);
-	$effect(() => {
-		const unavailable = data.modelsUnavailable;
-		if (unavailable && !untrack(() => modelsWereUnavailable)) {
-			notify(
-				'error',
-				'Could not list available models.',
-				"Questions will still be answered by this deployment's default model."
-			);
-		}
-		untrack(() => (modelsWereUnavailable = unavailable));
+	// Starting a new chat, when it is a link rather than the button.
+	//
+	// The sidebar's "New chat" is an anchor to /chat, so nothing on this page
+	// runs when it is clicked - the component is already mounted and only the
+	// data changes. This is the signal that was missing.
+	//
+	// A navigation is exactly the right thing to listen for, and the reason
+	// the effect above cannot do this job: invalidating the sidebar is not a
+	// navigation, and neither is the shallow URL update after an answer, so
+	// neither of them reaches here. Only a person going somewhere does.
+	afterNavigate(({ to }) => {
+		if (to?.url.pathname !== '/chat') return;
+		if (to.url.searchParams.get('conversation') !== null) return;
+		// Already blank - and this fires on the shallow update too, where
+		// clearing would throw away the answer that just arrived.
+		if (untrack(() => shown) === null && untrack(() => turns).length === 0) return;
+		show(null);
 	});
+
+	//: True when nothing can answer a question. Asking anyway would spend a
+	//: user's time on a request that cannot succeed, so the composer is shut
+	//: rather than left inviting.
+	let answerable = $derived(data.models.length > 0);
+
+	//: Whether each turn's thinking is expanded, once someone has said so.
+	//: Absent means nobody has touched it, and the default applies: open
+	//: while the model is still working, folded away once it has answered.
+	//: Keyed by position, which is stable for the life of a transcript -
+	//: turns are only ever appended.
+	let thinkingOpen = $state<Record<number, boolean>>({});
+	function showingThinking(index: number, done: boolean): boolean {
+		return thinkingOpen[index] ?? !done;
+	}
+
+	//: A line of the thinking, shown on the folded header so it is worth
+	//: opening. Newlines are flattened because the header is one line and a
+	//: model's scratch work is full of them.
+	const PREVIEW_CHARACTERS = 110;
+	function thinkingPreview(reasoning: string): string {
+		const flattened = reasoning.replace(/\s+/g, ' ').trim();
+		return flattened.length > PREVIEW_CHARACTERS
+			? `${flattened.slice(0, PREVIEW_CHARACTERS).trimEnd()}…`
+			: flattened;
+	}
 
 	// Shown for a few seconds rather than cleared right away, and guarded by
 	// a token so an upload that finishes later than a fresher one cannot
@@ -177,7 +229,9 @@
 				uploads = uploads.filter((upload) => upload.id !== id);
 			}
 		}
-		// The sidebar counts documents, and it is on this page too.
+		// The sidebar counts documents, and it is on this page too. Safe to
+		// refresh everything now: the effect above adopts conversations and
+		// never clears them, so a reload cannot take the answers off screen.
 		await invalidateAll();
 	}
 
@@ -196,10 +250,16 @@
 
 	async function ask() {
 		const asked = question.trim();
-		if (!asked || streaming) return;
+		if (!asked || streaming || !answerable) return;
 
 		question = '';
 		streaming = true;
+		// The timeline should say where you are from the first question, not
+		// from the first answer. A conversation is not stored until the
+		// question is asked, so until it is, this stands in for it.
+		if (!conversationId) draft.begin(asked);
+		// The bar is a picture of this, and a picture announces nothing.
+		announcement = 'Waiting for an answer.';
 		const turn = { question: asked, stream: emptyStream() };
 		turns = [...turns, turn];
 
@@ -215,7 +275,10 @@
 					message: asked,
 					...(conversationId ? { conversation_id: conversationId } : {}),
 					...(libraryId ? { library_id: libraryId } : {}),
-					...(model ? { model } : {})
+					// Split back into the two fields the request carries. The
+					// picker's value names both, because a model name alone
+					// cannot say which provider serves it.
+					...unqualify(model)
 				})
 			});
 			if (!response.ok || !response.body) throw new Error('The server refused the question.');
@@ -237,7 +300,12 @@
 				replaceState(`/chat?conversation=${conversationId}`, page.state);
 			}
 			// The history list is a page load away from knowing this happened.
+			// It is also, now, guaranteed to see it: Control commits a write
+			// before answering, so this reload cannot race the conversation
+			// that was just created.
 			await invalidateAll();
+			// Stored now, so the real entry takes over from the stand-in.
+			draft.settle();
 		} catch {
 			turn.stream = {
 				...turn.stream,
@@ -247,6 +315,11 @@
 			turns = [...turns];
 		} finally {
 			streaming = false;
+			// Cleared however the turn ended. A question that failed left no
+			// conversation behind, so a stand-in for one would be a row
+			// pointing at nothing.
+			draft.settle();
+			announcement = turn.stream.error ? 'The answer stopped early.' : 'Answer received.';
 		}
 	}
 
@@ -262,30 +335,11 @@
 		uploadError = '';
 		uploadSuccess = '';
 		uploads = [];
+		draft.settle();
 		announcement = 'Started a new chat.';
 		// The conversation that was open is in the URL, and leaving it there
 		// would restore the thread on the next reload.
 		if (page.url.searchParams.has('conversation')) await goto('/chat');
-	}
-
-	async function remove(conversation: ConversationSummary) {
-		deleting = conversation;
-		try {
-			const response = await fetch(`/chat/conversations/${conversation.id}`, {
-				method: 'DELETE'
-			});
-			if (!response.ok) throw new Error('That conversation could not be deleted.');
-			announcement = 'Conversation deleted.';
-			// Leaving the screen showing a thread that no longer exists would
-			// be a transcript nothing stands behind.
-			if (conversation.id === shown) await startOver();
-			else await invalidateAll();
-		} catch (error) {
-			uploadError = error instanceof Error ? error.message : 'That conversation could not be deleted.';
-			announcement = uploadError;
-		} finally {
-			deleting = null;
-		}
 	}
 
 	function completed(stream: StreamState): MessageSummary | null {
@@ -311,40 +365,19 @@
   of the frame rather than under the conversation wherever that happens to
   end.
 -->
-<div class="flex h-full min-h-0 gap-6">
+<div class="flex h-full min-h-0 flex-col">
 	<!--
-	  A second rail, beside the frame's own. Conversations are the thing this
-	  screen accumulates, and a list you have to leave the screen to see is a
-	  list nobody looks at. It is the width of a title and no wider: the
-	  answers are what the space is for.
+	  A header for the thread, above the thread. What answers a question is
+	  the model, and which model that is was previously never on screen at
+	  all - the picker hid itself whenever a deployment served only one, so
+	  the common case showed nothing. It is stated here whether or not there
+	  is a choice to make, because "which model wrote this" is a question
+	  about the answer in front of you rather than a setting.
 	-->
-	<aside class="hidden w-64 shrink-0 xl:block">
-		<ConversationList
-			conversations={data.conversations}
-			libraries={data.libraries}
-			openId={shown}
-			busyId={deleting?.id ?? null}
-			ondelete={remove}
-		/>
-	</aside>
+	<header class="shrink-0 border-b border-border pb-2">
+		<div class="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+			<ModelPicker models={data.models} problem={data.modelsProblem} bind:value={model} />
 
-	<div class="flex min-w-0 flex-1 flex-col">
-	<div class="flex shrink-0 items-center justify-end gap-4">
-		<div class="flex items-center gap-1">
-			<!--
-			  The same list in a drawer where the rail does not fit, rather
-			  than a second way of listing conversations that could drift from
-			  the first.
-			-->
-			<Button
-				size="sm"
-				variant="ghost"
-				class="xl:hidden"
-				onclick={() => (historyOpen = true)}
-			>
-				<History size={14} aria-hidden="true" />
-				History
-			</Button>
 			<!--
 			  The way back to a blank page, and the only way to change the
 			  library a conversation is answered from. Absent until there is
@@ -357,7 +390,38 @@
 				</Button>
 			{/if}
 		</div>
-	</div>
+
+		<!--
+		  A question can sit unanswered for a long time on a small model, and
+		  until now nothing on the page moved while it did: the composer went
+		  quiet and the conversation simply stopped, which reads as a request
+		  that was dropped rather than one being worked on. The bar runs from
+		  asking until the first token arrives, and then hands over to the
+		  text, which is a better progress indicator than any bar.
+
+		  It keeps its height when idle so the header does not jump by a
+		  pixel and a half every time a question is asked.
+		-->
+		<div class="mx-auto mt-2 h-[3px] w-full max-w-3xl">
+			{#if thinking}
+				<Progress indeterminate class="h-[3px]" />
+			{/if}
+		</div>
+	</header>
+
+	{#if data.modelsProblem}
+		<!--
+		  On the page, not in a toast. A deployment with no model stays broken
+		  until someone changes something, and a message that fades after five
+		  seconds is one nobody who arrives later ever sees. It names the
+		  endpoint, because the person reading this is usually the person who
+		  has to go and fix it.
+		-->
+		<Alert.Root variant="error" class="mx-auto mt-4 w-full max-w-3xl">
+			<Alert.Title>No model can answer questions</Alert.Title>
+			<Alert.Description>{data.modelsProblem}</Alert.Description>
+		</Alert.Root>
+	{/if}
 
 	{#if data.unopened}
 		<!--
@@ -437,6 +501,51 @@
 				</Message.Root>
 
 				<Message.Root from="assistant" status={turn.stream.done ? 'idle' : 'streaming'}>
+					{#if turn.stream.reasoning !== null}
+						<!--
+						  What the model worked through, above the answer it
+						  produced and folded away once it has. Null rather
+						  than empty is what keeps this off the screen
+						  entirely for the models that do not think aloud,
+						  which is most of them.
+
+						  Quiet on purpose: it is scratch work, not the
+						  answer, and it must not compete with the thing the
+						  reader actually asked for.
+						-->
+						<Reasoning.Root
+							streaming={!turn.stream.done}
+							open={showingThinking(index, turn.stream.done)}
+							onOpenChange={(open) => (thinkingOpen[index] = open)}
+							class="mb-2"
+						>
+							<!--
+							  The folded header carries a line of the thinking
+							  itself. Without a title the kit prints the word
+							  "Draft", which tells a reader nothing about
+							  whether this one is worth opening.
+
+							  That preview is the trigger's last child and
+							  carries no colour of its own, so it inherits the
+							  button's and arrives as loud as the answer. It is
+							  selected directly here because a plain colour on
+							  the trigger loses: the kit merges its own classes
+							  after the caller's, so the caller's is dropped.
+							-->
+							<Reasoning.Trigger
+								title={thinkingPreview(turn.stream.reasoning)}
+								class="[&>span:last-child]:text-xs [&>span:last-child]:font-normal
+									[&>span:last-child]:text-muted-foreground"
+							/>
+							<Reasoning.Content
+								class="whitespace-pre-wrap border-l border-border pl-3 text-xs
+									leading-relaxed text-muted-foreground"
+							>
+								{turn.stream.reasoning}
+							</Reasoning.Content>
+						</Reasoning.Root>
+					{/if}
+
 					<Message.Content>
 						<!--
 						  Rendered as Markdown, since models write it. The text
@@ -481,8 +590,13 @@
 		class="mt-4"
 	>
 		<PromptComposer.Input
-			placeholder={libraryId ? 'Ask about this library…' : 'Ask anything…'}
+			placeholder={!answerable
+				? 'No model is available to answer.'
+				: libraryId
+					? 'Ask about this library…'
+					: 'Ask anything…'}
 			aria-label="Your question"
+			disabled={!answerable}
 		/>
 		<PromptComposer.Toolbar>
 			<PromptComposer.Actions></PromptComposer.Actions>
@@ -497,7 +611,6 @@
 	<div class="mt-2 flex flex-wrap items-center justify-between gap-3">
 		<div class="flex flex-wrap items-center gap-2">
 			<LibraryLink libraries={data.libraries} bind:value={libraryId} locked={started} />
-			<ModelPicker models={data.models} unavailable={data.modelsUnavailable} bind:value={model} />
 			{#each uploads as upload (upload.id)}
 				<!--
 				  A preview of the document it is about to become, greyed out
@@ -573,22 +686,7 @@
 		</div>
 	{/if}
 </div>
-
-	</div>
 </div>
-
-<Sheet.Root bind:open={historyOpen}>
-	<Sheet.Content side="right" class="w-80 p-4">
-		<ConversationList
-			conversations={data.conversations}
-			libraries={data.libraries}
-			openId={shown}
-			busyId={deleting?.id ?? null}
-			ondelete={remove}
-			onopen={() => (historyOpen = false)}
-		/>
-	</Sheet.Content>
-</Sheet.Root>
 
 {#if sourcesFor}
 	<CitationPanel citations={sourcesFor.citations} bind:open={sourcesOpen} />

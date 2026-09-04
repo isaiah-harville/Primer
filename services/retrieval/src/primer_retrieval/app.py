@@ -29,10 +29,11 @@ from primer_contracts.indexing import (
     SearchRequest,
     SearchResult,
 )
+from primer_service.errors import ProblemError, problem_response
 
 from primer_retrieval import __version__
 from primer_retrieval.config import Settings
-from primer_retrieval.errors import ProblemError, problem_response
+from primer_retrieval.errors import dependency_unavailable
 from primer_retrieval.pipelines import (
     GENERATION_ID,
     DocumentEmbedder,
@@ -45,6 +46,7 @@ from primer_retrieval.pipelines import (
     to_retrieved,
     version_filter,
 )
+from primer_retrieval.reranking import Reranker, reorder
 from primer_retrieval.security import require_service_credential
 from primer_retrieval.stores import build_document_store
 
@@ -67,12 +69,28 @@ class RetrievalState:
         document_embedder: DocumentEmbedder,
         text_embedder: TextEmbedder,
         retriever: Any | None = None,
+        reranker: Reranker | None = None,
     ) -> None:
         self.settings = settings
         self.store = store
         self.document_embedder = document_embedder
         self.text_embedder = text_embedder
         self.retriever = retriever if retriever is not None else build_retriever(store, settings)
+        # None unless an endpoint is configured, and None is what makes a
+        # deployment without one behave exactly as it did before.
+        self.reranker = reranker if reranker is not None else build_reranker(settings)
+
+
+def build_reranker(settings: Settings) -> Reranker | None:
+    """The configured reranker, or nothing at all."""
+    if not settings.reranking_enabled:
+        return None
+    return Reranker(
+        base_url=settings.rerank_base_url or "",
+        model=settings.rerank_model,
+        api_key=(settings.rerank_api_key.get_secret_value() if settings.rerank_api_key else None),
+        timeout_seconds=settings.rerank_timeout_seconds,
+    )
 
 
 def get_state(request: Request) -> RetrievalState:
@@ -161,13 +179,41 @@ def search(payload: SearchRequest, state: State) -> SearchResult:
     Filtering after the fact would silently return fewer results than asked
     for, and would depend on this code never being reordered.
     """
-    embedded = state.text_embedder.run(payload.query)
+    try:
+        embedded = state.text_embedder.run(payload.query)
+    except Exception as error:
+        # An unreachable embedding endpoint is a deployment fault, not a bad
+        # request, and it is the single most likely thing to be wrong on a
+        # self-hosted install: the embedder is a separate process that has to
+        # be running and reachable. Left unhandled it surfaced as a bare 500
+        # with a stack trace, which Chat then reported to the reader as an
+        # answer that stopped - sending whoever read it to look at the model.
+        logger.warning("the embedding endpoint could not be reached", exc_info=True)
+        raise dependency_unavailable(
+            "The embedding endpoint could not be reached, so this library cannot be searched."
+        ) from error
+    # Fetch wider than the answer needs when a reranker will read them: the
+    # passage that answers the question is often inside the first twenty and
+    # outside the first six. Without one, the vector ordering is the answer,
+    # so asking for more would be work nothing looks at.
+    candidates = (
+        max(payload.limit, state.settings.rerank_candidates)
+        if state.reranker is not None
+        else payload.limit
+    )
     hits = state.retriever.run(
         query_embedding=embedded["embedding"],
         filters=scope_filter(payload.library_id, payload.generation_ids),
-        top_k=payload.limit,
+        top_k=candidates,
     )
-    return SearchResult(chunks=tuple(to_retrieved(hit) for hit in hits["documents"]))
+    kept = reorder(
+        state.reranker,
+        payload.query,
+        list(hits["documents"]),
+        lambda hit: hit.content or "",
+        payload.limit,
+    )
+    return SearchResult(chunks=tuple(to_retrieved(hit) for hit in kept))
 
 
 @router.post("/delete", summary="Remove one generation's chunks")

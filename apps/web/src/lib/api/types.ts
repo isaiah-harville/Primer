@@ -25,12 +25,19 @@ export type LibrarySummary = ControlSchemas['LibrarySummary'];
 export type DocumentSummary = ControlSchemas['DocumentSummary'];
 export type DeploymentCapabilities = ControlSchemas['DeploymentCapabilities'];
 export type Principal = ControlSchemas['Principal'];
+export type DeploymentStatus = ControlSchemas['DeploymentStatus'];
+export type DependencyStatus = ControlSchemas['DependencyStatus'];
 
 export type SourceLocator = ChatSchemas['SourceLocator'];
 export type Citation = ChatSchemas['Citation'];
 export type MessageSummary = ChatSchemas['MessageSummary'];
 export type ConversationSummary = ChatSchemas['ConversationSummary'];
 export type ChatModel = ChatSchemas['ChatModel'];
+export type ChatModelList = ChatSchemas['ChatModelList'];
+export type ProviderSummary = ChatSchemas['ProviderSummary'];
+export type ProviderCreate = ChatSchemas['ProviderCreate'];
+export type ProviderUpdate = ChatSchemas['ProviderUpdate'];
+export type ProviderCheck = ChatSchemas['ProviderCheck'];
 
 /** States where nothing further will happen without the user acting. */
 export const TERMINAL_STATUSES: readonly IngestionStatus[] = [

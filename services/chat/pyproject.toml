@@ -6,11 +6,15 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic",
     "asyncpg",
+    # Provider API keys added through the settings page are encrypted at rest;
+    # a database backup or a replica must not be a credential leak.
+    "cryptography",
     "fastapi",
     "haystack-ai",
     "httpx2",
     "primer-contracts",
     "primer-observability",
+    "primer-service",
     "psycopg[binary]",
     "pydantic-settings",
     "sqlalchemy[asyncio]",
@@ -37,3 +41,4 @@ build-backend = "uv_build"
 [tool.uv.sources]
 primer-contracts = { workspace = true }
 primer-observability = { workspace = true }
+primer-service = { workspace = true }

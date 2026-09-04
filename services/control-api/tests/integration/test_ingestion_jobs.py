@@ -13,8 +13,8 @@ import pytest
 import pytest_asyncio
 from control_support import ServiceClient, UserClient
 from httpx2 import AsyncClient
-from primer_control.db import Database
 from primer_control.models import IngestionJob
+from primer_service.db import Database
 from sqlalchemy import select, text
 
 

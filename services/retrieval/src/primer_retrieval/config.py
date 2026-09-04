@@ -40,6 +40,25 @@ class Settings(BaseSettings):
     embedding_api_key: SecretStr | None = Field(default=None)
     embedding_timeout_seconds: float = Field(default=30.0, gt=0)
 
+    #: A reranker reads a question and a passage together and scores the
+    #: pair, which a vector search cannot do: its two embeddings were made
+    #: without knowing about each other. Off unless an endpoint is named, and
+    #: a deployment without one behaves exactly as it did before.
+    rerank_base_url: str | None = Field(default=None)
+    rerank_model: str = Field(default="")
+    rerank_api_key: SecretStr | None = Field(default=None)
+    rerank_timeout_seconds: float = Field(default=30.0, gt=0)
+    #: How many the vector search fetches before reranking. Wider than the
+    #: answer needs on purpose: the passage that answers the question is
+    #: often inside the first twenty and outside the first six, and finding
+    #: it is the entire reason to rerank.
+    rerank_candidates: int = Field(default=20, ge=1, le=200)
+
+    @property
+    def reranking_enabled(self) -> bool:
+        """Both are needed. An endpoint with no model cannot be called."""
+        return bool(self.rerank_base_url and self.rerank_model)
+
     internal_api_token: SecretStr | None = Field(
         default=None,
         description="Shared credential for this cluster-internal API; unset denies it",

@@ -16,10 +16,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from primer_contracts.errors import ErrorCode
 from primer_contracts.indexing import LibraryAccessRequest, LibraryScope
+from primer_service.db import get_session
+from primer_service.errors import ProblemError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from primer_control.db import get_session
-from primer_control.errors import ProblemError
 from primer_control.repositories.ingestion_jobs import IngestionJobRepository
 from primer_control.repositories.libraries import LibraryRepository
 from primer_control.security import require_service_credential

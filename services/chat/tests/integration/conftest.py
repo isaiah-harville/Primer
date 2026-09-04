@@ -16,8 +16,8 @@ from chat_support import FakeControl, FakeGenerator, FakeRetrieval
 from httpx2 import ASGITransport, AsyncClient
 from primer_chat.app import create_app
 from primer_chat.config import Settings
-from primer_chat.db import Database
 from primer_chat.migrations import upgrade_to_head
+from primer_service.db import Database
 from sqlalchemy.ext.asyncio import AsyncEngine
 from testcontainers.community.postgres import PostgresContainer
 
@@ -39,7 +39,7 @@ def migrated_url(postgres_url: str) -> str:
 @pytest.fixture
 def scratch_db_url(postgres_url: str) -> Iterator[str]:
     """A throwaway database in the same container, for destructive tests."""
-    from primer_chat.db import as_sync_url
+    from primer_service.db import as_sync_url
     from sqlalchemy import create_engine, text
 
     admin = create_engine(as_sync_url(postgres_url), isolation_level="AUTOCOMMIT")
@@ -64,12 +64,20 @@ async def database(migrated_url: str) -> AsyncIterator[Database]:
 
 @pytest_asyncio.fixture
 async def clean_tables(database: Database) -> AsyncIterator[AsyncEngine]:
+    """Empty every table in the schema between tests.
+
+    Taken from the metadata rather than listed by hand. A hand-written list
+    goes stale the moment a table is added, and the failure it produces is
+    the worst kind: rows left behind by one test make another fail somewhere
+    unrelated, so the symptom points away from the cause. That is exactly
+    what happened when providers arrived.
+    """
+    from primer_chat.models import Base
     from sqlalchemy import text
 
+    tables = ", ".join(f"chat.{table.name}" for table in Base.metadata.sorted_tables)
     async with database.engine.begin() as connection:
-        await connection.execute(
-            text("TRUNCATE chat.conversations, chat.tool_calls RESTART IDENTITY CASCADE")
-        )
+        await connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
     yield database.engine
 
 
@@ -90,8 +98,23 @@ def generator() -> FakeGenerator:
 
 @pytest.fixture
 def settings() -> Settings:
-    """The deployment under test. Overridden by tests that need a different one."""
-    return Settings(auth_mode="oidc")
+    """The deployment under test. Overridden by tests that need a different one.
+
+    An endpoint and a model are named because a real deployment names them,
+    and because neither is defaulted any more. Chat used to fall back to a
+    hosted model's name, which meant these tests passed while representing a
+    deployment that had been configured with nothing - and the routing that
+    now refuses to send a question nowhere had no way to tell that apart
+    from a genuine misconfiguration.
+
+    The generator is a fake, so nothing is actually sent here; what these
+    values do is make the deployment under test a plausible one.
+    """
+    return Settings(
+        auth_mode="oidc",
+        chat_base_url="http://model.invalid/v1",
+        chat_model="test-model",
+    )
 
 
 @pytest.fixture

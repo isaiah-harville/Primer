@@ -31,10 +31,16 @@ class Settings(BaseSettings):
     )
     request_timeout_seconds: float = Field(default=30.0, gt=0)
 
-    #: Any OpenAI-compatible endpoint: vLLM, Ollama, llama.cpp, or a hosted
-    #: API. Primer ships no model of its own.
+    #: The endpoint configured for this deployment. Any OpenAI-compatible
+    #: one: vLLM, Ollama, llama.cpp, or a hosted API. Primer ships no model
+    #: of its own, and since a deployment may hold several providers at once
+    #: this is a member of that list rather than the whole of it.
     chat_base_url: str | None = Field(default=None)
-    chat_model: str = Field(default="gpt-4o-mini")
+    #: Optional. Naming a model here only says which of the ones a provider
+    #: serves should be offered first; it is not required, and a name nothing
+    #: serves is ignored rather than offered. Primer asks each provider what
+    #: it has, so a deployment that names nothing gets whatever is there.
+    chat_model: str | None = Field(default=None)
     chat_api_key: SecretStr | None = Field(default=None)
     chat_timeout_seconds: float = Field(default=120.0, gt=0)
 
@@ -106,19 +112,45 @@ class Settings(BaseSettings):
     def context_tokens(self, model: str | None) -> int:
         """The window to fit a prompt into, for whichever model will answer."""
         name = model or self.chat_model
+        if name is None:
+            return self.chat_context_tokens
         return self.chat_model_context_tokens.get(name, self.chat_context_tokens)
 
-    def resolve_model(self, requested: str | None) -> str:
+    def resolve_model(self, requested: str | None) -> str | None:
         """The model to use: what was asked for, or the configured default.
 
         Primer keeps no list of its own to check a name against - `/models`
-        already told the caller everything the endpoint serves, so a name
-        that reaches here came from that list. What the endpoint does with a
+        already told the caller everything the providers serve, so a name
+        that reaches here came from that list. What an endpoint does with a
         name it no longer recognizes is the same failure as any other model
         error, handled where those already are.
+
+        None when neither is set, which a deployment configuring no default
+        is entitled to be: the caller picked from a list it was given, and a
+        deployment need not have an opinion about what to do when nobody did.
+
+        The trailing `or None` is what makes that true in practice. An unset
+        environment variable arrives as an empty string rather than as None,
+        and an empty string is a value: it flowed through the caller's
+        `is not None` check as though a model had been named, and was sent to
+        the endpoint, which answered `Model '' not found`. So a deployment
+        that had configured no model got a 404 instead of the catalog default
+        it was entitled to - and the fix looked like setting the variable,
+        which is exactly the requirement this was meant to remove.
         """
-        return requested or self.chat_model
+        return requested or self.chat_model or None
+
+    #: Encrypts API keys for providers added through the settings page. The
+    #: chart generates it; without one, keys cannot be stored at all and the
+    #: settings page says so rather than writing a credential in the clear.
+    settings_encryption_key: SecretStr | None = Field(default=None)
+    #: The group whose members may see and change how this deployment is
+    #: wired. Unset with authentication on means nobody, which is the safe
+    #: reading of an operator who has not decided yet.
+    admin_group: str | None = Field(default=None)
 
     subject_header: str = Field(default="X-Forwarded-User")
     email_header: str = Field(default="X-Forwarded-Email")
+    groups_header: str = Field(default="X-Forwarded-Groups")
+    groups_delimiter: str = Field(default=",", min_length=1)
     auth_mode: str = Field(default="disabled")

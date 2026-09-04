@@ -37,6 +37,7 @@
 	>
 		<Sidebar
 			libraries={data.libraries}
+			conversations={data.conversations}
 			capabilities={data.capabilities}
 			principal={data.principal}
 			onsearch={() => (searchOpen = true)}
@@ -51,6 +52,7 @@
 		<Sheet.Content side="left" class="w-72 p-0">
 			<Sidebar
 				libraries={data.libraries}
+				conversations={data.conversations}
 				capabilities={data.capabilities}
 				principal={data.principal}
 				bindShortcut={false}

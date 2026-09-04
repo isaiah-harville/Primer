@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from chat_support import LIBRARY_ID, ChatUser, FakeGenerator, FakeRetrieval
+from chat_support import LIBRARY_ID, ChatUser, FakeGenerator, FakeRetrieval, deployment
 from httpx2 import AsyncClient
 from primer_chat.config import Settings
 
@@ -35,8 +35,7 @@ class TestASmallWindow:
         These are about the order things give way in; that the dropped turns
         are summarized before they go is `test_compaction.py`.
         """
-        return Settings(
-            auth_mode="oidc",
+        return deployment(
             chat_context_tokens=1024,
             chat_reply_tokens=64,
             chat_compact_history=False,
@@ -98,7 +97,7 @@ class TestASmallWindow:
 class TestAWindowNothingFitsIn:
     @pytest.fixture
     def settings(self) -> Settings:
-        return Settings(auth_mode="oidc", chat_context_tokens=1024, chat_reply_tokens=64)
+        return deployment(chat_context_tokens=1024, chat_reply_tokens=64)
 
     @pytest.fixture
     def retrieval(self) -> FakeRetrieval:
@@ -136,8 +135,7 @@ class TestAModelWithItsOwnWindow:
     @pytest.fixture
     def settings(self) -> Settings:
         """A deployment offering two models whose windows differ."""
-        return Settings(
-            auth_mode="oidc",
+        return deployment(
             chat_model="small-model",
             chat_context_tokens=1024,
             chat_reply_tokens=64,

@@ -50,6 +50,7 @@ POSTGRES_PASSWORD=change-me
 RABBITMQ_PASSWORD=change-me
 PRIMER_INTERNAL_API_TOKEN=change-me
 PRIMER_CHAT_BASE_URL=http://host.docker.internal:11434/v1
+# Optional - which model a new chat starts on.
 PRIMER_CHAT_MODEL=llama3.1
 PRIMER_EMBEDDING_BASE_URL=http://host.docker.internal:11434/v1
 PRIMER_EMBEDDING_MODEL=nomic-embed-text
