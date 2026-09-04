@@ -5,12 +5,12 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from primer_service.db import Database
+from primer_service.errors import ProblemError, problem_response, rendered, validation_problem
 
 from primer_chat import __version__
 from primer_chat.clients import ControlClient, LibraryAuthority, PassageSource, RetrievalClient
 from primer_chat.config import Settings
-from primer_chat.db import Database
-from primer_chat.errors import ProblemError, problem_response, rendered, validation_problem
 from primer_chat.generation import ChatGenerator, HaystackChatGenerator
 from primer_chat.routes import router
 from primer_chat.routes_admin import router as admin_router

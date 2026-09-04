@@ -13,9 +13,9 @@ from hmac import compare_digest
 
 from fastapi import Request, status
 from primer_contracts.errors import ErrorCode
+from primer_service.errors import ProblemError
 
 from primer_retrieval.config import Settings
-from primer_retrieval.errors import ProblemError
 
 SERVICE_TOKEN_HEADER = "X-Primer-Service-Token"  # noqa: S105 - a header name, not a secret
 

@@ -16,8 +16,8 @@ from control_support import ServiceClient, UserClient
 from httpx2 import ASGITransport, AsyncClient
 from primer_control.app import create_app
 from primer_control.config import Settings
-from primer_control.db import Database, as_sync_url
 from primer_control.migrations import upgrade_to_head
+from primer_service.db import Database, as_sync_url
 from primer_storage import SourceStore
 from sqlalchemy.ext.asyncio import AsyncEngine
 from testcontainers.community.postgres import PostgresContainer

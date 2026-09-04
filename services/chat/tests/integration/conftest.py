@@ -16,8 +16,8 @@ from chat_support import FakeControl, FakeGenerator, FakeRetrieval
 from httpx2 import ASGITransport, AsyncClient
 from primer_chat.app import create_app
 from primer_chat.config import Settings
-from primer_chat.db import Database
 from primer_chat.migrations import upgrade_to_head
+from primer_service.db import Database
 from sqlalchemy.ext.asyncio import AsyncEngine
 from testcontainers.community.postgres import PostgresContainer
 
@@ -39,7 +39,7 @@ def migrated_url(postgres_url: str) -> str:
 @pytest.fixture
 def scratch_db_url(postgres_url: str) -> Iterator[str]:
     """A throwaway database in the same container, for destructive tests."""
-    from primer_chat.db import as_sync_url
+    from primer_service.db import as_sync_url
     from sqlalchemy import create_engine, text
 
     admin = create_engine(as_sync_url(postgres_url), isolation_level="AUTOCOMMIT")

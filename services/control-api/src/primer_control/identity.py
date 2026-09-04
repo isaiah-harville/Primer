@@ -14,9 +14,10 @@ from typing import Annotated
 from fastapi import Depends, Request, status
 from primer_contracts.errors import ErrorCode
 from primer_contracts.identity import Principal, is_admin
+from primer_service.errors import ProblemError
 
 from primer_control.config import Settings
-from primer_control.errors import ProblemError, identity_missing
+from primer_control.errors import identity_missing
 
 #: Namespace for deriving stable user UUIDs from OIDC subjects. Persisting a
 #: users table (a later task) supersedes this, but the mapping must already be

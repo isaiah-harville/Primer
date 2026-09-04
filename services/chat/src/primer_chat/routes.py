@@ -17,13 +17,14 @@ from primer_contracts.chat import (
     MessageSummary,
 )
 from primer_contracts.errors import ErrorCode
+from primer_service.db import get_session
 from primer_service.durable import DurableRoute
+from primer_service.errors import ProblemError
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.config import Settings
-from primer_chat.db import get_session
-from primer_chat.errors import ProblemError, not_found
+from primer_chat.errors import not_found
 from primer_chat.generation import Endpoint
 from primer_chat.identity import CurrentPrincipal
 from primer_chat.model_catalog import catalog

@@ -1,5 +1,6 @@
-"""HTTP plumbing shared by Primer's FastAPI services."""
+"""HTTP plumbing shared by Primer's FastAPI services.
 
-from primer_service.durable import SESSION_STATE, DurableRoute
-
-__all__ = ["SESSION_STATE", "DurableRoute"]
+Deliberately empty of re-exports. Import from the module that defines the
+name - `primer_service.db`, `primer_service.errors`, `primer_service.durable`
+- so that reading an import tells you where to go and look.
+"""

@@ -29,10 +29,11 @@ from primer_contracts.indexing import (
     SearchRequest,
     SearchResult,
 )
+from primer_service.errors import ProblemError, problem_response
 
 from primer_retrieval import __version__
 from primer_retrieval.config import Settings
-from primer_retrieval.errors import ProblemError, dependency_unavailable, problem_response
+from primer_retrieval.errors import dependency_unavailable
 from primer_retrieval.pipelines import (
     GENERATION_ID,
     DocumentEmbedder,

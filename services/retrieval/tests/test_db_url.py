@@ -9,7 +9,7 @@ installed and should not be.
 from __future__ import annotations
 
 import pytest
-from primer_retrieval.db import as_sync_url
+from primer_service.db import as_sync_url
 
 
 @pytest.mark.parametrize(

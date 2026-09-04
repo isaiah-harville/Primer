@@ -9,8 +9,8 @@ from __future__ import annotations
 import os
 
 from alembic import context
-from primer_control.db import as_sync_url
 from primer_control.models import CONTROL_SCHEMA, Base
+from primer_service.db import as_sync_url
 from sqlalchemy import engine_from_config, pool, text
 
 config = context.config

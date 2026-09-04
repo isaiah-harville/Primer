@@ -19,12 +19,12 @@ import pytest_asyncio
 from chat_support import ChatUser, FakeGenerator, deployment
 from httpx2 import AsyncClient
 from primer_chat.config import Settings
-from primer_chat.db import Database
 from primer_chat.generation import Endpoint
 from primer_chat.rag import SUMMARY_SYSTEM_PROMPT, HistoryTurn
 from primer_chat.reasoning import Channel, Fragment
 from primer_chat.repository import ChatRepository
 from primer_contracts.chat import MessageRole, MessageState
+from primer_service.db import Database
 from sqlalchemy import text
 
 #: Long enough that a few of them will not share a small window.

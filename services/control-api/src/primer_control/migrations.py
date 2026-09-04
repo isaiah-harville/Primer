@@ -11,8 +11,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-
-from primer_control.db import as_sync_url
+from primer_service.db import as_sync_url
 
 ALEMBIC_DIR = Path(__file__).resolve().parent / "alembic"
 

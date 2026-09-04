@@ -29,13 +29,13 @@ from primer_contracts.providers import (
     ProviderSummary,
     ProviderUpdate,
 )
+from primer_service.db import get_session
 from primer_service.durable import DurableRoute
+from primer_service.errors import ProblemError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from primer_chat.config import Settings
-from primer_chat.db import get_session
-from primer_chat.errors import ProblemError
 from primer_chat.identity import CurrentAdmin
 from primer_chat.model_catalog import models_of
 from primer_chat.models import Provider

@@ -12,7 +12,7 @@ from control_support import UserClient
 from httpx2 import ASGITransport, AsyncClient
 from primer_control.app import create_app
 from primer_control.config import Settings
-from primer_control.db import Database
+from primer_service.db import Database
 from primer_storage import SourceStore
 from sqlalchemy.ext.asyncio import AsyncEngine
 

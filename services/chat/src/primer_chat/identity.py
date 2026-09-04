@@ -13,9 +13,9 @@ from typing import Annotated
 from fastapi import Depends, Request, status
 from primer_contracts.errors import ErrorCode
 from primer_contracts.identity import Principal, is_admin
+from primer_service.errors import ProblemError
 
 from primer_chat.config import Settings
-from primer_chat.errors import ProblemError
 
 #: The same namespace Control uses. A different one here would give the same
 #: person two identities and hide their own libraries from their own chats.
