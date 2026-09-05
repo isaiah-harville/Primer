@@ -33,7 +33,7 @@ from primer_service.errors import ProblemError, problem_response
 
 from primer_retrieval import __version__
 from primer_retrieval.config import Settings
-from primer_retrieval.errors import embedding_endpoint
+from primer_retrieval.errors import embedding_endpoint, vector_store
 from primer_retrieval.pipelines import (
     GENERATION_ID,
     DocumentEmbedder,
@@ -153,7 +153,8 @@ def index_chunks(payload: IndexRequest, state: State) -> IndexResult:
     """
     with embedding_endpoint("this document cannot be indexed"):
         documents = to_documents(payload.chunks, state.document_embedder)
-    written = state.store.write_documents(documents, policy=DuplicatePolicy.OVERWRITE)
+    with vector_store("this document cannot be indexed"):
+        written = state.store.write_documents(documents, policy=DuplicatePolicy.OVERWRITE)
     return IndexResult(generation_id=payload.generation_id, written=written)
 
 
