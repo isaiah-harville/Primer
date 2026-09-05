@@ -62,3 +62,31 @@ export function turnsFrom(messages: MessageSummary[]): Turn[] {
 	}
 	return turns;
 }
+
+/**
+ * Where the model answering the conversation changed, turn by turn.
+ *
+ * The name to say above a turn, or null for a turn answered by the same
+ * model as the turn before it. Read from what each answer recorded rather
+ * than from the picker, because the picker says what the *next* question
+ * will be sent to - a transcript read back a week later has no picker, and
+ * a conversation where someone switched models halfway is exactly the one
+ * this is for.
+ *
+ * The first model is never announced. A conversation that only ever used
+ * one model has not switched to it, and saying so would put a line at the
+ * top of every transcript in a deployment that offers a single model.
+ */
+export function modelChanges(turns: Turn[]): (string | null)[] {
+	let current: string | null = null;
+	return turns.map((turn) => {
+		const model = turn.stream.message?.provider_model ?? null;
+		// An answer that failed or is still arriving records nothing yet.
+		// Silence is right: it has not been answered by a different model,
+		// it has not been answered.
+		if (model === null || model === current) return null;
+		const switched = current === null ? null : model;
+		current = model;
+		return switched;
+	});
+}

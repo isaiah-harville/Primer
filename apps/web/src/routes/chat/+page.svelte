@@ -23,6 +23,7 @@
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { draft } from '$lib/draft.svelte';
 	import { unqualify } from '$lib/models';
+	import { modelChanges } from '$lib/transcript';
 	import { Transcript } from '$lib/transcript.svelte';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
 	import type { PageData } from './$types';
@@ -343,6 +344,9 @@
 		if (page.url.searchParams.has('conversation')) await goto('/chat');
 	}
 
+	//: Where the model answering changed, so the transcript can say so.
+	let switches = $derived(modelChanges(transcript.turns));
+
 	function completed(stream: StreamState): MessageSummary | null {
 		if (stream.message) return stream.message;
 		// A failed stream still has an answer worth copying: the text it
@@ -497,6 +501,22 @@
 			{/if}
 
 			{#each transcript.turns as turn, index (index)}
+				{#if switches[index]}
+					<!--
+					  Which model wrote an answer is part of the answer, and in
+					  a conversation where someone changed it halfway it is the
+					  thing that explains why two answers do not sound alike.
+					  Above the question, because the choice was made before it
+					  was asked. Quiet: it is a note about the transcript, not
+					  a turn in it.
+					-->
+					<div class="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+						<span class="h-px flex-1 bg-border"></span>
+						<span>Switched model to {switches[index]}</span>
+						<span class="h-px flex-1 bg-border"></span>
+					</div>
+				{/if}
+
 				<Message.Root from="user">
 					<Message.Content>{turn.question}</Message.Content>
 				</Message.Root>
