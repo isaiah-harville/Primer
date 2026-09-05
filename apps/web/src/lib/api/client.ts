@@ -2,6 +2,7 @@ import type {
 	DeploymentCapabilities,
 	DeploymentStatus,
 	DocumentSummary,
+	LibraryShare,
 	LibrarySummary,
 	Principal,
 	ProblemDetail,
@@ -131,6 +132,23 @@ export class PrimerApi {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(name ? { name } : {}),
 		});
+	}
+
+	/** Who the library is shared with. The owner's question; Control refuses anyone else. */
+	shares(libraryId: string): Promise<LibraryShare[]> {
+		return this.request(`/api/v1/libraries/${libraryId}/shares`);
+	}
+
+	shareLibrary(libraryId: string, email: string): Promise<LibraryShare> {
+		return this.request(`/api/v1/libraries/${libraryId}/shares`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ email }),
+		});
+	}
+
+	revokeShare(libraryId: string, userId: string): Promise<void> {
+		return this.request(`/api/v1/libraries/${libraryId}/shares/${userId}`, { method: 'DELETE' });
 	}
 
 	deleteLibrary(libraryId: string): Promise<void> {

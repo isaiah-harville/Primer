@@ -1,15 +1,15 @@
 # Libraries
 
-A library is the unit of privacy in Primer. It has one owner, and only that
-owner can see it.
+A library is the unit of privacy in Primer. It has one owner, and nobody
+else can see it unless that owner shares it.
 
 ## What "private" means here
 
-Someone else's library is not merely unreadable — it is undetectable. Asking
-Primer for a library you do not own returns the same "not found" as asking
-for one that never existed. That is deliberate: an error that distinguished
-"forbidden" from "missing" would let anyone confirm that a particular
-library exists, which is itself a disclosure.
+A library you have not been given access to is not merely unreadable — it is
+undetectable. Asking Primer for one returns the same "not found" as asking
+for a library that never existed. That is deliberate: an error that
+distinguished "forbidden" from "missing" would let anyone confirm that a
+particular library exists, which is itself a disclosure.
 
 The same applies to documents inside a library, and to their contents in
 search results.
@@ -31,10 +31,45 @@ The order matters: the tombstone is written first, so there is no window in
 which a deleted library still answers questions. What follows is cleanup,
 not part of the deletion the user asked for.
 
-!!! note "Sharing is not built yet"
-    Every library today belongs to exactly one person. The authorization
-    layer was written so that adding shared libraries later is a change in
-    one place rather than in every route, but that feature does not exist.
+## Sharing
+
+The owner of a library can let other people read it. Open the library and
+name them by email address under **Shared with**.
+
+Sharing gives read access and nothing else. Someone a library is shared with
+can open it, read and download its documents, and ask questions answered
+from it — with the same citations the owner gets. They cannot add documents,
+rename it, delete it, or share it onward. Those stay with the owner, because
+a share says nothing about them.
+
+Nothing is copied. Both people read the same library, the same files and the
+same passages, so sharing costs nothing and a document added by the owner is
+immediately available to everyone it is shared with.
+
+### Who you can share with
+
+Only people who have signed in to this deployment at least once. Primer
+learns that someone exists when they first use it, so an address it has
+never seen is refused rather than accepted and quietly left dormant — which
+would leave you believing you had shared something that nobody could open.
+
+If your identity provider reports the same address for more than one
+account, Primer refuses to guess between them and says so.
+
+### Stopping
+
+Removing someone takes effect on their next request. There is nothing to
+clean up and no window to wait out: access is checked when it is used, and
+because sharing never copied anything there is no second copy left holding
+the material.
+
+They are not told. The library simply stops appearing for them.
+
+### What it looks like from the other side
+
+A library shared with you appears in your list marked *Shared*, and in the
+library picker when you ask a question. What you cannot do with it is not
+offered rather than offered and refused.
 
 ## Duplicating a library
 
@@ -50,4 +85,6 @@ documents arrive queued and become searchable as they finish indexing — the
 same as documents you have just uploaded. Browsing it works immediately.
 
 The copy belongs to you, even if you copied a library someone shared with
-you, and it is named after the original unless you give it a name.
+you, and it is named after the original unless you give it a name. That is
+the way to keep something that has been shared with you: a copy is yours,
+and stays yours if the original is unshared.

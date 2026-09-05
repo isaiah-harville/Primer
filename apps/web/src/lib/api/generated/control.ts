@@ -233,6 +233,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List who a library is shared with */
+        get: operations["list_shares_api_v1_libraries__library_id__shares_get"];
+        put?: never;
+        /**
+         * Share a library with another user
+         * @description Give one other Primer user read access.
+         *
+         *     Nothing is copied. The grantee reads the same library, the same
+         *     documents and the same vectors the owner does - which is the whole point
+         *     of sharing rather than duplicating, and why revoking is immediate: there
+         *     is no second copy to go and find.
+         *
+         *     Only someone who has used this deployment can be named. User rows are
+         *     written when an identity first acts, so an address that matches nothing
+         *     belongs either to a colleague who has not signed in yet or to a typo,
+         *     and the two are worth telling apart out loud. That does disclose whether
+         *     an address has an account here, to an authenticated user of the same
+         *     deployment - which is the trade for the feature being usable at all, and
+         *     is a much smaller disclosure than sharing with the wrong person.
+         */
+        post: operations["share_library_api_v1_libraries__library_id__shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/shares/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Stop sharing a library with someone
+         * @description Take the access away, effective on the grantee's next request.
+         *
+         *     There is nothing to clean up. Authorization reads the grant on every
+         *     request, so a question already in flight finishes and the one after it
+         *     is refused - and because sharing copied nothing, there is no stray index
+         *     left holding the library's passages.
+         */
+        delete: operations["revoke_share_api_v1_libraries__library_id__shares__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -423,6 +482,43 @@ export interface components {
         LibraryDuplicate: {
             /** Name */
             name?: string | null;
+        };
+        /**
+         * LibraryShare
+         * @description One person a library has been shared with.
+         *
+         *     Identified by email as well as by id, because an id is not something the
+         *     owner can check their intent against. Sharing is a decision about a
+         *     person, and the owner has to be able to see that the person on the list
+         *     is the one they meant.
+         *
+         *     Deliberately carries no role. Read access is the only thing a share
+         *     grants today, and a field named `role` that always says the same word
+         *     would be a promise the authorization model does not keep.
+         */
+        LibraryShare: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Email */
+            email?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * LibraryShareCreate
+         * @description Who to share with, named the way the owner knows them.
+         */
+        LibraryShareCreate: {
+            /** Email */
+            email: string;
         };
         /**
          * LibrarySummary
@@ -952,6 +1048,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LibrarySummary"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shares_api_v1_libraries__library_id__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryShare"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_library_api_v1_libraries__library_id__shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryShareCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryShare"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_share_api_v1_libraries__library_id__shares__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

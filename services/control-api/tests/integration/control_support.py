@@ -15,9 +15,14 @@ class UserClient:
     principal dependency, so the boundary itself stays under test.
     """
 
-    def __init__(self, http: AsyncClient, subject: str) -> None:
+    def __init__(self, http: AsyncClient, subject: str, email: str | None = None) -> None:
         self._http = http
         self._headers = {"X-Forwarded-User": subject}
+        # Sharing names people by address, so a test that shares has to send
+        # the header the proxy would - the email reaches the users table only
+        # because it was on the request that created the row.
+        if email is not None:
+            self._headers["X-Forwarded-Email"] = email
 
     async def get(self, path: str) -> Response:
         return await self._http.get(path, headers=self._headers)
