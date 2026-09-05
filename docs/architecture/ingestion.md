@@ -70,6 +70,39 @@ converter: that work happens inside native extensions, where killing a
 thread risks a corrupt process. The hard stop is the worker's task time
 limit, which kills the process and lets the job's lease expire.
 
+### Chunking is sized against the embedding model
+
+A chunk is both what gets embedded and what gets quoted back in a citation,
+so its size is a retrieval decision and a legibility one at the same time.
+Docling's `HybridChunker` bounds chunks by tokens and merges the small
+pieces that a document's structure leaves behind, and to do either it needs
+the tokenizer of the model that will embed them. `PRIMER_CHUNK_TOKENIZER`
+names it - normally the embedding model's own Hugging Face id, which the
+Helm chart derives from `inference.embeddings.model` when that names a
+repository.
+
+Without a tokenizer, chunking falls back to document structure alone. That
+is not a milder version of the same thing. Structure alone emits one chunk
+per text item and merges none of them, so a document whose layout is a long
+list of short items - a form, a statement, most scanned PDFs - is stored one
+line at a time. Those fragments embed to nothing meaningful, they retrieve
+badly, and the citation under an answer quotes a couple of words. Measured
+on a W2-shaped document: 20 chunks averaging 13 characters, against a single
+274-character passage once peers are merged.
+
+The fallback exists for the cases that genuinely have no tokenizer to fetch
+- a test that must not reach the network, a hosted embedding model that
+publishes none - and the worker warns on startup whenever it is in that
+state, because the symptom points nowhere near the cause.
+
+A tokenizer that is configured but cannot be loaded fails the worker at
+startup rather than falling back, since falling back would answer a
+misconfiguration by silently doing the thing the setting exists to prevent.
+
+Chunk size is changed by reindexing, never in place: chunks are decided at
+parse time, so existing documents keep the passages they were split into
+until they are parsed again.
+
 ## Deletion, and shared bytes
 
 Deleting tombstones the document first. That is the deletion the user asked

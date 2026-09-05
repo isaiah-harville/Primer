@@ -226,6 +226,10 @@ services:
       PRIMER_CONTROL_URL: http://control:8000
       PRIMER_RETRIEVAL_URL: http://retrieval:8000
       PRIMER_ENABLE_OCR: ${PRIMER_ENABLE_OCR:-true}
+      # Sizes chunks to the embedding model. Unset, chunking falls back to
+      # document structure alone and a table becomes one chunk per cell.
+      PRIMER_CHUNK_TOKENIZER: ${PRIMER_CHUNK_TOKENIZER:-}
+      PRIMER_MAX_CHUNK_TOKENS: ${PRIMER_MAX_CHUNK_TOKENS:-512}
     volumes:
       - source-objects:/var/lib/primer/sources
       # Docling downloads layout models on first use. A named volume keeps
