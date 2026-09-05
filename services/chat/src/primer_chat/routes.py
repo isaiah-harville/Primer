@@ -155,7 +155,7 @@ async def route_for(
     session: AsyncSession,
     requested_model: str | None,
     provider_id: UUID | None,
-) -> tuple[str | None, Endpoint | None]:
+) -> tuple[str | None, Endpoint | None, UUID | None]:
     """Which model answers this question, and where it is sent.
 
     Three cases, in order of how much the request said.
@@ -187,15 +187,18 @@ async def route_for(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="That provider is not available on this deployment.",
             )
-        return settings.resolve_model(requested_model), Endpoint(
-            base_url=provider.base_url, api_key=provider.api_key
+        return (
+            settings.resolve_model(requested_model),
+            Endpoint(base_url=provider.base_url, api_key=provider.api_key),
+            provider.id,
         )
 
     model = settings.resolve_model(requested_model)
     if model is not None:
         # The deployment's own endpoint, as before. None here means nothing
         # is configured, which the generator refuses rather than defaulting.
-        return model, None
+        # No provider either: that endpoint is configuration, not a row.
+        return model, None, None
 
     listed = await catalog(await store.enabled(), preferred_model=None)
     default = next((entry for entry in listed.models if entry.default), None)
@@ -207,8 +210,10 @@ async def route_for(
             detail=listed.detail or "No provider is serving a model.",
         )
     serving = await store.find(default.provider_id) if default.provider_id else None
-    return default.id, (
-        Endpoint(base_url=serving.base_url, api_key=serving.api_key) if serving else None
+    return (
+        default.id,
+        Endpoint(base_url=serving.base_url, api_key=serving.api_key) if serving else None,
+        serving.id if serving else None,
     )
 
 
@@ -232,7 +237,9 @@ async def ask(
     404 here would be equally correct; the stream is chosen so a client has
     exactly one place to handle failures.
     """
-    model, endpoint = await route_for(request, session, payload.model, payload.provider_id)
+    model, endpoint, served_by = await route_for(
+        request, session, payload.model, payload.provider_id
+    )
     conversation = await ChatRepository(session).create_conversation(
         library_id=payload.library_id,
         owner_user_id=principal.user_id,
@@ -244,6 +251,7 @@ async def ask(
         question=payload.message,
         model=model,
         endpoint=endpoint,
+        provider_id=served_by,
     )
     return stream_response(responder, session, turn)
 
@@ -272,13 +280,16 @@ async def follow_up(
     )
     if conversation is None:
         raise not_found("Conversation")
-    routed = await route_for(request, session, payload.model, payload.provider_id)
+    model, endpoint, served_by = await route_for(
+        request, session, payload.model, payload.provider_id
+    )
     turn = Answering(
         principal=principal,
         conversation=conversation,
         question=payload.message,
-        model=routed[0],
-        endpoint=routed[1],
+        model=model,
+        endpoint=endpoint,
+        provider_id=served_by,
     )
     return stream_response(responder, session, turn)
 

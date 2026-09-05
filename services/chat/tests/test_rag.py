@@ -9,7 +9,14 @@ from __future__ import annotations
 
 import uuid
 
-from primer_chat.rag import SYSTEM_PROMPT, build_context, build_prompt
+from primer_chat.rag import (
+    SYSTEM_PROMPT,
+    TOOL_GUIDANCE,
+    UNGROUNDED_SYSTEM_PROMPT,
+    build_context,
+    build_prompt,
+    with_tools,
+)
 from primer_contracts.retrieval import RetrievedChunk, SourceLocator
 
 LIBRARY = uuid.uuid5(uuid.NAMESPACE_URL, "library")
@@ -85,3 +92,78 @@ def test_no_passages_means_no_context() -> None:
     context = build_context(())
     assert context.is_empty
     assert context.citations == ()
+
+
+class TestAnUngroundedPrompt:
+    """A conversation with no library is an ordinary chat.
+
+    All of these guard the same failure from different sides: a system
+    prompt that talks about what the model *cannot* do makes a small model
+    talk about it too, and answers become paragraphs about missing documents
+    instead of answers.
+    """
+
+    def test_it_does_not_open_by_naming_what_is_missing(self) -> None:
+        """The first line is read as the subject of the conversation.
+
+        It used to open "This conversation has no library attached", and
+        answers duly came back about the library that was not there - to
+        questions that had nothing to do with libraries.
+        """
+        opening = UNGROUNDED_SYSTEM_PROMPT.split("\n")[0].lower()
+
+        assert "library" not in opening
+        assert "document" not in opening
+
+    def test_it_does_not_mention_libraries_at_all(self) -> None:
+        assert "library" not in UNGROUNDED_SYSTEM_PROMPT.lower()
+
+    def test_it_does_not_ask_for_a_source_it_cannot_have(self) -> None:
+        """The instruction that taught it to invent one.
+
+        Asking a model with no tools to say "which tool, which site" leaves
+        it one way to comply, and it took it: answers arrived attributed to
+        "a source like Wikipedia" that nothing had read.
+        """
+        assert "which site" not in UNGROUNDED_SYSTEM_PROMPT
+        assert "which tool" not in UNGROUNDED_SYSTEM_PROMPT
+
+    def test_it_forbids_attributing_to_a_source_it_was_not_given(self) -> None:
+        assert "unless you were given one" in UNGROUNDED_SYSTEM_PROMPT
+
+    def test_it_still_reserves_bracketed_numbers(self) -> None:
+        """They mean a passage Primer retrieved, and none was."""
+        assert "[1]" in UNGROUNDED_SYSTEM_PROMPT
+
+
+class TestToolGuidance:
+    """Naming the site a fact came from matters - when there is one.
+
+    A deployment with a web search tool makes that turn the one that reads
+    the open internet, and a reader has to be able to tell what was looked
+    up from what the model already knew.
+    """
+
+    def test_a_turn_that_can_call_tools_is_told_to_name_its_sources(self) -> None:
+        prompt = with_tools(UNGROUNDED_SYSTEM_PROMPT, enabled=True)
+
+        assert TOOL_GUIDANCE in prompt
+        assert "which site" in prompt
+
+    def test_a_turn_that_cannot_is_told_nothing_about_tools(self) -> None:
+        """Which is the whole reason it is conditional."""
+        prompt = with_tools(UNGROUNDED_SYSTEM_PROMPT, enabled=False)
+
+        assert prompt == UNGROUNDED_SYSTEM_PROMPT
+        assert "tool" not in prompt.lower()
+
+    def test_tool_output_is_untrusted_like_a_passage(self) -> None:
+        """A search result is a stranger's text, same as an uploaded one."""
+        assert "never instructions" in TOOL_GUIDANCE
+
+    def test_it_may_only_name_what_it_actually_fetched(self) -> None:
+        assert "actually retrieved this turn" in TOOL_GUIDANCE
+
+    def test_it_applies_to_a_grounded_prompt_too(self) -> None:
+        """Tools and a library are not alternatives."""
+        assert TOOL_GUIDANCE in with_tools(SYSTEM_PROMPT, enabled=True)

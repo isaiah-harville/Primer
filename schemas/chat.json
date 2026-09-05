@@ -358,6 +358,18 @@
             "title": "Id",
             "type": "string"
           },
+          "provider_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
           "provider_model": {
             "anyOf": [
               {

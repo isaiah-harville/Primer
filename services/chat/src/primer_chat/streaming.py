@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from uuid import UUID
 
 from primer_contracts.chat import (
     CitationEvent,
@@ -47,6 +48,7 @@ from primer_chat.rag import (
     build_context,
     build_prompt,
     with_summary,
+    with_tools,
 )
 from primer_chat.reasoning import Channel
 from primer_chat.repository import ChatRepository, summarize_message
@@ -68,6 +70,10 @@ class Answering:
     #: None falls back to the endpoint configured for the deployment, which
     #: is what every request did before a deployment could hold several.
     endpoint: Endpoint | None = None
+    #: Which provider row that endpoint came from, recorded on the answer so
+    #: reopening the conversation can select the same model again. None for
+    #: the deployment's own configured endpoint, which is not a provider.
+    provider_id: UUID | None = None
 
 
 class Responder:
@@ -186,6 +192,7 @@ class Responder:
             # deployment can offer several and a user can switch between
             # turns, so which one wrote an answer is part of the answer.
             provider_model=turn.model or getattr(self._generator, "model", None),
+            provider_id=turn.provider_id,
         )
         await session.commit()
 
@@ -195,7 +202,14 @@ class Responder:
         # is nothing to authorize and nothing to retrieve, and the prompt says
         # outright that the answer is unsourced.
         grounded = conversation.library_id is not None
-        system_prompt = SYSTEM_PROMPT if grounded else UNGROUNDED_SYSTEM_PROMPT
+        # Tools are off because nothing here can call one: generation never
+        # invokes the tool runner. This is the line to change when it does -
+        # and it has to be this signal rather than a deployment setting,
+        # since telling a model to name its sources when it cannot fetch any
+        # is what taught it to invent them.
+        system_prompt = with_tools(
+            SYSTEM_PROMPT if grounded else UNGROUNDED_SYSTEM_PROMPT, enabled=False
+        )
         context = build_context(())
 
         if grounded:

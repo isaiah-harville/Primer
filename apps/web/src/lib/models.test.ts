@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatModel } from '$lib/api/types';
-import { qualify, unqualify } from './models';
+import { modelOf, qualify, unqualify } from './models';
 
 /**
  * Naming a model so a question reaches the right machine.
@@ -67,5 +67,43 @@ describe('splitting it back apart', () => {
 	it('sends nothing at all for an empty choice', () => {
 		// Which is what asks for the deployment's default.
 		expect(unqualify('')).toEqual({});
+	});
+});
+
+describe('modelOf', () => {
+	const answer = (provider_model: string | null, provider_id: string | null = null) => ({
+		role: 'assistant',
+		provider_model,
+		provider_id,
+	});
+	const question = { role: 'user', provider_model: null, provider_id: null };
+
+	it('reopens a conversation on the model that answered it', () => {
+		// Every question carries the picker's value, so a thread reopened on
+		// the deployment's default sends its next question somewhere other
+		// than the rest of the conversation went.
+		expect(modelOf([question, answer('qwen3:8b', 'deadbeef')])).toBe('deadbeef:qwen3:8b');
+	});
+
+	it('takes the model in force, not the one it started on', () => {
+		// Someone who switched halfway continues from where they switched to.
+		expect(
+			modelOf([question, answer('qwen3:8b', 'deadbeef'), question, answer('llama3.1:70b', 'cafe')]),
+		).toBe('cafe:llama3.1:70b');
+	});
+
+	it('looks past a turn that has not been answered', () => {
+		expect(modelOf([question, answer('qwen3:8b', 'deadbeef'), question])).toBe('deadbeef:qwen3:8b');
+	});
+
+	it('leaves the picker alone when nothing was recorded', () => {
+		// An answer from before the model was kept. Guessing one would name a
+		// model that may never have written it.
+		expect(modelOf([question, answer(null)])).toBe('');
+		expect(modelOf([])).toBe('');
+	});
+
+	it('handles a model served by the deployment rather than a provider', () => {
+		expect(modelOf([question, answer('qwen3:8b', null)])).toBe('qwen3:8b');
 	});
 });

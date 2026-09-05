@@ -1,4 +1,4 @@
-"""An unreachable embedding endpoint, reported as itself.
+"""A dependency Retrieval needs, reported as itself rather than as a 500.
 
 The embedder is a separate process that has to be running and reachable, so
 this is the single most likely thing to be wrong on a self-hosted install.
@@ -11,10 +11,15 @@ through the same endpoint and fail the same way, and for a while only
 searching said so: an embedder that was down during ingestion surfaced to
 the user as a document whose stage "failed unexpectedly", which is the
 message every unrelated bug also produces.
+
+The store is the other half. Indexing embeds and then writes, and the write
+was unguarded long after the embedding was: a store that refused reached the
+user as "Retrieval answered 500", which says only that Retrieval was reached.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -137,3 +142,78 @@ def test_the_indexing_reason_names_the_embedder(client: TestClient) -> None:
 
     assert "embedding" in detail.lower()
     assert "indexed" in detail.lower()
+
+
+class RefusingStore:
+    """A document store that will not accept a write.
+
+    Only `write_documents` fails: indexing embeds first, and a store that
+    refused everything could not tell the two halves apart.
+    """
+
+    def __init__(self, message: str) -> None:
+        self._message = message
+
+    def write_documents(self, *args: Any, **kwargs: Any) -> int:
+        raise RuntimeError(self._message)
+
+
+class WorkingEmbedder:
+    """Embeds without complaint, so the failure has to be the store."""
+
+    def run(self, documents: Any, *args: Any, **kwargs: Any) -> Any:
+        return {"documents": [replace(document, embedding=[0.0] * 384) for document in documents]}
+
+
+def client_storing(store: Any) -> TestClient:
+    app = create_app(
+        Settings(
+            embedding_base_url="http://nothing-here:8080/v1",
+            embedding_dimensions=384,
+            internal_api_token=SERVICE_TOKEN,
+        ),
+        store=store,
+        document_embedder=WorkingEmbedder(),
+        text_embedder=UnreachableEmbedder(),
+        retriever=object(),
+    )
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_a_store_that_refuses_a_write_is_named() -> None:
+    """Not a bare 500, which says only that Retrieval was reached."""
+    response = index(client_storing(RefusingStore("connection pool exhausted")))
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "dependency_unavailable"
+    assert "vector store" in response.json()["detail"]
+
+
+def test_a_width_mismatch_says_what_to_do_about_it() -> None:
+    """The one failure the chart warns about and cannot check for itself.
+
+    A vector column keeps the width it was created with, so a deployment
+    that swaps embedding models looks healthy until the first document is
+    indexed - and then fails with a message about dimensions that means
+    nothing unless you already know this.
+    """
+    refusing = RefusingStore("expected 384 dimensions, not 1024")
+
+    response = index(client_storing(refusing))
+    detail = response.json()["detail"]
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "conflict"
+    assert "384" in detail and "1024" in detail
+    assert "reindex" in detail
+
+
+def test_a_width_mismatch_is_not_retried() -> None:
+    """Every retry is refused identically, and spends the budget for nothing.
+
+    A 4xx is what tells the worker to stop: nothing is down here, and
+    nothing is coming back without an operator changing something.
+    """
+    response = index(client_storing(RefusingStore("expected 384 dimensions, not 1024")))
+
+    assert 400 <= response.status_code < 500

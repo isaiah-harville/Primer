@@ -455,6 +455,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Provider Id */
+            provider_id?: string | null;
             /** Provider Model */
             provider_model?: string | null;
             /** Reasoning */

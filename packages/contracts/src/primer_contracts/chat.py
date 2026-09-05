@@ -170,6 +170,12 @@ class MessageSummary(WireModel):
     #: offer several and a user can switch between turns, so this is part of
     #: the answer rather than a property of the deployment as it is today.
     provider_model: str | None = Field(default=None, max_length=200)
+    #: Which provider served that model. Recorded beside the name because a
+    #: name alone cannot say where a question should go: two endpoints
+    #: serving `llama3.1:8b` is the ordinary case, not a corner one. Null for
+    #: an answer written before a deployment could hold several, and for one
+    #: answered by the endpoint configured for the deployment itself.
+    provider_id: UUID | None = Field(default=None)
     error_code: str | None = Field(default=None, max_length=64)
     created_at: datetime
 
