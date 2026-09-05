@@ -243,6 +243,39 @@ web:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
 
+# --- Ingestion ----------------------------------------------------------
+#
+# How an uploaded document is turned into the passages that get retrieved
+# and quoted back. These decide what a citation looks like: chunks that are
+# too small quote a word, chunks that are too large quote a page.
+ingestion:
+  # The tokenizer chunking is measured against. Left empty, it is taken from
+  # `inference.embeddings.model` whenever that names a Hugging Face
+  # repository - `Qwen/Qwen3-Embedding-0.6B`, `BAAI/bge-m3` - which is the
+  # correct value and the one you would otherwise retype here.
+  #
+  # Set it only when the embedding model is not a Hugging Face id: a hosted
+  # model like `text-embedding-3-small` publishes no tokenizer to fetch, so
+  # name the nearest open model instead. Being approximately right about
+  # where a chunk ends is much better than the alternative, which is what
+  # happens when this ends up empty - splitting on document structure alone.
+  # That emits one chunk per text item and merges none of them, so a form or
+  # a statement, whose layout is a long list of short items, is stored one
+  # line at a time and citations quote a couple of words. The parse worker
+  # warns on startup when it is in that state.
+  chunkTokenizer: ""
+  # Ceiling per chunk, in that tokenizer's tokens. 512 is a passage: long
+  # enough that a quoted citation reads as a paragraph, short enough that
+  # the embedding is about one thing. Raise it towards 1024 for prose you
+  # ask broad questions of; lower it for dense reference material where a
+  # long chunk buries the sentence that actually answers.
+  #
+  # It must stay under the embedding model's own input limit. Anything
+  # served by Text Embeddings Inference should also be started with
+  # --auto-truncate, so a single over-long chunk is trimmed rather than
+  # failing the whole batch it arrived in.
+  maxChunkTokens: 512
+
 workers:
   parse:
     replicas: 1

@@ -256,6 +256,20 @@
         }
       }
     },
+    "ingestion": {
+      "type": "object",
+      "properties": {
+        "chunkTokenizer": {
+          "description": "Hugging Face id of the tokenizer chunks are sized against. Empty takes it from inference.embeddings.model when that names a repository.",
+          "type": "string"
+        },
+        "maxChunkTokens": {
+          "description": "Ceiling per chunk, in that tokenizer's tokens. Must stay under the embedding model's input limit.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "workers": {
       "type": "object",
       "properties": {

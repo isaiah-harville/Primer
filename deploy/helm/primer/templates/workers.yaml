@@ -82,6 +82,9 @@ spec:
               value: http://{{ include "primer.fullname" $ }}-control:8000
             - name: PRIMER_RETRIEVAL_URL
               value: http://{{ include "primer.fullname" $ }}-retrieval:8000
+            {{- if eq $name "parse" }}
+            {{- with include "primer.chunkingEnv" $ }}{{ . | trim | nindent 12 }}{{- end }}
+            {{- end }}
           resources:
             {{- toYaml $worker.resources | nindent 12 }}
           volumeMounts:

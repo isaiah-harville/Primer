@@ -587,6 +587,69 @@ def test_the_parse_worker_runs_one_document_at_a_time(
     assert command[command.index("--concurrency") + 1] == "1"
 
 
+# --- Chunking -----------------------------------------------------------
+#
+# The chart shipped for a long time without wiring any of this, so every
+# Kubernetes deployment chunked on document structure alone. It looked like
+# a working install: documents reached "ready" and searches returned hits.
+# What gave it away was the citations, which quoted a couple of words each,
+# because structural chunking merges no adjacent items and a form or a
+# statement is a long list of short ones.
+
+
+def test_the_parse_worker_is_told_the_embedding_models_tokenizer() -> None:
+    """The whole bug, as one assertion.
+
+    A tokenizer is what lets chunks be bounded by tokens and small pieces
+    merged; without one the worker falls back to structure alone. Nothing
+    downstream reports the difference, so this is the only place it can be
+    caught.
+    """
+    rendered = render("inference.embeddings.model=Qwen/Qwen3-Embedding-0.6B")
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert env["PRIMER_CHUNK_TOKENIZER"] == "Qwen/Qwen3-Embedding-0.6B"
+    assert env["PRIMER_MAX_CHUNK_TOKENS"] == "512"
+
+
+def test_a_hosted_embedding_model_is_not_guessed_at() -> None:
+    """`text-embedding-3-small` names no repository and has no tokenizer.
+
+    Deriving one anyway would hand the worker a name it cannot fetch, and
+    the worker refuses to start on a tokenizer it cannot load - so guessing
+    here would turn a deployment that ingests badly into one that does not
+    ingest at all.
+    """
+    rendered = render("inference.embeddings.model=text-embedding-3-small")
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert "PRIMER_CHUNK_TOKENIZER" not in env
+    # Meaningless without a tokenizer, and emitting it would suggest chunks
+    # are bounded when they are not.
+    assert "PRIMER_MAX_CHUNK_TOKENS" not in env
+
+
+def test_a_tokenizer_can_be_named_when_the_model_does_not_name_one() -> None:
+    """Which is the way out of the case above."""
+    rendered = render(
+        "inference.embeddings.model=text-embedding-3-small",
+        "ingestion.chunkTokenizer=BAAI/bge-m3",
+        "ingestion.maxChunkTokens=1024",
+    )
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert env["PRIMER_CHUNK_TOKENIZER"] == "BAAI/bge-m3"
+    assert env["PRIMER_MAX_CHUNK_TOKENS"] == "1024"
+
+
+def test_only_the_worker_that_chunks_downloads_a_tokenizer() -> None:
+    """The index worker embeds what parse already split. It needs none."""
+    rendered = render("inference.embeddings.model=Qwen/Qwen3-Embedding-0.6B")
+    env = env_of(named(rendered, "Deployment", "-worker-index"))
+
+    assert "PRIMER_CHUNK_TOKENIZER" not in env
+
+
 # --- Staying up ---------------------------------------------------------
 
 
