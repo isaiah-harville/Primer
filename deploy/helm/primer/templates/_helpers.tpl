@@ -234,3 +234,44 @@ seconds after every release.
 {{- $scaling := include "primer.autoscaling" . | fromYaml -}}
 {{- if $scaling.enabled }}true{{ end -}}
 {{- end -}}
+
+{{/*
+Which tokenizer chunking is bounded by, and how large a chunk may get.
+
+Derived from the embedding model rather than defaulted to a name of its own,
+because the correct value is not a preference: chunks are sized to fit the
+model that embeds them, so the tokenizer that decides where a chunk ends has
+to be that model's. A separate default here would be a second place to keep
+in step with `inference.embeddings.model`, and the two silently disagreeing
+produces chunks that are too long for the embedder to read whole.
+
+The `/` test is what tells a self-hosted model from a hosted one. Anything
+served from Hugging Face is named `owner/model` and publishes a tokenizer;
+`text-embedding-3-small` and `embed-english-v3.0` name no repository and
+have none to fetch, so nothing is emitted and the worker says at startup
+that it is chunking on structure alone. Set `ingestion.chunkTokenizer` to
+name a tokenizer for one of those - the nearest open model with the same
+vocabulary is usually right, and being approximately right about where a
+chunk ends is far better than not bounding it at all.
+
+Only the parse worker gets these. It is the only process that chunks, and a
+tokenizer is a download.
+*/}}
+{{- define "primer.chunkTokenizer" -}}
+{{- if .Values.ingestion.chunkTokenizer -}}
+{{- .Values.ingestion.chunkTokenizer -}}
+{{- else if contains "/" .Values.inference.embeddings.model -}}
+{{- .Values.inference.embeddings.model -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "primer.chunkingEnv" -}}
+{{- $tokenizer := include "primer.chunkTokenizer" . -}}
+{{- if $tokenizer }}
+- name: PRIMER_CHUNK_TOKENIZER
+  value: {{ $tokenizer | quote }}
+{{- /* Emitted only alongside a tokenizer, which is the only thing that reads it. */}}
+- name: PRIMER_MAX_CHUNK_TOKENS
+  value: {{ .Values.ingestion.maxChunkTokens | quote }}
+{{- end }}
+{{- end -}}

@@ -1,3 +1,17 @@
+{{- $cache := .Values.workers.parse.modelCache -}}
+{{- if and $cache.enabled (eq $cache.accessMode "ReadWriteOnce") (gt (int .Values.workers.parse.replicas) 1) -}}
+{{- /*
+Refused rather than rendered, because the alternative is a deployment that
+installs cleanly and then does not run. Every replica mounts the one cache
+claim, and a ReadWriteOnce volume can be attached by one node; the second
+replica is scheduled, fails to attach, and sits Pending indefinitely - and
+"Pending" says nothing about access modes to whoever finds it.
+
+Three ways forward, and the message names them because the right one
+depends on what the cluster can provide.
+*/ -}}
+{{- fail (printf "workers.parse.replicas is %v, but workers.parse.modelCache.accessMode is ReadWriteOnce, which only one node can attach. Set modelCache.accessMode to ReadWriteMany (with a storageClass that supports it), or modelCache.enabled to false (every pod then re-downloads Docling's models on start), or keep replicas at 1." .Values.workers.parse.replicas) -}}
+{{- end -}}
 {{/*
 Two worker deployments, not one.
 
@@ -17,12 +31,17 @@ metadata:
     app.kubernetes.io/component: worker-{{ $name }}
 spec:
   replicas: {{ $worker.replicas }}
-  {{- if and (eq $name "parse") $worker.modelCache.enabled }}
-  # The model cache is a ReadWriteOnce volume, so a RollingUpdate surge pod
-  # cannot attach it while the pod it is replacing still holds it - Longhorn
-  # refuses the second attachment and the rollout hangs until the old pod is
-  # gone, which a RollingUpdate will not do first. Recreate accepts the gap
-  # in availability a single parse replica already has.
+  {{- if and (eq $name "parse") $worker.modelCache.enabled (eq $worker.modelCache.accessMode "ReadWriteOnce") }}
+  # A ReadWriteOnce model cache cannot be attached twice, so a RollingUpdate
+  # surge pod cannot mount it while the pod it is replacing still holds it -
+  # the storage provisioner refuses the second attachment and the rollout
+  # hangs until the old pod is gone, which a RollingUpdate will not do
+  # first. Recreate accepts the gap in availability that a cache which can
+  # only be held by one pod already implies.
+  #
+  # ReadWriteMany does not have the problem and is not given this: a shared
+  # cache is what makes a rolling update, and more than one replica, work
+  # at all.
   #
   # rollingUpdate explicitly nulled, not omitted: the API server had already
   # defaulted it onto the live object from every prior release's implicit
@@ -82,6 +101,9 @@ spec:
               value: http://{{ include "primer.fullname" $ }}-control:8000
             - name: PRIMER_RETRIEVAL_URL
               value: http://{{ include "primer.fullname" $ }}-retrieval:8000
+            {{- if eq $name "parse" }}
+            {{- with include "primer.chunkingEnv" $ }}{{ . | trim | nindent 12 }}{{- end }}
+            {{- end }}
           resources:
             {{- toYaml $worker.resources | nindent 12 }}
           volumeMounts:
@@ -109,7 +131,12 @@ metadata:
 spec:
   # Docling downloads its layout models on first use. Without this, every
   # pod restart re-downloads half a gigabyte from a third-party host.
-  accessModes: ["ReadWriteOnce"]
+  #
+  # Every parse replica mounts this one claim, so the access mode is what
+  # decides whether the component can be scaled at all: ReadWriteOnce binds
+  # the volume to a single node, and a second replica scheduled anywhere
+  # else stays Pending with no attachment it is allowed to make.
+  accessModes: [{{ .Values.workers.parse.modelCache.accessMode | quote }}]
   resources:
     requests:
       storage: {{ .Values.workers.parse.modelCache.size }}

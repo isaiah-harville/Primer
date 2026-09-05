@@ -256,6 +256,20 @@
         }
       }
     },
+    "ingestion": {
+      "type": "object",
+      "properties": {
+        "chunkTokenizer": {
+          "description": "Hugging Face id of the tokenizer chunks are sized against. Empty takes it from inference.embeddings.model when that names a repository.",
+          "type": "string"
+        },
+        "maxChunkTokens": {
+          "description": "Ceiling per chunk, in that tokenizer's tokens. Must stay under the embedding model's input limit.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "workers": {
       "type": "object",
       "properties": {
@@ -274,6 +288,28 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 64
+            },
+            "modelCache": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "type": "string"
+                },
+                "storageClass": {
+                  "type": "string"
+                },
+                "accessMode": {
+                  "description": "Every parse replica mounts one claim, so ReadWriteOnce pins the component to a single node and caps it at one replica.",
+                  "type": "string",
+                  "enum": [
+                    "ReadWriteOnce",
+                    "ReadWriteMany"
+                  ]
+                }
+              }
             }
           }
         },

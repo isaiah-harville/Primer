@@ -47,6 +47,19 @@ def render(*overrides: str) -> list[dict[str, Any]]:
     return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
 
 
+def refusal(*overrides: str) -> str:
+    """The message from a render the chart is supposed to refuse."""
+    if shutil.which("helm") is None:
+        pytest.skip("helm is not installed")
+    command = ["helm", "template", "primer", str(CHART)]
+    for value in [*BASE_VALUES, *overrides]:
+        command += ["--set", value]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+    if result.returncode == 0:
+        pytest.fail("the chart rendered a configuration it should have refused")
+    return result.stderr
+
+
 @pytest.fixture(scope="module")
 def manifests() -> list[dict[str, Any]]:
     return render()
@@ -218,6 +231,59 @@ def test_the_parse_worker_keeps_its_model_cache(manifests: list[dict[str, Any]])
     parse = named(manifests, "Deployment", "-worker-parse")
     mounts = {m["mountPath"] for m in containers(parse)[0]["volumeMounts"]}
     assert "/var/cache/primer/huggingface" in mounts
+
+
+def test_a_single_node_cache_caps_the_parse_worker_at_one_replica() -> None:
+    """Refused at render, because the alternative installs and does not run.
+
+    Every parse replica mounts the one cache claim. With ReadWriteOnce the
+    second replica is scheduled, cannot attach, and sits Pending - and
+    "Pending" tells whoever finds it nothing about access modes.
+    """
+    message = refusal("workers.parse.replicas=2")
+
+    # The way out is named, not just the problem: which of the three fixes
+    # is right depends on what the cluster can provide.
+    assert "ReadWriteMany" in message
+    assert "modelCache.enabled" in message
+
+
+def test_a_shared_cache_lets_the_parse_worker_scale() -> None:
+    """Which is the point of making the access mode configurable."""
+    rendered = render(
+        "workers.parse.replicas=2",
+        "workers.parse.modelCache.accessMode=ReadWriteMany",
+    )
+    claim = named(rendered, "PersistentVolumeClaim", "-model-cache")
+    parse = named(rendered, "Deployment", "-worker-parse")
+
+    assert claim["spec"]["accessModes"] == ["ReadWriteMany"]
+    assert parse["spec"]["replicas"] == 2
+    # Recreate exists only because a ReadWriteOnce volume cannot be held by
+    # the old pod and a surge pod at once. A shared cache has no such
+    # problem, and keeping Recreate would take the component to zero on
+    # every release for no reason.
+    assert parse["spec"].get("strategy", {}).get("type") != "Recreate"
+
+
+def test_a_cache_that_only_one_node_can_hold_still_rolls_by_recreating(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """The default, and the reason the strategy is conditional at all."""
+    parse = named(manifests, "Deployment", "-worker-parse")
+
+    assert parse["spec"]["strategy"]["type"] == "Recreate"
+
+
+def test_scaling_the_parse_worker_without_a_cache_is_allowed() -> None:
+    """Each pod re-downloads the models, which is a cost and not a fault."""
+    rendered = render("workers.parse.replicas=2", "workers.parse.modelCache.enabled=false")
+
+    assert not [
+        claim
+        for claim in of_kind(rendered, "PersistentVolumeClaim")
+        if claim["metadata"]["name"].endswith("-model-cache")
+    ]
 
 
 def test_liveness_and_readiness_differ(manifests: list[dict[str, Any]]) -> None:
@@ -587,6 +653,69 @@ def test_the_parse_worker_runs_one_document_at_a_time(
     assert command[command.index("--concurrency") + 1] == "1"
 
 
+# --- Chunking -----------------------------------------------------------
+#
+# The chart shipped for a long time without wiring any of this, so every
+# Kubernetes deployment chunked on document structure alone. It looked like
+# a working install: documents reached "ready" and searches returned hits.
+# What gave it away was the citations, which quoted a couple of words each,
+# because structural chunking merges no adjacent items and a form or a
+# statement is a long list of short ones.
+
+
+def test_the_parse_worker_is_told_the_embedding_models_tokenizer() -> None:
+    """The whole bug, as one assertion.
+
+    A tokenizer is what lets chunks be bounded by tokens and small pieces
+    merged; without one the worker falls back to structure alone. Nothing
+    downstream reports the difference, so this is the only place it can be
+    caught.
+    """
+    rendered = render("inference.embeddings.model=Qwen/Qwen3-Embedding-0.6B")
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert env["PRIMER_CHUNK_TOKENIZER"] == "Qwen/Qwen3-Embedding-0.6B"
+    assert env["PRIMER_MAX_CHUNK_TOKENS"] == "512"
+
+
+def test_a_hosted_embedding_model_is_not_guessed_at() -> None:
+    """`text-embedding-3-small` names no repository and has no tokenizer.
+
+    Deriving one anyway would hand the worker a name it cannot fetch, and
+    the worker refuses to start on a tokenizer it cannot load - so guessing
+    here would turn a deployment that ingests badly into one that does not
+    ingest at all.
+    """
+    rendered = render("inference.embeddings.model=text-embedding-3-small")
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert "PRIMER_CHUNK_TOKENIZER" not in env
+    # Meaningless without a tokenizer, and emitting it would suggest chunks
+    # are bounded when they are not.
+    assert "PRIMER_MAX_CHUNK_TOKENS" not in env
+
+
+def test_a_tokenizer_can_be_named_when_the_model_does_not_name_one() -> None:
+    """Which is the way out of the case above."""
+    rendered = render(
+        "inference.embeddings.model=text-embedding-3-small",
+        "ingestion.chunkTokenizer=BAAI/bge-m3",
+        "ingestion.maxChunkTokens=1024",
+    )
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert env["PRIMER_CHUNK_TOKENIZER"] == "BAAI/bge-m3"
+    assert env["PRIMER_MAX_CHUNK_TOKENS"] == "1024"
+
+
+def test_only_the_worker_that_chunks_downloads_a_tokenizer() -> None:
+    """The index worker embeds what parse already split. It needs none."""
+    rendered = render("inference.embeddings.model=Qwen/Qwen3-Embedding-0.6B")
+    env = env_of(named(rendered, "Deployment", "-worker-index"))
+
+    assert "PRIMER_CHUNK_TOKENIZER" not in env
+
+
 # --- Staying up ---------------------------------------------------------
 
 
@@ -621,8 +750,16 @@ def test_a_single_replica_component_gets_no_budget(manifests: list[dict[str, Any
 
 
 def test_a_worker_scaled_up_is_protected_like_anything_else() -> None:
-    """The rule is the replica count, not which component it is."""
-    rendered = render("workers.parse.replicas=3")
+    """The rule is the replica count, not which component it is.
+
+    The shared cache is not incidental to the setup: a parse worker cannot
+    reach three replicas without one, so scaling it and leaving the cache
+    on ReadWriteOnce is a configuration the chart refuses outright.
+    """
+    rendered = render(
+        "workers.parse.replicas=3",
+        "workers.parse.modelCache.accessMode=ReadWriteMany",
+    )
 
     assert "worker-parse" in budgets(rendered)
     assert "worker-index" not in budgets(rendered)

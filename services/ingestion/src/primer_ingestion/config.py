@@ -64,9 +64,12 @@ class Settings(BaseSettings):
         description="Read text from images and slides; off makes parsing faster and offline",
     )
 
+    #: Normally the embedding model's own Hugging Face id. Without it chunks
+    #: are split on document structure alone, which is a markedly worse
+    #: result rather than an equivalent one - see `build_chunker`.
     chunk_tokenizer: str | None = Field(
         default=None,
-        description="Tokenizer of the embedding model, so chunks fit its context window",
+        description="Hugging Face id of the embedding model's tokenizer, so chunks fit it",
     )
     max_chunk_tokens: int = Field(
         default=512,

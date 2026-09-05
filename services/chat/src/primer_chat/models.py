@@ -170,6 +170,11 @@ class Message(Base):
     #: deployment can change models between turns, and an answer's provenance
     #: is part of the answer.
     provider_model: Mapped[str | None] = mapped_column(String(200))
+    #: Which provider served it. Not a foreign key: a provider an
+    #: administrator has since deleted must not take the record of what
+    #: answered a question down with it, and this is a note about the past
+    #: rather than a pointer to something that has to still exist.
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
     error_code: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

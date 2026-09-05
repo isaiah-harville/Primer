@@ -22,7 +22,7 @@
 	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { draft } from '$lib/draft.svelte';
-	import { unqualify } from '$lib/models';
+	import { modelOf, unqualify } from '$lib/models';
 	import { citationFrom, linkCitations } from '$lib/citations';
 	import { modelChanges } from '$lib/transcript';
 	import { Transcript } from '$lib/transcript.svelte';
@@ -131,6 +131,17 @@
 		shown = opened.conversation.id;
 		conversationId = shown;
 		transcript.open(opened.messages);
+		// Come back on the model that answered, not the deployment's
+		// default. Every question carries the picker's value, so a thread
+		// reopened on the default sent its next question somewhere other
+		// than the rest of the conversation had gone - silently, since the
+		// picker showed the model it was about to use rather than the one
+		// the answers above it came from.
+		//
+		// Left alone when the conversation recorded nothing, which is an
+		// answer from before the model was kept.
+		const answered = modelOf(opened.messages);
+		if (answered) model = answered;
 	}
 
 	// Follows the load, and deliberately cannot clear anything.

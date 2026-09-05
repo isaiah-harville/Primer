@@ -93,6 +93,7 @@ class ChatRepository:
         state: MessageState,
         content: str = "",
         provider_model: str | None = None,
+        provider_id: UUID | None = None,
     ) -> Message:
         message = Message(
             id=uuid.uuid4(),
@@ -102,6 +103,7 @@ class ChatRepository:
             state=state.value,
             content=content,
             provider_model=provider_model,
+            provider_id=provider_id,
         )
         self._session.add(message)
         await self._session.flush()
@@ -267,6 +269,7 @@ def summarize_message(message: Message, citations: tuple[Citation, ...] = ()) ->
         reasoning=message.reasoning,
         citations=citations,
         provider_model=message.provider_model,
+        provider_id=message.provider_id,
         error_code=message.error_code,
         created_at=message.created_at,
     )
