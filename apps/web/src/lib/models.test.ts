@@ -88,19 +88,12 @@ describe('modelOf', () => {
 	it('takes the model in force, not the one it started on', () => {
 		// Someone who switched halfway continues from where they switched to.
 		expect(
-			modelOf([
-				question,
-				answer('qwen3:8b', 'deadbeef'),
-				question,
-				answer('llama3.1:70b', 'cafe'),
-			])
+			modelOf([question, answer('qwen3:8b', 'deadbeef'), question, answer('llama3.1:70b', 'cafe')]),
 		).toBe('cafe:llama3.1:70b');
 	});
 
 	it('looks past a turn that has not been answered', () => {
-		expect(modelOf([question, answer('qwen3:8b', 'deadbeef'), question])).toBe(
-			'deadbeef:qwen3:8b'
-		);
+		expect(modelOf([question, answer('qwen3:8b', 'deadbeef'), question])).toBe('deadbeef:qwen3:8b');
 	});
 
 	it('leaves the picker alone when nothing was recorded', () => {

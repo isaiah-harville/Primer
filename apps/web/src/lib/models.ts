@@ -29,7 +29,11 @@ export function qualify(
  * picker on whatever the deployment offers by default.
  */
 export function modelOf(
-	messages: readonly { role: string; provider_model?: string | null; provider_id?: string | null }[],
+	messages: readonly {
+		role: string;
+		provider_model?: string | null;
+		provider_id?: string | null;
+	}[],
 ): string {
 	// The last answer, not the first: the model in force is the one that
 	// wrote most recently, which is what a follow-up continues from.
