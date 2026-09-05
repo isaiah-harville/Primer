@@ -274,6 +274,28 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 64
+            },
+            "modelCache": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "type": "string"
+                },
+                "storageClass": {
+                  "type": "string"
+                },
+                "accessMode": {
+                  "description": "Every parse replica mounts one claim, so ReadWriteOnce pins the component to a single node and caps it at one replica.",
+                  "type": "string",
+                  "enum": [
+                    "ReadWriteOnce",
+                    "ReadWriteMany"
+                  ]
+                }
+              }
             }
           }
         },

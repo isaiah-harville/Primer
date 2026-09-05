@@ -260,6 +260,18 @@ workers:
       enabled: true
       size: 4Gi
       storageClass: ""
+      # What decides whether `replicas` above can be raised at all. Every
+      # parse replica mounts this one claim, so ReadWriteOnce binds the
+      # component to a single node and a second replica stays Pending
+      # forever - the chart refuses that combination rather than rendering
+      # it. ReadWriteMany needs a storage class that provides it (Longhorn
+      # and NFS do; a plain block volume does not), and is worth it here
+      # because the cache is read-mostly downloaded weights, which is
+      # exactly what a shared volume is for.
+      #
+      # The default stays ReadWriteOnce: it is the mode every cluster has,
+      # and one replica is the default anyway.
+      accessMode: ReadWriteOnce
   index:
     replicas: 1
     # Higher, because this one mostly waits: embedding is a network call to

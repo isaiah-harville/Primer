@@ -47,6 +47,19 @@ def render(*overrides: str) -> list[dict[str, Any]]:
     return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
 
 
+def refusal(*overrides: str) -> str:
+    """The message from a render the chart is supposed to refuse."""
+    if shutil.which("helm") is None:
+        pytest.skip("helm is not installed")
+    command = ["helm", "template", "primer", str(CHART)]
+    for value in [*BASE_VALUES, *overrides]:
+        command += ["--set", value]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+    if result.returncode == 0:
+        pytest.fail("the chart rendered a configuration it should have refused")
+    return result.stderr
+
+
 @pytest.fixture(scope="module")
 def manifests() -> list[dict[str, Any]]:
     return render()
@@ -218,6 +231,59 @@ def test_the_parse_worker_keeps_its_model_cache(manifests: list[dict[str, Any]])
     parse = named(manifests, "Deployment", "-worker-parse")
     mounts = {m["mountPath"] for m in containers(parse)[0]["volumeMounts"]}
     assert "/var/cache/primer/huggingface" in mounts
+
+
+def test_a_single_node_cache_caps_the_parse_worker_at_one_replica() -> None:
+    """Refused at render, because the alternative installs and does not run.
+
+    Every parse replica mounts the one cache claim. With ReadWriteOnce the
+    second replica is scheduled, cannot attach, and sits Pending - and
+    "Pending" tells whoever finds it nothing about access modes.
+    """
+    message = refusal("workers.parse.replicas=2")
+
+    # The way out is named, not just the problem: which of the three fixes
+    # is right depends on what the cluster can provide.
+    assert "ReadWriteMany" in message
+    assert "modelCache.enabled" in message
+
+
+def test_a_shared_cache_lets_the_parse_worker_scale() -> None:
+    """Which is the point of making the access mode configurable."""
+    rendered = render(
+        "workers.parse.replicas=2",
+        "workers.parse.modelCache.accessMode=ReadWriteMany",
+    )
+    claim = named(rendered, "PersistentVolumeClaim", "-model-cache")
+    parse = named(rendered, "Deployment", "-worker-parse")
+
+    assert claim["spec"]["accessModes"] == ["ReadWriteMany"]
+    assert parse["spec"]["replicas"] == 2
+    # Recreate exists only because a ReadWriteOnce volume cannot be held by
+    # the old pod and a surge pod at once. A shared cache has no such
+    # problem, and keeping Recreate would take the component to zero on
+    # every release for no reason.
+    assert parse["spec"].get("strategy", {}).get("type") != "Recreate"
+
+
+def test_a_cache_that_only_one_node_can_hold_still_rolls_by_recreating(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """The default, and the reason the strategy is conditional at all."""
+    parse = named(manifests, "Deployment", "-worker-parse")
+
+    assert parse["spec"]["strategy"]["type"] == "Recreate"
+
+
+def test_scaling_the_parse_worker_without_a_cache_is_allowed() -> None:
+    """Each pod re-downloads the models, which is a cost and not a fault."""
+    rendered = render("workers.parse.replicas=2", "workers.parse.modelCache.enabled=false")
+
+    assert not [
+        claim
+        for claim in of_kind(rendered, "PersistentVolumeClaim")
+        if claim["metadata"]["name"].endswith("-model-cache")
+    ]
 
 
 def test_liveness_and_readiness_differ(manifests: list[dict[str, Any]]) -> None:
@@ -621,8 +687,16 @@ def test_a_single_replica_component_gets_no_budget(manifests: list[dict[str, Any
 
 
 def test_a_worker_scaled_up_is_protected_like_anything_else() -> None:
-    """The rule is the replica count, not which component it is."""
-    rendered = render("workers.parse.replicas=3")
+    """The rule is the replica count, not which component it is.
+
+    The shared cache is not incidental to the setup: a parse worker cannot
+    reach three replicas without one, so scaling it and leaving the cache
+    on ReadWriteOnce is a configuration the chart refuses outright.
+    """
+    rendered = render(
+        "workers.parse.replicas=3",
+        "workers.parse.modelCache.accessMode=ReadWriteMany",
+    )
 
     assert "worker-parse" in budgets(rendered)
     assert "worker-index" not in budgets(rendered)
