@@ -233,36 +233,61 @@ def test_the_parse_worker_keeps_its_model_cache(manifests: list[dict[str, Any]])
     assert "/var/cache/primer/huggingface" in mounts
 
 
-def test_a_single_node_cache_caps_the_parse_worker_at_one_replica() -> None:
-    """Refused at render, because the alternative installs and does not run.
+def test_scaling_the_parse_worker_is_all_it_takes(manifests: list[dict[str, Any]]) -> None:
+    """The access mode follows the replica count rather than being chosen.
 
-    Every parse replica mounts the one cache claim. With ReadWriteOnce the
-    second replica is scheduled, cannot attach, and sits Pending - and
-    "Pending" tells whoever finds it nothing about access modes.
+    Every parse replica mounts the one cache claim, so what the volume has
+    to support is decided entirely by how many replicas there are. Asking
+    an operator to set both is asking them to keep two values in step, and
+    the failure when they drift is silent: extra pods that can never attach
+    anything and sit Pending with no explanation.
     """
-    message = refusal("workers.parse.replicas=2")
+    one = named(manifests, "PersistentVolumeClaim", "-model-cache")
+    several = named(render("workers.parse.replicas=2"), "PersistentVolumeClaim", "-model-cache")
 
-    # The way out is named, not just the problem: which of the three fixes
-    # is right depends on what the cluster can provide.
-    assert "ReadWriteMany" in message
+    assert one["spec"]["accessModes"] == ["ReadWriteOnce"]
+    assert several["spec"]["accessModes"] == ["ReadWriteMany"]
+
+
+def test_one_replica_is_not_put_on_a_shared_volume() -> None:
+    """ReadWriteMany is not the better mode, only the one that scales.
+
+    Longhorn and its like serve it through an NFS share-manager pod, so
+    defaulting to it would add a second workload and a network hop for a
+    volume exactly one pod opens - and would fail outright on the block
+    storage behind EBS, GCE PD, Azure Disk and local-path, which is what a
+    chart installed on k3s or kind is sitting on.
+    """
+    claim = named(render("workers.parse.replicas=1"), "PersistentVolumeClaim", "-model-cache")
+
+    assert claim["spec"]["accessModes"] == ["ReadWriteOnce"]
+
+
+def test_several_replicas_on_a_single_node_volume_are_refused() -> None:
+    """Only reachable by asking for the contradiction outright.
+
+    Deriving the mode means nobody arrives here by omission, but someone
+    who sets ReadWriteOnce and scales anyway has asked for a deployment
+    that installs cleanly and does not run.
+    """
+    message = refusal(
+        "workers.parse.replicas=2", "workers.parse.modelCache.accessMode=ReadWriteOnce"
+    )
+
+    # The way out is named, not just the problem.
+    assert "Leave accessMode unset" in message
     assert "modelCache.enabled" in message
 
 
-def test_a_shared_cache_lets_the_parse_worker_scale() -> None:
-    """Which is the point of making the access mode configurable."""
-    rendered = render(
-        "workers.parse.replicas=2",
-        "workers.parse.modelCache.accessMode=ReadWriteMany",
-    )
-    claim = named(rendered, "PersistentVolumeClaim", "-model-cache")
-    parse = named(rendered, "Deployment", "-worker-parse")
+def test_a_shared_cache_rolls_without_going_to_zero() -> None:
+    """Recreate exists only because a ReadWriteOnce volume cannot be held
+    by the outgoing pod and a surge pod at once. A shared cache has no such
+    problem, and keeping Recreate would take parsing to zero on every
+    release for nothing.
+    """
+    parse = named(render("workers.parse.replicas=2"), "Deployment", "-worker-parse")
 
-    assert claim["spec"]["accessModes"] == ["ReadWriteMany"]
     assert parse["spec"]["replicas"] == 2
-    # Recreate exists only because a ReadWriteOnce volume cannot be held by
-    # the old pod and a surge pod at once. A shared cache has no such
-    # problem, and keeping Recreate would take the component to zero on
-    # every release for no reason.
     assert parse["spec"].get("strategy", {}).get("type") != "Recreate"
 
 
@@ -752,14 +777,10 @@ def test_a_single_replica_component_gets_no_budget(manifests: list[dict[str, Any
 def test_a_worker_scaled_up_is_protected_like_anything_else() -> None:
     """The rule is the replica count, not which component it is.
 
-    The shared cache is not incidental to the setup: a parse worker cannot
-    reach three replicas without one, so scaling it and leaving the cache
-    on ReadWriteOnce is a configuration the chart refuses outright.
+    The shared cache the replicas need comes with them: the access mode
+    follows the replica count, so scaling is the only thing stated here.
     """
-    rendered = render(
-        "workers.parse.replicas=3",
-        "workers.parse.modelCache.accessMode=ReadWriteMany",
-    )
+    rendered = render("workers.parse.replicas=3")
 
     assert "worker-parse" in budgets(rendered)
     assert "worker-index" not in budgets(rendered)
