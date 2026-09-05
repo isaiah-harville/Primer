@@ -183,3 +183,23 @@ class TestWithNoChatEndpointConfigured:
         assert body["models"] == []
         assert body["endpoint_reachable"] is False
         assert body["detail"]
+
+
+async def test_the_provider_is_recorded_beside_the_model(user: ChatUser) -> None:
+    """So a reopened conversation can select the same model again.
+
+    A model name does not identify an endpoint - two providers serving
+    `llama3.1:8b` is the ordinary case - so recording the name alone left a
+    conversation able to say what answered it without being able to go back
+    to it. The follow-up then went to the deployment's default, silently
+    changing models mid-thread.
+    """
+    events = await user.ask(None, "Which model is this?")
+    message = events[-1]["message"]
+
+    assert "provider_id" in message
+
+    stored = (await user.get(f"/api/v1/conversations/{message['conversation_id']}/messages")).json()
+    answer = next(item for item in stored if item["role"] == "assistant")
+    assert answer["provider_id"] == message["provider_id"]
+    assert answer["provider_model"] == message["provider_model"]

@@ -7,9 +7,10 @@ without one, and so swapping Haystack's client later touches one class.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 import anyio
 import anyio.from_thread
@@ -29,6 +30,31 @@ from primer_chat.reasoning import Channel, Fragment, ReasoningSplitter
 #: from vLLM's reasoning parsers and DeepSeek, `reasoning` from others.
 REASONING_FIELDS = ("reasoning_content", "reasoning")
 
+#: Where `ReasoningCarried` puts what it rescued, for `_reasoning_of` to
+#: find. Under Primer's own name so it cannot collide with a key Haystack
+#: adds later.
+CARRIED_REASONING = "primer_reasoning"
+
+
+def _delta_reasoning(chunk: object) -> str:
+    """Separated thinking on a raw OpenAI streaming chunk, if there is any.
+
+    Read from the wire object rather than from Haystack's, because this is
+    the only place it still exists. The OpenAI client keeps fields it does
+    not model as attributes on the delta, which is how a non-standard one
+    survives parsing at all.
+    """
+    choices = getattr(chunk, "choices", None) or ()
+    for choice in choices:
+        delta = getattr(choice, "delta", None)
+        if delta is None:
+            continue
+        for field in REASONING_FIELDS:
+            value = getattr(delta, field, None)
+            if isinstance(value, str) and value:
+                return value
+    return ""
+
 
 def _reasoning_of(chunk: object) -> str:
     """Thinking a provider handed over already separated, if it did.
@@ -38,11 +64,85 @@ def _reasoning_of(chunk: object) -> str:
     everything else.
     """
     meta = getattr(chunk, "meta", None) or {}
+    if isinstance(meta, dict):
+        carried = meta.get(CARRIED_REASONING)
+        if isinstance(carried, str) and carried:
+            return carried
     for field in REASONING_FIELDS:
         value = getattr(chunk, field, None) or (meta.get(field) if isinstance(meta, dict) else None)
         if isinstance(value, str) and value:
             return value
     return ""
+
+
+class ReasoningCarried(OpenAIChatGenerator):
+    """An OpenAI generator that does not throw separated thinking away.
+
+    Haystack builds a `StreamingChunk`'s `meta` from a fixed set of keys,
+    and `reasoning_content` is not one of them - so an endpoint that hands
+    thinking over already separated had it discarded between the wire and
+    the callback. Primer then showed no thinking at all for precisely the
+    models doing the most of it, and the harder a deployment tried to
+    configure reasoning properly the less it saw: turning a server's
+    reasoning parser on moves the thinking out of the content and into the
+    field that was being dropped.
+
+    The rescue happens here because this is the last point where the raw
+    chunk and the converted one are both reachable. The stream is wrapped
+    rather than the loop reimplemented: Haystack pulls a raw chunk,
+    converts it, and calls back, strictly in that order and one for one, so
+    remembering what the raw chunk carried is enough for the callback that
+    immediately follows it. Reimplementing the loop would mean keeping a
+    copy of Haystack's chunk assembly in step with theirs forever.
+    """
+
+    def _handle_stream_response(  # type: ignore[override]
+        self, chat_completion: Any, callback: Any
+    ) -> Any:
+        remembered = {"reasoning": ""}
+
+        def raw() -> Iterator[Any]:
+            for chunk in chat_completion:
+                remembered["reasoning"] = _delta_reasoning(chunk)
+                yield chunk
+
+        def forward(converted: Any) -> Any:
+            if remembered["reasoning"]:
+                converted.meta[CARRIED_REASONING] = remembered["reasoning"]
+            return callback(converted)
+
+        # Annotated `Stream`, but only ever iterated - Haystack says as much
+        # where it declines to isinstance-check this for the same reason:
+        # observability tools wrap the stream and hand back another type.
+        return super()._handle_stream_response(raw(), forward)  # ty: ignore[invalid-argument-type]
+
+    async def _handle_async_stream_response(  # type: ignore[override]
+        self, chat_completion: Any, callback: Any
+    ) -> Any:
+        """The same rescue on the async path.
+
+        Primer answers on the sync one, but a generator that lost reasoning
+        again the moment someone switched would be a trap rather than a
+        limitation.
+        """
+        remembered = {"reasoning": ""}
+
+        async def raw() -> AsyncIterator[Any]:
+            async for chunk in chat_completion:
+                remembered["reasoning"] = _delta_reasoning(chunk)
+                yield chunk
+
+        async def forward(converted: Any) -> Any:
+            if remembered["reasoning"]:
+                converted.meta[CARRIED_REASONING] = remembered["reasoning"]
+            result = callback(converted)
+            if inspect.isawaitable(result):
+                await result
+
+        return await super()._handle_async_stream_response(
+            raw(),  # ty: ignore[invalid-argument-type]
+            forward,
+        )
 
 
 class NoEndpoint(Exception):
@@ -133,7 +233,7 @@ class HaystackChatGenerator:
 
         key = (target.base_url, name)
         if key not in self._generators:
-            self._generators[key] = OpenAIChatGenerator(
+            self._generators[key] = ReasoningCarried(
                 # Many local servers ignore the key but require the header.
                 api_key=Secret.from_token(target.api_key or "none"),
                 model=name,
