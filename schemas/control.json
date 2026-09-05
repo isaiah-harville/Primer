@@ -299,6 +299,69 @@
         "title": "LibraryDuplicate",
         "type": "object"
       },
+      "LibraryShare": {
+        "additionalProperties": false,
+        "description": "One person a library has been shared with.\n\nIdentified by email as well as by id, because an id is not something the\nowner can check their intent against. Sharing is a decision about a\nperson, and the owner has to be able to see that the person on the list\nis the one they meant.\n\nDeliberately carries no role. Read access is the only thing a share\ngrants today, and a field named `role` that always says the same word\nwould be a promise the authorization model does not keep.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "created_at"
+        ],
+        "title": "LibraryShare",
+        "type": "object"
+      },
+      "LibraryShareCreate": {
+        "additionalProperties": false,
+        "description": "Who to share with, named the way the owner knows them.",
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "LibraryShareCreate",
+        "type": "object"
+      },
       "LibrarySummary": {
         "additionalProperties": false,
         "description": "A library as returned by the Control API.",
@@ -1131,6 +1194,152 @@
           }
         },
         "summary": "Copy a library into a new one",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/shares": {
+      "get": {
+        "operationId": "list_shares_api_v1_libraries__library_id__shares_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryShare"
+                  },
+                  "title": "Response List Shares Api V1 Libraries  Library Id  Shares Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List who a library is shared with",
+        "tags": [
+          "libraries"
+        ]
+      },
+      "post": {
+        "description": "Give one other Primer user read access.\n\nNothing is copied. The grantee reads the same library, the same\ndocuments and the same vectors the owner does - which is the whole point\nof sharing rather than duplicating, and why revoking is immediate: there\nis no second copy to go and find.\n\nOnly someone who has used this deployment can be named. User rows are\nwritten when an identity first acts, so an address that matches nothing\nbelongs either to a colleague who has not signed in yet or to a typo,\nand the two are worth telling apart out loud. That does disclose whether\nan address has an account here, to an authenticated user of the same\ndeployment - which is the trade for the feature being usable at all, and\nis a much smaller disclosure than sharing with the wrong person.",
+        "operationId": "share_library_api_v1_libraries__library_id__shares_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryShareCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryShare"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share a library with another user",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/shares/{user_id}": {
+      "delete": {
+        "description": "Take the access away, effective on the grantee's next request.\n\nThere is nothing to clean up. Authorization reads the grant on every\nrequest, so a question already in flight finishes and the one after it\nis refused - and because sharing copied nothing, there is no stray index\nleft holding the library's passages.",
+        "operationId": "revoke_share_api_v1_libraries__library_id__shares__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop sharing a library with someone",
         "tags": [
           "libraries"
         ]

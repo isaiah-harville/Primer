@@ -127,12 +127,21 @@ async def client(
 
 @pytest.fixture
 def owner(client: AsyncClient) -> UserClient:
-    return UserClient(client, "oidc-owner")
+    # With an address, because the proxy sends one and sharing needs it to
+    # name people by. A fixture without one would make every sharing test
+    # set up its own identity.
+    return UserClient(client, "oidc-owner", email="owner@example.edu")
 
 
 @pytest.fixture
 def stranger(client: AsyncClient) -> UserClient:
     return UserClient(client, "oidc-stranger")
+
+
+@pytest.fixture
+def colleague(client: AsyncClient) -> UserClient:
+    """Someone a library can be shared with, with an address to name them by."""
+    return UserClient(client, "oidc-colleague", email="colleague@example.edu")
 
 
 @pytest_asyncio.fixture

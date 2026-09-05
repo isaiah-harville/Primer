@@ -16,11 +16,13 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -88,6 +90,69 @@ class Library(Base):
     #: Soft deletion: a tombstoned library stops being retrievable immediately
     #: while its documents and vectors are cleaned up asynchronously.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LibraryGrant(Base):
+    """Read access to one library, given by its owner to one other user.
+
+    The whole of Primer's sharing model. A row means the grantee may read
+    the library and ask questions of it; there is no column for what else
+    they might be allowed, because nothing else is.
+
+    Revoked rather than deleted. `LibraryAccess` matches only rows with no
+    `revoked_at`, so revocation takes effect on the next request with no
+    cleanup to run and nothing to invalidate - and what is left behind is
+    the record of who was given access to a private library and when it was
+    taken away, which is the one question anyone asks afterwards.
+
+    Re-sharing with someone whose access was revoked writes a new row rather
+    than reviving the old one, so the history reads in order. That is why
+    the uniqueness constraint is partial: it applies to live grants only,
+    and a library may accumulate any number of revoked ones.
+    """
+
+    __tablename__ = "library_grants"
+    __table_args__ = (
+        # Partial, so uniqueness binds live grants only. A revoked row is
+        # kept as the record of an access that existed, and a plain
+        # constraint over the pair would refuse to give access back to
+        # someone it had been taken away from.
+        Index(
+            "uq_library_grants_live",
+            "library_id",
+            "grantee_user_id",
+            unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    library_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{CONTROL_SCHEMA}.libraries.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    grantee_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{CONTROL_SCHEMA}.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: Who gave it. Always the owner today, and recorded rather than inferred
+    #: because "the owner" is a fact about the library now, not about the
+    #: moment the grant was made.
+    granted_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(f"{CONTROL_SCHEMA}.users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SourceObject(Base):
