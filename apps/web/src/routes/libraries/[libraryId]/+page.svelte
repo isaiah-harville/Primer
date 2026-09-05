@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
-	import { RefreshCw, Trash2 } from '@lucide/svelte';
+	import { RefreshCw, Trash2, Users } from '@lucide/svelte';
 	import { Alert, Breadcrumb, Button, Spinner } from '@sivir-ui/svelte';
 	import type { DocumentSummary } from '$lib/api/types';
 	import DocumentStatus from '$lib/components/DocumentStatus.svelte';
+	import SharePanel from '$lib/components/SharePanel.svelte';
 	import UploadDropzone from '$lib/components/UploadDropzone.svelte';
 	import { isTerminal, pollDelayMs } from '$lib/status';
 	import { formatBytes } from '$lib/upload';
@@ -122,12 +123,24 @@
 		</p>
 	</div>
 
-	{#if data.capabilities.ingestion_available}
+	{#if data.capabilities.ingestion_available && data.owned}
 		<UploadDropzone capabilities={data.capabilities} onupload={upload} />
 	{/if}
 </div>
 
-{#if !data.capabilities.ingestion_available}
+{#if !data.owned}
+	<!--
+	  Said once, near the title. Everything on this page that a reader
+	  cannot do is already absent, and a page where the buttons are simply
+	  missing reads as broken unless something explains it.
+	-->
+	<p class="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+		<Users size={13} aria-hidden="true" />
+		Shared with you. You can read these documents and ask questions about them.
+	</p>
+{/if}
+
+{#if !data.capabilities.ingestion_available && data.owned}
 	<!--
 	  Warning, not error: nothing has failed, but an upload here would sit in
 	  the queue forever and it is better to say so before the drop.
@@ -284,4 +297,12 @@
 			</tbody>
 		</table>
 	</div>
+{/if}
+
+{#if data.owned}
+	<SharePanel
+		shares={data.shares}
+		error={form?.shareError ?? null}
+		shared={form?.shared ?? null}
+	/>
 {/if}

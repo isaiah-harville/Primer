@@ -22,6 +22,7 @@ type ChatSchemas = ChatComponents['schemas'];
 
 export type IngestionStatus = ControlSchemas['IngestionStatus'];
 export type LibrarySummary = ControlSchemas['LibrarySummary'];
+export type LibraryShare = ControlSchemas['LibraryShare'];
 export type DocumentSummary = ControlSchemas['DocumentSummary'];
 export type DeploymentCapabilities = ControlSchemas['DeploymentCapabilities'];
 export type Principal = ControlSchemas['Principal'];

@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { Copy, Plus, Trash2 } from '@lucide/svelte';
+	import { Copy, Plus, Trash2, Users } from '@lucide/svelte';
 	import { Alert, Button, Input } from '@sivir-ui/svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let total = $derived(data.libraries.reduce((sum, library) => sum + library.document_count, 0));
+
+	//: Whether a library is the caller's own rather than one shared with
+	//: them. Only decides what to offer; Control refuses the rest either
+	//: way. False when the principal is unknown, because the layout
+	//: tolerates `/me` failing and an unknown caller owns nothing.
+	function mine(library: { owner_user_id: string }): boolean {
+		return data.principal !== null && library.owner_user_id === data.principal.user_id;
+	}
 </script>
 
 <!--
@@ -85,9 +93,28 @@
 						focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
 				>
 					<span class="truncate pr-8 font-medium" title={library.name}>{library.name}</span>
-					<span class="font-mono text-[11px] uppercase tracking-[0.09em] text-muted-foreground">
-						{library.document_count}
-						{library.document_count === 1 ? 'document' : 'documents'}
+					<span
+						class="flex items-center gap-2 font-mono text-[11px] uppercase
+							tracking-[0.09em] text-muted-foreground"
+					>
+						<span>
+							{library.document_count}
+							{library.document_count === 1 ? 'document' : 'documents'}
+						</span>
+						{#if !mine(library)}
+							<!--
+							  Marked, because the cards are otherwise identical
+							  and what you may do with them is not: someone
+							  else's library cannot be deleted or added to, and
+							  finding that out by clicking is a worse way to
+							  learn it.
+							-->
+							<span aria-hidden="true">·</span>
+							<span class="flex items-center gap-1">
+								<Users size={11} aria-hidden="true" />
+								Shared
+							</span>
+						{/if}
 					</span>
 				</a>
 
@@ -112,25 +139,36 @@
 						</Button>
 					</form>
 
-					<form
-						method="POST"
-						action="?/delete"
-						use:enhance={({ cancel }) => {
-							if (!confirm(`Delete "${library.name}" and everything in it?`)) cancel();
-						}}
-					>
-						<input type="hidden" name="id" value={library.id} />
-						<Button
-							type="submit"
-							variant="ghost"
-							size="icon"
-							title="Delete"
-							class="text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+					{#if mine(library)}
+						<!--
+						  Only for a library you own. Deleting one shared with
+						  you is refused by Control, so offering it would be a
+						  button whose only outcome is an error - and a
+						  frightening one to click on someone else's material.
+						  Duplicating stays: a copy of something you may read
+						  is yours, and it is how you keep a library that
+						  might be unshared.
+						-->
+						<form
+							method="POST"
+							action="?/delete"
+							use:enhance={({ cancel }) => {
+								if (!confirm(`Delete "${library.name}" and everything in it?`)) cancel();
+							}}
 						>
-							<Trash2 size={14} aria-hidden="true" />
-							<span class="sr-only">Delete {library.name}</span>
-						</Button>
-					</form>
+							<input type="hidden" name="id" value={library.id} />
+							<Button
+								type="submit"
+								variant="ghost"
+								size="icon"
+								title="Delete"
+								class="text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+							>
+								<Trash2 size={14} aria-hidden="true" />
+								<span class="sr-only">Delete {library.name}</span>
+							</Button>
+						</form>
+					{/if}
 				</div>
 			</li>
 		{/each}
