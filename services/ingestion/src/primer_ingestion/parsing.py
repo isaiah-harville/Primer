@@ -105,6 +105,15 @@ class DocumentParser:
     The converter and chunker are built once and reused: Docling loads
     models on first use, and rebuilding per job would pay that cost on every
     document.
+
+    Built on first use rather than in `__init__`, because every ingestion
+    worker registers every stage - that is deliberate, so a process either
+    knows how to run a stage or fails it loudly rather than silently having
+    no handler - and constructing this eagerly made a worker that only
+    embeds and indexes pay for a parser it never calls. It is not only a
+    slower start: the chunker downloads a tokenizer, and only the parse
+    deployment mounts a cache to hold one, so an index worker given the same
+    configuration crashlooped against its read-only root filesystem.
     """
 
     def __init__(
@@ -114,8 +123,20 @@ class DocumentParser:
         chunker: BaseChunker | None = None,
     ) -> None:
         self._settings = settings
-        self._converter = converter or build_converter(enable_ocr=settings.enable_ocr)
-        self._chunker = chunker or build_chunker(settings)
+        self._given_converter = converter
+        self._given_chunker = chunker
+
+    @property
+    def converter(self) -> DocumentConverter:
+        if self._given_converter is None:
+            self._given_converter = build_converter(enable_ocr=self._settings.enable_ocr)
+        return self._given_converter
+
+    @property
+    def chunker(self) -> BaseChunker:
+        if self._given_chunker is None:
+            self._given_chunker = build_chunker(self._settings)
+        return self._given_chunker
 
     def format_for(self, media_type: str) -> InputFormat:
         input_format = FORMATS_BY_MEDIA_TYPE.get(media_type)
@@ -142,7 +163,7 @@ class DocumentParser:
 
         with working_copy(source, EXTENSIONS[input_format]) as copy:
             try:
-                result = self._converter.convert(copy, raises_on_error=False)
+                result = self.converter.convert(copy, raises_on_error=False)
             except Exception as error:
                 logger.exception("conversion failed for %s", context.document_version_id)
                 raise StageError("conversion_failed", "The document could not be converted.") from (
@@ -158,7 +179,7 @@ class DocumentParser:
 
             chunks = to_chunks(
                 result.document,
-                self._chunker,
+                self.chunker,
                 context,
                 max_chunks=self._settings.max_chunks_per_document,
                 ocr_attempted=self._settings.enable_ocr,

@@ -61,6 +61,50 @@ def markdown(tmp_path: Path) -> Path:
     return source
 
 
+def test_a_worker_that_never_parses_builds_no_parser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every worker registers every stage, so every worker constructs this.
+
+    That registration is deliberate - a process either knows how to run a
+    stage or fails it loudly - but it means an index worker holds a
+    `DocumentParser` it never calls. Building the chunker eagerly made that
+    worker download a tokenizer, and only the parse deployment mounts a
+    cache to put one in, so it crashlooped on its read-only root filesystem
+    for a document it was never going to parse.
+    """
+    built: list[str] = []
+    monkeypatch.setattr("primer_ingestion.parsing.build_chunker", lambda _: built.append("chunker"))
+    monkeypatch.setattr(
+        "primer_ingestion.parsing.build_converter", lambda **_: built.append("converter")
+    )
+
+    DocumentParser(Settings(broker_url="memory://"))
+
+    assert built == []
+
+
+def test_a_parser_that_is_used_builds_them_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deferred, not skipped - and still paid for only once.
+
+    Docling loads models on first use, so rebuilding per document would put
+    that cost on every job.
+    """
+    built: list[str] = []
+
+    def record(name: str) -> object:
+        built.append(name)
+        return object()
+
+    monkeypatch.setattr("primer_ingestion.parsing.build_chunker", lambda _: record("chunker"))
+    monkeypatch.setattr("primer_ingestion.parsing.build_converter", lambda **_: record("converter"))
+    parser = DocumentParser(Settings(broker_url="memory://"))
+
+    first = (parser.chunker, parser.converter)
+    for _ in range(3):
+        assert (parser.chunker, parser.converter) == first
+
+    assert built == ["chunker", "converter"]
+
+
 def test_chunks_carry_the_scope_retrieval_filters_on(
     parser: DocumentParser, markdown: Path, context: DocumentContext
 ) -> None:
