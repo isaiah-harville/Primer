@@ -18,12 +18,14 @@
 	import LibraryLink from '$lib/components/LibraryLink.svelte';
 	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
-	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
+	import { parseEvents, type StreamState } from '$lib/api/sse';
 	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { draft } from '$lib/draft.svelte';
 	import { unqualify } from '$lib/models';
-	import { turnsFrom, type Turn } from '$lib/transcript';
+	import { citationFrom, linkCitations } from '$lib/citations';
+	import { modelChanges } from '$lib/transcript';
+	import { Transcript } from '$lib/transcript.svelte';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
 	import type { PageData } from './$types';
 
@@ -40,7 +42,11 @@
 	// the two disagree.
 	let model = $state('');
 	let question = $state('');
-	let turns = $state<Turn[]>([]);
+	// The turns, and the machinery for writing one as it arrives. Held
+	// there rather than here because folding a stream into a turn is the
+	// one thing on this page that has to be careful about how Svelte sees
+	// a change; `transcript.svelte.ts` says why.
+	const transcript = new Transcript();
 	// Set by the first answer and sent with every question after it. Without
 	// it each question opened its own conversation, so the model never saw
 	// the turn before - and a follow-up like "and the second one?" had
@@ -49,6 +55,10 @@
 	let streaming = $state(false);
 	let sourcesOpen = $state(false);
 	let sourcesFor = $state<StreamState | null>(null);
+	//: Which passage the panel should scroll to, when it was opened by
+	//: following a marker rather than by asking for the sources.
+	let revealed = $state<{ position: number; token: number } | null>(null);
+	let revealToken = 0;
 
 	// The library is fixed when the conversation opens: follow-up questions
 	// carry only the conversation, so changing it now would change nothing.
@@ -82,7 +92,29 @@
 	//: An answer that has been asked for but has not started arriving. Once
 	//: the first token lands the text itself is the progress, so the bar
 	//: gives way to it rather than running alongside.
-	let thinking = $derived(streaming && (turns.at(-1)?.stream.text ?? '') === '');
+	let thinking = $derived(streaming && (transcript.last?.stream.text ?? '') === '');
+
+	/**
+	 * Everything that belongs to the thread on screen, cleared.
+	 *
+	 * The library is deliberately not here. Whether it survives depends on
+	 * how the thread was left, and the two callers disagree: opening
+	 * another conversation takes that conversation's library, while
+	 * starting over keeps the one at hand.
+	 */
+	function clearThread() {
+		shown = null;
+		conversationId = null;
+		transcript.clear();
+		question = '';
+		sourcesFor = null;
+		sourcesOpen = false;
+		revealed = null;
+		uploadError = '';
+		uploadSuccess = '';
+		uploads = [];
+		offered = null;
+	}
 
 	/**
 	 * Show a stored conversation, replacing whatever is on screen.
@@ -93,17 +125,12 @@
 	function show(
 		opened: { conversation: ConversationSummary; messages: MessageSummary[] } | null
 	) {
-		shown = opened?.conversation.id ?? null;
-		conversationId = shown;
-		turns = opened ? turnsFrom(opened.messages) : [];
+		clearThread();
 		libraryId = opened?.conversation.library_id ?? '';
-		question = '';
-		sourcesFor = null;
-		sourcesOpen = false;
-		uploadError = '';
-		uploadSuccess = '';
-		uploads = [];
-		offered = null;
+		if (!opened) return;
+		shown = opened.conversation.id;
+		conversationId = shown;
+		transcript.open(opened.messages);
 	}
 
 	// Follows the load, and deliberately cannot clear anything.
@@ -141,7 +168,7 @@
 		if (to.url.searchParams.get('conversation') !== null) return;
 		// Already blank - and this fires on the shallow update too, where
 		// clearing would throw away the answer that just arrived.
-		if (untrack(() => shown) === null && untrack(() => turns).length === 0) return;
+		if (untrack(() => shown) === null && untrack(() => transcript.length) === 0) return;
 		show(null);
 	});
 
@@ -260,8 +287,7 @@
 		if (!conversationId) draft.begin(asked);
 		// The bar is a picture of this, and a picture announces nothing.
 		announcement = 'Waiting for an answer.';
-		const turn = { question: asked, stream: emptyStream() };
-		turns = [...turns, turn];
+		const answer = transcript.ask(asked);
 
 		try {
 			const response = await fetch('/chat/ask', {
@@ -283,15 +309,10 @@
 			});
 			if (!response.ok || !response.body) throw new Error('The server refused the question.');
 
-			for await (const event of parseEvents(response.body)) {
-				// Reassigning the array is what makes Svelte see the change;
-				// the state object itself is replaced by the reducer.
-				turn.stream = reduce(turn.stream, event);
-				turns = [...turns];
-			}
+			for await (const event of parseEvents(response.body)) answer.apply(event);
 			// Taken from the answer rather than assumed, so the next question
 			// continues the conversation the server actually opened.
-			conversationId = turn.stream.conversationId ?? conversationId;
+			conversationId = answer.stream.conversationId ?? conversationId;
 			if (conversationId && shown !== conversationId) {
 				// Shallow, so the thread on screen is not torn down and rebuilt
 				// from storage mid-conversation. It puts the thread in the URL,
@@ -307,39 +328,60 @@
 			// Stored now, so the real entry takes over from the stand-in.
 			draft.settle();
 		} catch {
-			turn.stream = {
-				...turn.stream,
-				error: { code: 'connection_lost', detail: 'The connection closed before the answer finished.' },
-				done: true
-			};
-			turns = [...turns];
+			answer.fail('connection_lost', 'The connection closed before the answer finished.');
 		} finally {
 			streaming = false;
 			// Cleared however the turn ended. A question that failed left no
 			// conversation behind, so a stand-in for one would be a row
 			// pointing at nothing.
 			draft.settle();
-			announcement = turn.stream.error ? 'The answer stopped early.' : 'Answer received.';
+			announcement = answer.stream.error ? 'The answer stopped early.' : 'Answer received.';
 		}
 	}
 
 	// The library and the model are kept: starting over is usually asking
 	// something else about the same documents, not changing what is at hand.
 	async function startOver() {
-		turns = [];
-		conversationId = null;
-		shown = null;
-		question = '';
-		sourcesFor = null;
-		sourcesOpen = false;
-		uploadError = '';
-		uploadSuccess = '';
-		uploads = [];
+		clearThread();
 		draft.settle();
 		announcement = 'Started a new chat.';
 		// The conversation that was open is in the URL, and leaving it there
 		// would restore the thread on the next reload.
 		if (page.url.searchParams.has('conversation')) await goto('/chat');
+	}
+
+	//: Where the model answering changed, so the transcript can say so.
+	let switches = $derived(modelChanges(transcript.turns));
+
+	/**
+	 * Open the sources panel on one answer.
+	 *
+	 * A position is passed only when the reader arrived by following a
+	 * marker. Asking for the sources outright opens the list at the top,
+	 * because nothing in particular was asked about - and a fresh token
+	 * every time, so following the same marker twice scrolls back to it
+	 * rather than doing nothing.
+	 */
+	function showSources(stream: StreamState, position: number | null = null) {
+		sourcesFor = stream;
+		sourcesOpen = true;
+		revealed = position === null ? null : { position, token: ++revealToken };
+	}
+
+	/**
+	 * Following a citation marker in an answer to the passage it names.
+	 *
+	 * Delegated from a wrapper rather than bound to each link, because the
+	 * links are inside rendered Markdown: this page hands the renderer text
+	 * and does not own what it produces. A link the model wrote itself
+	 * falls through and behaves like a link.
+	 */
+	function followCitation(event: MouseEvent, stream: StreamState) {
+		const anchor = (event.target as Element | null)?.closest('a');
+		const position = citationFrom(anchor?.getAttribute('href'));
+		if (position === null || position > stream.citations.length) return;
+		event.preventDefault();
+		showSources(stream, position);
 	}
 
 	function completed(stream: StreamState): MessageSummary | null {
@@ -383,7 +425,7 @@
 			  library a conversation is answered from. Absent until there is
 			  something to leave behind.
 			-->
-			{#if turns.length > 0}
+			{#if transcript.length > 0}
 				<Button size="sm" variant="ghost" onclick={startOver} disabled={streaming}>
 					<Plus size={14} aria-hidden="true" />
 					New chat
@@ -484,7 +526,7 @@
 
 	<Conversation.Root class="flex-1">
 		<Conversation.Content>
-			{#if turns.length === 0}
+			{#if transcript.length === 0}
 				<Conversation.Empty>
 					{#if libraryId}
 						Ask a question about this library. Every answer cites the passages it used.
@@ -495,7 +537,23 @@
 				</Conversation.Empty>
 			{/if}
 
-			{#each turns as turn, index (index)}
+			{#each transcript.turns as turn, index (index)}
+				{#if switches[index]}
+					<!--
+					  Which model wrote an answer is part of the answer, and in
+					  a conversation where someone changed it halfway it is the
+					  thing that explains why two answers do not sound alike.
+					  Above the question, because the choice was made before it
+					  was asked. Quiet: it is a note about the transcript, not
+					  a turn in it.
+					-->
+					<div class="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+						<span class="h-px flex-1 bg-border"></span>
+						<span>Switched model to {switches[index]}</span>
+						<span class="h-px flex-1 bg-border"></span>
+					</div>
+				{/if}
+
 				<Message.Root from="user">
 					<Message.Content>{turn.question}</Message.Content>
 				</Message.Root>
@@ -551,8 +609,17 @@
 						  Rendered as Markdown, since models write it. The text
 						  is the model's, so it is rendered rather than
 						  interpreted: nothing here acts on it.
+
+						  The wrapper catches clicks on the citation markers,
+						  which are rewritten into links on the way in. An
+						  anchor raises a click on Enter as well as on a
+						  pointer, so this is reached from the keyboard too.
 						-->
-						<Markdown content={turn.stream.text} />
+						<div role="presentation" onclick={(event) => followCitation(event, turn.stream)}>
+							<Markdown
+								content={linkCitations(turn.stream.text, turn.stream.citations.length)}
+							/>
+						</div>
 					</Message.Content>
 
 					{#if turn.stream.error}
@@ -569,10 +636,7 @@
 							<Message.Actions>
 								<ResponseActions
 									{message}
-									onshowsources={() => {
-										sourcesFor = turn.stream;
-										sourcesOpen = true;
-									}}
+									onshowsources={() => showSources(turn.stream)}
 								/>
 							</Message.Actions>
 						{/if}
@@ -689,5 +753,5 @@
 </div>
 
 {#if sourcesFor}
-	<CitationPanel citations={sourcesFor.citations} bind:open={sourcesOpen} />
+	<CitationPanel citations={sourcesFor.citations} bind:open={sourcesOpen} reveal={revealed} />
 {/if}

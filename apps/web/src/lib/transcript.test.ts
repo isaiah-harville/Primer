@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageSummary } from '$lib/api/types';
-import { turnsFrom } from './transcript';
+import { modelChanges, turnsFrom } from './transcript';
 
 function message(overrides: Partial<MessageSummary>): MessageSummary {
 	return {
@@ -82,5 +82,45 @@ describe('turnsFrom', () => {
 		]);
 
 		expect(turns[0].stream.citations).toEqual([citation]);
+	});
+});
+
+describe('modelChanges', () => {
+	it('says nothing when one model answered the whole conversation', () => {
+		const turns = turnsFrom([
+			question('First?'),
+			answer('First.', { provider_model: 'qwen3:8b' }),
+			question('Second?'),
+			answer('Second.', { provider_model: 'qwen3:8b' }),
+		]);
+
+		expect(modelChanges(turns)).toEqual([null, null]);
+	});
+
+	it('names the model from the turn it started answering', () => {
+		const turns = turnsFrom([
+			question('First?'),
+			answer('First.', { provider_model: 'qwen3:8b' }),
+			question('Second?'),
+			answer('Second.', { provider_model: 'llama3.1:70b' }),
+			question('Third?'),
+			answer('Third.', { provider_model: 'llama3.1:70b' }),
+		]);
+
+		expect(modelChanges(turns)).toEqual([null, 'llama3.1:70b', null]);
+	});
+
+	it('says nothing above a turn that has not been answered yet', () => {
+		// Which model wrote an answer is read from the answer. A question
+		// still waiting for one has not been answered by anything, and
+		// announcing a switch before it arrives would be a guess.
+		const turns = turnsFrom([
+			question('First?'),
+			answer('First.', { provider_model: 'qwen3:8b' }),
+			question('Still going'),
+		]);
+
+		expect(turns).toHaveLength(2);
+		expect(modelChanges(turns)).toEqual([null, null]);
 	});
 });

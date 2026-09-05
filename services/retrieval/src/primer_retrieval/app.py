@@ -33,7 +33,7 @@ from primer_service.errors import ProblemError, problem_response
 
 from primer_retrieval import __version__
 from primer_retrieval.config import Settings
-from primer_retrieval.errors import dependency_unavailable
+from primer_retrieval.errors import embedding_endpoint
 from primer_retrieval.pipelines import (
     GENERATION_ID,
     DocumentEmbedder,
@@ -151,7 +151,8 @@ def index_chunks(payload: IndexRequest, state: State) -> IndexResult:
     and ordinal, so a stage that ran twice rewrites identical rows instead of
     doubling the index.
     """
-    documents = to_documents(payload.chunks, state.document_embedder)
+    with embedding_endpoint("this document cannot be indexed"):
+        documents = to_documents(payload.chunks, state.document_embedder)
     written = state.store.write_documents(documents, policy=DuplicatePolicy.OVERWRITE)
     return IndexResult(generation_id=payload.generation_id, written=written)
 
@@ -179,19 +180,8 @@ def search(payload: SearchRequest, state: State) -> SearchResult:
     Filtering after the fact would silently return fewer results than asked
     for, and would depend on this code never being reordered.
     """
-    try:
+    with embedding_endpoint("this library cannot be searched"):
         embedded = state.text_embedder.run(payload.query)
-    except Exception as error:
-        # An unreachable embedding endpoint is a deployment fault, not a bad
-        # request, and it is the single most likely thing to be wrong on a
-        # self-hosted install: the embedder is a separate process that has to
-        # be running and reachable. Left unhandled it surfaced as a bare 500
-        # with a stack trace, which Chat then reported to the reader as an
-        # answer that stopped - sending whoever read it to look at the model.
-        logger.warning("the embedding endpoint could not be reached", exc_info=True)
-        raise dependency_unavailable(
-            "The embedding endpoint could not be reached, so this library cannot be searched."
-        ) from error
     # Fetch wider than the answer needs when a reranker will read them: the
     # passage that answers the question is often inside the first twenty and
     # outside the first six. Without one, the vector ordering is the answer,

@@ -43,7 +43,7 @@ export function emptyStream(): StreamState {
 	};
 }
 
-interface RawEvent {
+export interface RawEvent {
 	type?: string;
 	id?: number;
 	[key: string]: unknown;
