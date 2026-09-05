@@ -2,6 +2,13 @@
 
 Workers never touch a vector store. They hand chunks to Retrieval, which is
 the only process that knows what backend is deployed or how it filters.
+
+Everything that can go wrong on the wire is turned into a `StageError`
+here, at the one place that makes the call. A stage that let an HTTP error
+escape reported it through the catch-all in `tasks`, which is deliberately
+sanitized - so an embedding endpoint that was refusing connections reached
+the user as "The stage failed unexpectedly", the same words as a genuine
+bug in Primer, and told whoever read it nothing about where to look.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ from primer_contracts.indexing import (
 )
 
 from primer_ingestion.config import Settings
+from primer_ingestion.errors import PermanentStageError, StageError
 
 SERVICE_TOKEN_HEADER = "X-Primer-Service-Token"  # noqa: S105 - a header name, not a secret
 
@@ -63,8 +71,16 @@ class RetrievalClient:
         self._client.close()
 
     def _post(self, path: str, payload: object) -> dict[str, object]:
-        response = self._client.post(path, json=payload)
-        response.raise_for_status()
+        try:
+            response = self._client.post(path, json=payload)
+            response.raise_for_status()
+        except httpx2.HTTPStatusError as error:
+            raise _refused(error.response) from error
+        except httpx2.HTTPError as error:
+            # Nothing answered: a refused connection, a timeout, a name that
+            # does not resolve. Worth retrying, and worth saying which
+            # service was not there.
+            raise StageError("retrieval_unavailable", "Retrieval could not be reached.") from error
         body: dict[str, object] = response.json()
         return body
 
@@ -87,6 +103,37 @@ class RetrievalClient:
         return DeleteResult.model_validate(
             self._post("/internal/v1/purge", request.model_dump(mode="json"))
         )
+
+
+def _refused(response: httpx2.Response) -> StageError:
+    """Turn a status Retrieval returned into a failure a stage can report.
+
+    Server errors and rate limits are retried; anything else in the 4xx
+    range is not. A request Retrieval refuses on its merits - a malformed
+    chunk, a scope it will not accept - is refused identically every time,
+    and retrying it only delays the moment someone is told.
+
+    Retrieval's own explanation is carried through. It is Primer's words
+    rather than a model's or a user's, it is already written for whoever
+    has to fix it, and it is the difference between knowing the embedding
+    endpoint is down and knowing only that something went wrong.
+    """
+    detail = _explanation(response) or f"Retrieval answered {response.status_code}."
+    if response.status_code >= 500 or response.status_code == httpx2.codes.TOO_MANY_REQUESTS:
+        return StageError("retrieval_unavailable", detail)
+    return PermanentStageError("retrieval_rejected", detail)
+
+
+def _explanation(response: httpx2.Response) -> str | None:
+    """The `detail` of a problem document, when that is what came back."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    detail = body.get("detail")
+    return detail if isinstance(detail, str) else None
 
 
 def worker_principal(owner_user_id: UUID) -> Principal:

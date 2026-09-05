@@ -5,6 +5,12 @@ this is the single most likely thing to be wrong on a self-hosted install.
 It used to surface as an unhandled exception and a bare 500 with a stack
 trace, which Chat then reported to the reader as an answer that stopped -
 sending whoever read it to look at the model, which was fine.
+
+Both directions matter. Searching a library and indexing a document go
+through the same endpoint and fail the same way, and for a while only
+searching said so: an embedder that was down during ingestion surfaced to
+the user as a document whose stage "failed unexpectedly", which is the
+message every unrelated bug also produces.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ class UnreachableEmbedder:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def client() -> TestClient:
     app = create_app(
         Settings(
             embedding_base_url="http://nothing-here:8080/v1",
@@ -37,7 +43,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
             internal_api_token=SERVICE_TOKEN,
         ),
         store=object(),  # ty: ignore[invalid-argument-type]
-        document_embedder=object(),  # ty: ignore[invalid-argument-type]
+        document_embedder=UnreachableEmbedder(),
         text_embedder=UnreachableEmbedder(),
         retriever=object(),
     )
@@ -58,6 +64,38 @@ def search(client: TestClient) -> Any:
             "generation_ids": ["33333333-3333-4333-8333-333333333333"],
             "query": "anything",
             "limit": 6,
+        },
+    )
+
+
+def index(client: TestClient) -> Any:
+    return client.post(
+        "/internal/v1/index",
+        headers={"X-Primer-Service-Token": SERVICE_TOKEN},
+        json={
+            "principal": {
+                "subject": "someone",
+                "user_id": "11111111-1111-4111-8111-111111111111",
+                "groups": [],
+            },
+            "library_id": "22222222-2222-4222-8222-222222222222",
+            "document_version_id": "44444444-4444-4444-8444-444444444444",
+            "generation_id": "33333333-3333-4333-8333-333333333333",
+            "chunks": [
+                {
+                    "chunk_id": "55555555-5555-4555-8555-555555555555",
+                    "owner_user_id": "11111111-1111-4111-8111-111111111111",
+                    "library_id": "22222222-2222-4222-8222-222222222222",
+                    "document_id": "66666666-6666-4666-8666-666666666666",
+                    "document_version_id": "44444444-4444-4444-8444-444444444444",
+                    "generation_id": "33333333-3333-4333-8333-333333333333",
+                    "ordinal": 0,
+                    "content": "The budget rose.",
+                    "embedding_text": "Finances. The budget rose.",
+                    "filename": "report.pdf",
+                    "locator": {"page": 1},
+                }
+            ],
         },
     )
 
@@ -83,3 +121,19 @@ def test_no_stack_trace_reaches_the_caller(client: TestClient) -> None:
 
     assert "Traceback" not in body
     assert "ConnectionError" not in body
+
+
+def test_indexing_is_a_dependency_failure_rather_than_a_crash(client: TestClient) -> None:
+    """A worker gets 503, which it can retry, rather than an opaque 500."""
+    response = index(client)
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "dependency_unavailable"
+
+
+def test_the_indexing_reason_names_the_embedder(client: TestClient) -> None:
+    """So the operator looks at the endpoint rather than at the document."""
+    detail = index(client).json()["detail"]
+
+    assert "embedding" in detail.lower()
+    assert "indexed" in detail.lower()
