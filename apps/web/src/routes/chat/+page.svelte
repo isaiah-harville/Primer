@@ -23,6 +23,7 @@
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { draft } from '$lib/draft.svelte';
 	import { unqualify } from '$lib/models';
+	import { citationFrom, linkCitations } from '$lib/citations';
 	import { modelChanges } from '$lib/transcript';
 	import { Transcript } from '$lib/transcript.svelte';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
@@ -54,6 +55,10 @@
 	let streaming = $state(false);
 	let sourcesOpen = $state(false);
 	let sourcesFor = $state<StreamState | null>(null);
+	//: Which passage the panel should scroll to, when it was opened by
+	//: following a marker rather than by asking for the sources.
+	let revealed = $state<{ position: number; token: number } | null>(null);
+	let revealToken = 0;
 
 	// The library is fixed when the conversation opens: follow-up questions
 	// carry only the conversation, so changing it now would change nothing.
@@ -104,6 +109,7 @@
 		question = '';
 		sourcesFor = null;
 		sourcesOpen = false;
+		revealed = null;
 		uploadError = '';
 		uploadSuccess = '';
 		uploads = [];
@@ -347,6 +353,37 @@
 	//: Where the model answering changed, so the transcript can say so.
 	let switches = $derived(modelChanges(transcript.turns));
 
+	/**
+	 * Open the sources panel on one answer.
+	 *
+	 * A position is passed only when the reader arrived by following a
+	 * marker. Asking for the sources outright opens the list at the top,
+	 * because nothing in particular was asked about - and a fresh token
+	 * every time, so following the same marker twice scrolls back to it
+	 * rather than doing nothing.
+	 */
+	function showSources(stream: StreamState, position: number | null = null) {
+		sourcesFor = stream;
+		sourcesOpen = true;
+		revealed = position === null ? null : { position, token: ++revealToken };
+	}
+
+	/**
+	 * Following a citation marker in an answer to the passage it names.
+	 *
+	 * Delegated from a wrapper rather than bound to each link, because the
+	 * links are inside rendered Markdown: this page hands the renderer text
+	 * and does not own what it produces. A link the model wrote itself
+	 * falls through and behaves like a link.
+	 */
+	function followCitation(event: MouseEvent, stream: StreamState) {
+		const anchor = (event.target as Element | null)?.closest('a');
+		const position = citationFrom(anchor?.getAttribute('href'));
+		if (position === null || position > stream.citations.length) return;
+		event.preventDefault();
+		showSources(stream, position);
+	}
+
 	function completed(stream: StreamState): MessageSummary | null {
 		if (stream.message) return stream.message;
 		// A failed stream still has an answer worth copying: the text it
@@ -572,8 +609,17 @@
 						  Rendered as Markdown, since models write it. The text
 						  is the model's, so it is rendered rather than
 						  interpreted: nothing here acts on it.
+
+						  The wrapper catches clicks on the citation markers,
+						  which are rewritten into links on the way in. An
+						  anchor raises a click on Enter as well as on a
+						  pointer, so this is reached from the keyboard too.
 						-->
-						<Markdown content={turn.stream.text} />
+						<div role="presentation" onclick={(event) => followCitation(event, turn.stream)}>
+							<Markdown
+								content={linkCitations(turn.stream.text, turn.stream.citations.length)}
+							/>
+						</div>
 					</Message.Content>
 
 					{#if turn.stream.error}
@@ -590,10 +636,7 @@
 							<Message.Actions>
 								<ResponseActions
 									{message}
-									onshowsources={() => {
-										sourcesFor = turn.stream;
-										sourcesOpen = true;
-									}}
+									onshowsources={() => showSources(turn.stream)}
 								/>
 							</Message.Actions>
 						{/if}
@@ -710,5 +753,5 @@
 </div>
 
 {#if sourcesFor}
-	<CitationPanel citations={sourcesFor.citations} bind:open={sourcesOpen} />
+	<CitationPanel citations={sourcesFor.citations} bind:open={sourcesOpen} reveal={revealed} />
 {/if}
