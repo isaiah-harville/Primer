@@ -18,12 +18,12 @@
 	import LibraryLink from '$lib/components/LibraryLink.svelte';
 	import ModelPicker from '$lib/components/ModelPicker.svelte';
 	import ResponseActions from '$lib/components/ResponseActions.svelte';
-	import { emptyStream, parseEvents, reduce, type StreamState } from '$lib/api/sse';
+	import { parseEvents, type StreamState } from '$lib/api/sse';
 	import type { ConversationSummary, MessageSummary } from '$lib/api/types';
 	import { formatBytes, rejectionFor } from '$lib/upload';
 	import { draft } from '$lib/draft.svelte';
 	import { unqualify } from '$lib/models';
-	import { turnsFrom, type Turn } from '$lib/transcript';
+	import { Transcript } from '$lib/transcript.svelte';
 	import { discardLibrary, uploadDocument } from '$lib/upload-client';
 	import type { PageData } from './$types';
 
@@ -40,7 +40,11 @@
 	// the two disagree.
 	let model = $state('');
 	let question = $state('');
-	let turns = $state<Turn[]>([]);
+	// The turns, and the machinery for writing one as it arrives. Held
+	// there rather than here because folding a stream into a turn is the
+	// one thing on this page that has to be careful about how Svelte sees
+	// a change; `transcript.svelte.ts` says why.
+	const transcript = new Transcript();
 	// Set by the first answer and sent with every question after it. Without
 	// it each question opened its own conversation, so the model never saw
 	// the turn before - and a follow-up like "and the second one?" had
@@ -82,7 +86,28 @@
 	//: An answer that has been asked for but has not started arriving. Once
 	//: the first token lands the text itself is the progress, so the bar
 	//: gives way to it rather than running alongside.
-	let thinking = $derived(streaming && (turns.at(-1)?.stream.text ?? '') === '');
+	let thinking = $derived(streaming && (transcript.last?.stream.text ?? '') === '');
+
+	/**
+	 * Everything that belongs to the thread on screen, cleared.
+	 *
+	 * The library is deliberately not here. Whether it survives depends on
+	 * how the thread was left, and the two callers disagree: opening
+	 * another conversation takes that conversation's library, while
+	 * starting over keeps the one at hand.
+	 */
+	function clearThread() {
+		shown = null;
+		conversationId = null;
+		transcript.clear();
+		question = '';
+		sourcesFor = null;
+		sourcesOpen = false;
+		uploadError = '';
+		uploadSuccess = '';
+		uploads = [];
+		offered = null;
+	}
 
 	/**
 	 * Show a stored conversation, replacing whatever is on screen.
@@ -93,17 +118,12 @@
 	function show(
 		opened: { conversation: ConversationSummary; messages: MessageSummary[] } | null
 	) {
-		shown = opened?.conversation.id ?? null;
-		conversationId = shown;
-		turns = opened ? turnsFrom(opened.messages) : [];
+		clearThread();
 		libraryId = opened?.conversation.library_id ?? '';
-		question = '';
-		sourcesFor = null;
-		sourcesOpen = false;
-		uploadError = '';
-		uploadSuccess = '';
-		uploads = [];
-		offered = null;
+		if (!opened) return;
+		shown = opened.conversation.id;
+		conversationId = shown;
+		transcript.open(opened.messages);
 	}
 
 	// Follows the load, and deliberately cannot clear anything.
@@ -141,7 +161,7 @@
 		if (to.url.searchParams.get('conversation') !== null) return;
 		// Already blank - and this fires on the shallow update too, where
 		// clearing would throw away the answer that just arrived.
-		if (untrack(() => shown) === null && untrack(() => turns).length === 0) return;
+		if (untrack(() => shown) === null && untrack(() => transcript.length) === 0) return;
 		show(null);
 	});
 
@@ -260,8 +280,7 @@
 		if (!conversationId) draft.begin(asked);
 		// The bar is a picture of this, and a picture announces nothing.
 		announcement = 'Waiting for an answer.';
-		const turn = { question: asked, stream: emptyStream() };
-		turns = [...turns, turn];
+		const answer = transcript.ask(asked);
 
 		try {
 			const response = await fetch('/chat/ask', {
@@ -283,15 +302,10 @@
 			});
 			if (!response.ok || !response.body) throw new Error('The server refused the question.');
 
-			for await (const event of parseEvents(response.body)) {
-				// Reassigning the array is what makes Svelte see the change;
-				// the state object itself is replaced by the reducer.
-				turn.stream = reduce(turn.stream, event);
-				turns = [...turns];
-			}
+			for await (const event of parseEvents(response.body)) answer.apply(event);
 			// Taken from the answer rather than assumed, so the next question
 			// continues the conversation the server actually opened.
-			conversationId = turn.stream.conversationId ?? conversationId;
+			conversationId = answer.stream.conversationId ?? conversationId;
 			if (conversationId && shown !== conversationId) {
 				// Shallow, so the thread on screen is not torn down and rebuilt
 				// from storage mid-conversation. It puts the thread in the URL,
@@ -307,34 +321,21 @@
 			// Stored now, so the real entry takes over from the stand-in.
 			draft.settle();
 		} catch {
-			turn.stream = {
-				...turn.stream,
-				error: { code: 'connection_lost', detail: 'The connection closed before the answer finished.' },
-				done: true
-			};
-			turns = [...turns];
+			answer.fail('connection_lost', 'The connection closed before the answer finished.');
 		} finally {
 			streaming = false;
 			// Cleared however the turn ended. A question that failed left no
 			// conversation behind, so a stand-in for one would be a row
 			// pointing at nothing.
 			draft.settle();
-			announcement = turn.stream.error ? 'The answer stopped early.' : 'Answer received.';
+			announcement = answer.stream.error ? 'The answer stopped early.' : 'Answer received.';
 		}
 	}
 
 	// The library and the model are kept: starting over is usually asking
 	// something else about the same documents, not changing what is at hand.
 	async function startOver() {
-		turns = [];
-		conversationId = null;
-		shown = null;
-		question = '';
-		sourcesFor = null;
-		sourcesOpen = false;
-		uploadError = '';
-		uploadSuccess = '';
-		uploads = [];
+		clearThread();
 		draft.settle();
 		announcement = 'Started a new chat.';
 		// The conversation that was open is in the URL, and leaving it there
@@ -383,7 +384,7 @@
 			  library a conversation is answered from. Absent until there is
 			  something to leave behind.
 			-->
-			{#if turns.length > 0}
+			{#if transcript.length > 0}
 				<Button size="sm" variant="ghost" onclick={startOver} disabled={streaming}>
 					<Plus size={14} aria-hidden="true" />
 					New chat
@@ -484,7 +485,7 @@
 
 	<Conversation.Root class="flex-1">
 		<Conversation.Content>
-			{#if turns.length === 0}
+			{#if transcript.length === 0}
 				<Conversation.Empty>
 					{#if libraryId}
 						Ask a question about this library. Every answer cites the passages it used.
@@ -495,7 +496,7 @@
 				</Conversation.Empty>
 			{/if}
 
-			{#each turns as turn, index (index)}
+			{#each transcript.turns as turn, index (index)}
 				<Message.Root from="user">
 					<Message.Content>{turn.question}</Message.Content>
 				</Message.Root>
