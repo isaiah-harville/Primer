@@ -44,6 +44,37 @@ request that you did this and what failed.
 skipped something, say which and why. Do not describe work as done that is
 not.
 
+## What a good change looks like
+
+The standard is not "the symptom is gone". It is that someone reading the
+result a year from now finds one obvious place where each rule lives.
+
+- **Fix the cause.** If the symptom is a stale value, find why it is stale;
+  do not add a refresh. If a message is unhelpful, find where the
+  information was thrown away; do not append a hint to the string. A change
+  that makes a bug invisible without making it impossible has moved it.
+- **One home per rule.** If two call sites are about to do the same three
+  things, give them a function and let both call it. This applies to fixture
+  data and to prose, not only to logic: the same list of fields maintained
+  in two functions will diverge, and the second one is the one nobody
+  updates.
+- **Extract on the second caller, not the first.** A helper written for one
+  use is a guess about what the second will need, and it is usually wrong.
+  Duplication is cheaper than the wrong abstraction right up until the
+  moment the second caller exists - then it is not.
+- **Do not work around a layer from outside it.** Reaching past a component
+  to correct what it produced is a repair that has to be repeated every time
+  that component changes. Fix it where it is produced, or work with what the
+  layer already understands.
+- **Leave nothing that asserts nothing.** A test with no assertions, a
+  scaffold nobody calls, a parameter no caller passes, a branch that cannot
+  be reached: delete it in the change that made it dead. It costs a reader
+  the same attention as code that does something.
+- **Say why the obvious alternative was rejected.** Where a change looks
+  roundabout, the comment that earns its place is the one naming the
+  straightforward thing that does not work, and why. Without it the next
+  person simplifies it back into the bug.
+
 ## Working with `gh`
 
 The GitHub CLI is the interface to issues, pull requests, and CI. Some
@@ -113,6 +144,10 @@ uv run pytest tests/helm -q
 If you change a contract, a route, a diagram's source, or a chart template,
 regenerate before committing. A red `main` is usually one of these.
 
+The web commands run from `apps/web`, not the repository root: the root
+workspace has Biome and nothing else, so `pnpm exec vitest` there fails to
+find the binary rather than saying anything useful.
+
 ## How tests are written here
 
 - **`tests/` holds policy tests**: things that must stay true about the
@@ -127,6 +162,49 @@ regenerate before committing. A red `main` is usually one of these.
   plausible-looking mistake.
 - **Guard against vacuous passes.** A loop over an empty list passes; assert
   that the list is not empty first.
+
+## Working in the web app
+
+- **Never mutate an object after it has gone into `$state`.** Svelte 5's
+  proxy creates a signal per property the first time that property is read,
+  and a later write to the *underlying* object does not go through the proxy
+  - so the screen keeps rendering the value from first read while the object
+  itself has moved on. Hold the plain value in a local and write it back
+  through the container (`items[index] = {...}`), rather than keeping a
+  reference to something you already handed to `$state`. This is worth
+  knowing because it fails silently and looks like a stale cache: reloading
+  the page shows the right thing, which sends you looking at the server.
+- **Runes only work in `.svelte` and `.svelte.ts` files.** Vitest collects
+  `src/**/*.test.ts`, and a `.test.ts` cannot contain `$state` - so reactive
+  logic that needs a test goes in a `.svelte.ts` module the test imports.
+  That constraint is a useful one: it pushes state out of the components and
+  into somewhere it can be asserted against.
+- **The browser never reaches Control, Chat, or Retrieval.** It calls
+  SvelteKit, which calls them with the identity headers the proxy set. A new
+  call to a service belongs in `src/lib/server/` or a `+server.ts`, never in
+  a component - a browser that could call a service directly could set those
+  headers itself and be anyone.
+- **Types come from the schemas, not from hand.** `src/lib/api/types.ts`
+  aliases the generated types so a field renamed in Python is a build
+  failure here rather than `undefined` at runtime. Add an alias there rather
+  than describing a shape a second time.
+
+## Failures that cross a service boundary
+
+A dependency failing is not the same thing as Primer being broken, and the
+difference is the whole content of the message someone reads.
+
+- **Translate a dependency's failure at the boundary that calls it**, into
+  an error named for what was actually unreachable. A transport error or a
+  raised HTTP status that reaches a catch-all arrives at a user as the
+  generic "something went wrong" that every unrelated bug also produces, and
+  sends whoever reads it to look at the wrong component.
+- **Say whether it is worth trying again.** The caller is the only party
+  that knows; a code alone does not carry it.
+- **Guard both directions of a dependency.** When one route is taught to
+  handle an unreachable dependency, the other routes that touch it usually
+  still have to be - the read path and the write path fail the same way and
+  are fixed in different files.
 
 ## Code and prose style
 
