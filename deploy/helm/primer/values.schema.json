@@ -302,9 +302,10 @@
                   "type": "string"
                 },
                 "accessMode": {
-                  "description": "Every parse replica mounts one claim, so ReadWriteOnce pins the component to a single node and caps it at one replica.",
+                  "description": "Empty follows workers.parse.replicas: one replica gets ReadWriteOnce, more than one ReadWriteMany. Set only to overrule that.",
                   "type": "string",
                   "enum": [
+                    "",
                     "ReadWriteOnce",
                     "ReadWriteMany"
                   ]
