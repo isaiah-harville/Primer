@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from primer_contracts.documents import DocumentSummary, IngestionStatus
+from primer_contracts.documents import DocumentSummary, IngestionStatus, ReindexSummary
 from primer_contracts.errors import ErrorCode
 from primer_contracts.ingestion import StageName
 from primer_service.db import get_session
@@ -306,6 +306,55 @@ async def download_document(
         media_type=record.version.media_type,
         headers={"Content-Disposition": disposition},
     )
+
+
+@router.post(
+    "/reindex",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Rebuild every document in a library",
+)
+async def reindex_library(
+    library_id: UUID,
+    principal: CurrentPrincipal,
+    session: Session,
+    publisher: Publisher,
+    background: BackgroundTasks,
+) -> ReindexSummary:
+    """Rebuild the whole library, one job per document.
+
+    This exists because the reason to reindex is almost never one document.
+    Chunking, the embedding model or the tokenizer changes and everything
+    indexed under the old settings is stale together; doing that a document
+    at a time means clicking once per row and having no idea which rows
+    were missed.
+
+    A literal path segment beside `/{document_id}`, which is unambiguous
+    only because nothing else answers POST on a single segment here. A
+    future `POST /{document_id}` would have to be declared after this one
+    or it would swallow it.
+
+    Per-document refusals are not errors. `start_reindex` declines a
+    document already being rebuilt, and on a library-wide press that is the
+    ordinary case rather than a fault, so it is counted and reported rather
+    than raised.
+    """
+    await require_library(library_id, principal.user_id, session, to_manage=True)
+    repository = DocumentRepository(session)
+    records = await repository.find_all(
+        library_id=library_id, where=access.manageable(principal.user_id)
+    )
+
+    queued = 0
+    for record in records:
+        job = await repository.start_reindex(record)
+        if job is None:
+            continue
+        queued += 1
+        # After the response, like every other publish here: the session
+        # commits with the response, and a message sent before that could
+        # hand a worker a generation the database rolled back.
+        background.add_task(publisher.publish, StageName.PARSE, job.id)
+    return ReindexSummary(queued=queued, skipped=len(records) - queued)
 
 
 @router.post(

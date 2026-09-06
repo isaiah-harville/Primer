@@ -17,8 +17,8 @@ import logging
 import pytest
 from docling.chunking import HierarchicalChunker
 from docling_core.transforms.chunker import BaseChunker
-from primer_ingestion import chunking
 from primer_contracts.retrieval import SourceLocator
+from primer_ingestion import chunking
 from primer_ingestion.chunking import Passage, _merge_fragments, build_chunker
 from primer_ingestion.config import Settings
 

@@ -495,6 +495,28 @@
         "title": "Principal",
         "type": "object"
       },
+      "ReindexSummary": {
+        "additionalProperties": false,
+        "description": "What a library-wide rebuild actually started.\n\nTwo numbers rather than one, because they differ for a reason worth\nshowing. A document already being rebuilt is not restarted - two\nworkers writing different generations of one version, only one of which\nis ever activated - so pressing the button twice queues nothing the\nsecond time. Reporting only \"queued\" would make that look like a\nfailure.",
+        "properties": {
+          "queued": {
+            "description": "Documents whose rebuild was started by this request",
+            "title": "Queued",
+            "type": "integer"
+          },
+          "skipped": {
+            "description": "Documents already being rebuilt, left alone",
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "skipped"
+        ],
+        "title": "ReindexSummary",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -873,6 +895,50 @@
           }
         },
         "summary": "Upload a document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/documents/reindex": {
+      "post": {
+        "description": "Rebuild the whole library, one job per document.\n\nThis exists because the reason to reindex is almost never one document.\nChunking, the embedding model or the tokenizer changes and everything\nindexed under the old settings is stale together; doing that a document\nat a time means clicking once per row and having no idea which rows\nwere missed.\n\nA literal path segment beside `/{document_id}`, which is unambiguous\nonly because nothing else answers POST on a single segment here. A\nfuture `POST /{document_id}` would have to be declared after this one\nor it would swallow it.\n\nPer-document refusals are not errors. `start_reindex` declines a\ndocument already being rebuilt, and on a library-wide press that is the\nordinary case rather than a fault, so it is counted and reported rather\nthan raised.",
+        "operationId": "reindex_library_api_v1_libraries__library_id__documents_reindex_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReindexSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rebuild every document in a library",
         "tags": [
           "documents"
         ]

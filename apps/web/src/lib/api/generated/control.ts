@@ -113,6 +113,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/documents/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild every document in a library
+         * @description Rebuild the whole library, one job per document.
+         *
+         *     This exists because the reason to reindex is almost never one document.
+         *     Chunking, the embedding model or the tokenizer changes and everything
+         *     indexed under the old settings is stale together; doing that a document
+         *     at a time means clicking once per row and having no idea which rows
+         *     were missed.
+         *
+         *     A literal path segment beside `/{document_id}`, which is unambiguous
+         *     only because nothing else answers POST on a single segment here. A
+         *     future `POST /{document_id}` would have to be declared after this one
+         *     or it would swallow it.
+         *
+         *     Per-document refusals are not errors. `start_reindex` declines a
+         *     document already being rebuilt, and on a library-wide press that is the
+         *     ordinary case rather than a fault, so it is counted and reported rather
+         *     than raised.
+         */
+        post: operations["reindex_library_api_v1_libraries__library_id__documents_reindex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -587,6 +623,29 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * ReindexSummary
+         * @description What a library-wide rebuild actually started.
+         *
+         *     Two numbers rather than one, because they differ for a reason worth
+         *     showing. A document already being rebuilt is not restarted - two
+         *     workers writing different generations of one version, only one of which
+         *     is ever activated - so pressing the button twice queues nothing the
+         *     second time. Reporting only "queued" would make that look like a
+         *     failure.
+         */
+        ReindexSummary: {
+            /**
+             * Queued
+             * @description Documents whose rebuild was started by this request
+             */
+            queued: number;
+            /**
+             * Skipped
+             * @description Documents already being rebuilt, left alone
+             */
+            skipped: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -850,6 +909,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reindex_library_api_v1_libraries__library_id__documents_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexSummary"];
                 };
             };
             /** @description Validation Error */

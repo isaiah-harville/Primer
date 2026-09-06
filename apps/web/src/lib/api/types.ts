@@ -24,6 +24,7 @@ export type IngestionStatus = ControlSchemas['IngestionStatus'];
 export type LibrarySummary = ControlSchemas['LibrarySummary'];
 export type LibraryShare = ControlSchemas['LibraryShare'];
 export type DocumentSummary = ControlSchemas['DocumentSummary'];
+export type ReindexSummary = ControlSchemas['ReindexSummary'];
 export type DeploymentCapabilities = ControlSchemas['DeploymentCapabilities'];
 export type Principal = ControlSchemas['Principal'];
 export type DeploymentStatus = ControlSchemas['DeploymentStatus'];
