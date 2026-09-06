@@ -1,0 +1,112 @@
+# A working configuration for a self-hosted, CPU-only inference stack.
+#
+# Copy this, then set the eight values that name things outside the chart -
+# your hostname, your identity provider, your secrets. Everything here is
+# the part that is usually guesswork, and every number in it was measured
+# rather than chosen. See docs/operations/models.md for why.
+#
+#   helm install primer oci://ghcr.io/isaiah-harville/charts/primer \
+#     -f values-selfhosted.yaml \
+#     --set ingress.host=primer.example.com \
+#     --set auth.oidc.issuerUrl=https://auth.example.com/application/o/primer/ \
+#     --set auth.oidc.clientId=primer \
+#     --set auth.oidc.existingSecret=primer-oidc \
+#     --set auth.adminGroup='Primer Admins' \
+#     --set postgresql.existingSecret=primer-postgres \
+#     --set rabbitmq.existingSecret=primer-rabbitmq \
+#     --set sourceStore.existingSecret=primer-s3
+#
+# It assumes you run the embedding and reranking servers yourself.
+# examples/inference/ has manifests for both, with the serving flags this
+# file's numbers depend on.
+
+inference:
+  embeddings:
+    # The ONNX export rather than Qwen's own repository, which publishes no
+    # ONNX and so falls back to Text Embeddings Inference's Candle backend -
+    # measured at a quarter of the throughput, and flat under batching and
+    # concurrency alike. Same model, same vectors, same 1024 dimensions.
+    #
+    # The server needs `--pooling last-token` with this repository, because
+    # the export omits the pooling config Qwen ships. TEI refuses to start
+    # without it rather than guessing, which is the behaviour you want:
+    # mean-pooling this model returns plausible vectors that retrieve badly.
+    baseUrl: http://primer-embeddings:8080/v1
+    model: onnx-community/Qwen3-Embedding-0.6B-ONNX
+    # Must match the model exactly. Not checked at startup - the first
+    # document indexed is what fails - and not changeable afterwards: a
+    # vector column keeps the width it was created with.
+    dimensions: 1024
+
+  # A cross-encoder reads the question and a passage together, which a
+  # vector search cannot: its two embeddings were made without knowing
+  # about each other.
+  #
+  # Deliberately not Qwen3-Reranker-0.6B, the obvious partner to the
+  # embedding model above. Qwen publishes it as a causal LM rather than a
+  # sequence classifier, and the conversion that fixes that publishes no
+  # ONNX - which on CPU means about twenty seconds per question. This model
+  # measured 0.17-0.27s for ten passages.
+  #
+  # No `/v1` on this URL, unlike the embeddings one: Primer posts straight
+  # to `{baseUrl}/rerank`.
+  rerank:
+    baseUrl: http://primer-reranker:8080
+    model: BAAI/bge-reranker-base
+    # Fetched by the vector search, read by the reranker, narrowed to the
+    # answer. Wider than the answer needs on purpose - the passage that
+    # answers a question is often inside the first twenty and outside the
+    # first six, which is the entire reason to rerank.
+    candidates: 20
+
+  # Passages scoring below this are dropped, even when that leaves nothing.
+  # Returning nothing is the point: without a floor, a question your library
+  # cannot answer still arrives with a full set of passages attached, and
+  # the model is handed them as evidence.
+  #
+  # Measured against the reranker above, whose scores this reads. An
+  # unanswerable question topped out near 0.0003 and the weakest genuine
+  # answer measured 0.143. Re-measure on your own corpus before trusting
+  # it, and err low: a floor that is too high discards correct answers.
+  #
+  # Remove the reranker and this number becomes meaningless - it would then
+  # be compared against cosine similarity, which runs on a different scale
+  # entirely. The two move together.
+  minScore: "0.02"
+
+  chat:
+    # Left for you. Primer reports having nowhere to send a question as
+    # itself, so a deployment with no chat endpoint is one you can log into
+    # and finish setting up - and providers can be added from the settings
+    # page instead of here.
+    #
+    # A model that shows its reasoning needs its server configured to
+    # separate it: llama.cpp wants `--reasoning-format deepseek --jinja`,
+    # vLLM wants `--reasoning-parser`. Without that the thinking arrives
+    # inside the answer.
+    baseUrl: ""
+    model: ""
+
+ingestion:
+  # Empty on purpose. The chart derives the chunk tokenizer from
+  # `inference.embeddings.model` above, which is a Hugging Face id, and a
+  # value here would be a second thing to keep in step with it.
+  chunkTokenizer: ""
+  # A paragraph-sized passage: long enough that a citation reads as prose,
+  # short enough that one embedding is about one thing.
+  maxChunkTokens: 512
+
+workers:
+  parse:
+    # Parsing is CPU-bound and holds Docling's layout models in memory - one
+    # process measured 5.4GiB against a 6GiB limit, so a second in the same
+    # container is an OOM. Scale with replicas instead, which the chart
+    # supports: the model cache access mode follows this number.
+    replicas: 1
+    concurrency: 1
+  index:
+    # This one mostly waits on the embedding endpoint, so it is bounded by
+    # that server rather than by anything here. Raising it will not make a
+    # CPU-only embedder faster - measured, it does not batch or parallelise.
+    replicas: 1
+    concurrency: 4

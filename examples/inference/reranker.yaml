@@ -1,0 +1,158 @@
+---
+# A cross-encoder for reordering what the vector search found.
+#
+# A vector search compares a question and a passage through two embeddings
+# made without knowing about each other. A reranker reads the pair together,
+# which is far better and far more expensive - so Primer searches widely and
+# cheaply, then has this read a shortlist.
+#
+# Not Qwen3-Reranker-0.6B, which would have been the obvious partner to the
+# Qwen3 embedding model beside it. Three things ruled it out, all of them
+# about this being a CPU-only deployment:
+#
+#   1. Qwen publishes it as `Qwen3ForCausalLM` - it scores by comparing the
+#      logits of "yes" and "no", not with a classification head - and TEI's
+#      /rerank needs a sequence classifier. The community conversion that
+#      does have one (tomaarsen/Qwen3-Reranker-0.6B-seq-cls) publishes no
+#      ONNX, so it would run on the Candle backend.
+#   2. Candle is the slow path this cluster just left. The embedding server,
+#      the same 28-layer 1024-hidden shape, measured ~1 sequence/sec on
+#      Candle against ~4/sec on ONNX. Reranking twenty passages there is
+#      twenty seconds added to every question.
+#   3. Twenty seconds to save the model from reading fourteen extra
+#      passages is not a trade worth making.
+#
+# bge-reranker-base is 12 layers and 768 hidden rather than 28 and 1024,
+# publishes `onnx/model.onnx`, and is the model TEI's own documentation
+# reranks with. Its 514-position limit is not a practical constraint here:
+# chunks average ~630 characters, well inside it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: primer-reranker
+  labels:
+    app: primer-reranker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: primer-reranker
+  template:
+    metadata:
+      labels:
+        app: primer-reranker
+    spec:
+      containers:
+        - name: tei
+          # The same pinned version as the embedding server, for the same
+          # reason: a server version that changes what a model returns is
+          # not something to discover by floating a tag.
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3
+          args:
+            - --model-id
+            - BAAI/bge-reranker-base
+            - --port
+            - "8080"
+            # Warmup allocates against this number, so it is what an OOM
+            # at startup is usually made of - 8192 was tried here and was
+            # killed on load. The model caps a sequence at 512 tokens
+            # anyway, so this is eight of them in a batch, and a shortlist
+            # larger than that is simply inferred in more passes.
+            - --max-batch-tokens
+            - "4096"
+            # A passage longer than the model's 512 positions is trimmed
+            # rather than failing the shortlist it arrived in.
+            - --auto-truncate
+            # Primer sends its whole shortlist in one call, so this has to
+            # be at least `inference.rerank.candidates`.
+            - --max-client-batch-size
+            - "32"
+            # Counted in inputs rather than requests, exactly as on the
+            # embedding server - a shortlist of 20 costs 20 against this.
+            - --max-concurrent-requests
+            - "256"
+            # Sized from the node otherwise, which on a 72-core machine
+            # means 64 of them - and each holds its own tokenizer. This
+            # model is XLM-RoBERTa, whose SentencePiece vocabulary is about
+            # 250k entries, so those copies are not free the way Qwen's BPE
+            # is on the embedding server beside it. That is what was still
+            # being OOM-killed after the batch was already corrected: the
+            # process reached "Ready", bound its port, and died afterwards
+            # rather than during warmup.
+            #
+            # Four is ample. Reranking happens once per search over a
+            # shortlist, not once per chunk over an ingestion run.
+            - --tokenization-workers
+            - "4"
+          env:
+            - name: HUGGINGFACE_HUB_CACHE
+              value: /data
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            # First start downloads the model. Smaller than the embedder's,
+            # so this is tighter, but still generous.
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 40
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+          resources:
+            requests:
+              # Reranking is bursty - it runs once per search rather than
+              # once per chunk - so this asks for less CPU than the
+              # embedding server, which carries whole ingestion runs.
+              cpu: "1"
+              memory: 3Gi
+            limits:
+              # 6Gi was set from the parameter ratio against the embedding
+              # server and was OOM-killed on load, seventeen times. Model
+              # size is not what decides this: the warmup batch is, and the
+              # 8192 max-batch-tokens above it was paired with made that
+              # batch twice the embedder's while the ceiling was a third.
+              # Both are corrected; this keeps room to spare rather than
+              # finding the edge again.
+              memory: 10Gi
+          volumeMounts:
+            - name: model-cache
+              mountPath: /data
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: primer-reranker-model-cache
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: primer-reranker-model-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    # The ONNX build plus the safetensors it lands beside, with room to
+    # spare - the embedding server's cache had to be grown mid-flight for
+    # exactly that reason.
+    requests:
+      storage: 6Gi
+  # storageClassName: your-storage-class
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: primer-reranker
+  labels:
+    app: primer-reranker
+spec:
+  selector:
+    app: primer-reranker
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -96,9 +96,7 @@ class ReasoningCarried(OpenAIChatGenerator):
     copy of Haystack's chunk assembly in step with theirs forever.
     """
 
-    def _handle_stream_response(  # type: ignore[override]
-        self, chat_completion: Any, callback: Any
-    ) -> Any:
+    def _handle_stream_response(self, chat_completion: Any, callback: Any) -> Any:
         remembered = {"reasoning": ""}
 
         def raw() -> Iterator[Any]:
@@ -116,9 +114,7 @@ class ReasoningCarried(OpenAIChatGenerator):
         # observability tools wrap the stream and hand back another type.
         return super()._handle_stream_response(raw(), forward)  # ty: ignore[invalid-argument-type]
 
-    async def _handle_async_stream_response(  # type: ignore[override]
-        self, chat_completion: Any, callback: Any
-    ) -> Any:
+    async def _handle_async_stream_response(self, chat_completion: Any, callback: Any) -> Any:
         """The same rescue on the async path.
 
         Primer answers on the sync one, but a generator that lost reasoning

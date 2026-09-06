@@ -16,13 +16,24 @@ import logging
 
 import pytest
 from docling.chunking import HierarchicalChunker
+from docling_core.transforms.chunker import BaseChunker
 from primer_ingestion import chunking
 from primer_ingestion.chunking import build_chunker
 from primer_ingestion.config import Settings
 
 
-def settings(**overrides: object) -> Settings:
-    return Settings(broker_url="memory://", **overrides)  # type: ignore[arg-type]
+def settings(*, chunk_tokenizer: str | None = None, max_chunk_tokens: int = 512) -> Settings:
+    """The two settings these tests vary, named rather than splatted.
+
+    `**overrides` needed a suppression to type-check, and the one it
+    carried was mypy's spelling - so it silenced nothing and the checker
+    reported the call site once per field on the model.
+    """
+    return Settings(
+        broker_url="memory://",
+        chunk_tokenizer=chunk_tokenizer,
+        max_chunk_tokens=max_chunk_tokens,
+    )
 
 
 def test_structural_chunking_announces_itself(caplog: pytest.LogCaptureFixture) -> None:
@@ -69,19 +80,27 @@ def test_a_tokenizer_bounds_chunks_by_tokens(monkeypatch: pytest.MonkeyPatch) ->
     default silently used in place of the configured value would size every
     chunk in the deployment wrongly.
     """
-    seen: dict[str, object] = {}
+    tokenizer_args: dict[str, object] = {}
+    chunker_args: dict[str, object] = {}
 
-    def record(name: str, **kwargs: object) -> object:
-        seen["name"] = name
-        seen.update(kwargs)
+    def record_tokenizer(name: str, **kwargs: object) -> object:
+        tokenizer_args["name"] = name
+        tokenizer_args.update(kwargs)
         return object()
 
-    monkeypatch.setattr(chunking.HuggingFaceTokenizer, "from_pretrained", record)
-    monkeypatch.setattr(chunking, "HybridChunker", lambda **kwargs: kwargs)
+    def record_chunker(**kwargs: object) -> BaseChunker:
+        chunker_args.update(kwargs)
+        # A real chunker, because `build_chunker` promises to return one and
+        # a test that let it return a dict would be checking a shape the
+        # caller can never receive.
+        return HierarchicalChunker()
 
-    built = build_chunker(settings(chunk_tokenizer="BAAI/bge-m3", max_chunk_tokens=1024))
+    monkeypatch.setattr(chunking.HuggingFaceTokenizer, "from_pretrained", record_tokenizer)
+    monkeypatch.setattr(chunking, "HybridChunker", record_chunker)
 
-    assert seen == {"name": "BAAI/bge-m3", "max_tokens": 1024}
+    build_chunker(settings(chunk_tokenizer="BAAI/bge-m3", max_chunk_tokens=1024))
+
+    assert tokenizer_args == {"name": "BAAI/bge-m3", "max_tokens": 1024}
     # Peers merged, which is the half of the fix that makes small pieces
     # into passages rather than only capping large ones.
-    assert built["merge_peers"] is True
+    assert chunker_args["merge_peers"] is True
