@@ -9,13 +9,14 @@ still points at them.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 from control_support import ServiceClient, UserClient
 from primer_control.models import Document, DocumentVersion, IngestionJob, SourceObject
 from primer_service.db import Database
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,21 @@ async def job_row(database: Database, document_id: str) -> IngestionJob:
         job = result.scalars().first()
     assert job is not None
     return job
+
+
+#: What a job looks like once nothing is going to touch it again.
+TERMINAL_STATE_NAMES = {"ready", "failed", "unsupported", "deleted"}
+
+
+async def expire_lease(database: Database, job_id: str) -> None:
+    """Age a lease out, which is what a worker dying looks like from here."""
+    async with database.session() as session:
+        await session.execute(
+            update(IngestionJob)
+            .where(IngestionJob.id == job_id)
+            .values(lease_expires_at=datetime.now(UTC) - timedelta(minutes=90))
+        )
+        await session.commit()
 
 
 async def upload(
@@ -105,6 +121,47 @@ async def test_reindexing_twice_does_not_start_two_builds(
 
     assert first.status_code == second.status_code == 202
     assert after_first.generation_id == after_second.generation_id
+
+
+async def test_a_document_whose_worker_died_can_be_reindexed(
+    owner: UserClient,
+    service: ServiceClient,
+    library_id: str,
+    database: Database,
+    indexed: Uploaded,
+) -> None:
+    """A stalled stage must not make a document permanently unreindexable.
+
+    A worker killed mid-stage leaves the job marked active and never
+    changes it again, so reading "active" as busy strands the document:
+    every later attempt is refused and the only way back is the database.
+    The lease is what says whether anything is really working - `claim`
+    already re-enters an active stage whose lease has run out - and this is
+    the same rule on the other side of it.
+
+    Seen on a live deployment: two documents sat in `parsing` with leases
+    ninety minutes expired, and reindex returned 202 and did nothing.
+    """
+    path = f"/api/v1/libraries/{library_id}/documents/{indexed.document_id}/reindex"
+    await owner.post(path, {})
+    await service.claim(indexed.job_id, "parse")
+    started = await job_row(database, indexed.document_id)
+    assert started.state not in TERMINAL_STATE_NAMES
+
+    # Still held: a live worker renews its lease, and must not be displaced
+    # by someone pressing the button while it works.
+    await owner.post(path, {})
+    held = await job_row(database, indexed.document_id)
+    assert held.state == started.state
+    assert str(held.generation_id) == str(started.generation_id)
+
+    await expire_lease(database, indexed.job_id)
+
+    await owner.post(path, {})
+    rebuilt = await job_row(database, indexed.document_id)
+
+    assert rebuilt.state == "queued"
+    assert str(rebuilt.generation_id) != str(started.generation_id)
 
 
 async def test_a_failed_reindex_leaves_the_old_generation_serving(

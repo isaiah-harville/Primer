@@ -176,18 +176,43 @@ class DocumentRepository:
         records = await self._records([document])
         return records[0] if records else None
 
+    @staticmethod
+    def _abandoned(job: IngestionJob) -> bool:
+        """Whether a job that looks active has actually been given up on.
+
+        A lease that has run out is the only evidence available: a worker
+        holding one renews it while it works, so an expired lease means
+        nothing is renewing it. A job with no lease at all is not abandoned
+        - it has simply never been claimed.
+        """
+        if job.lease_expires_at is None:
+            return False
+        return job.lease_expires_at < datetime.now(UTC)
+
     async def start_reindex(self, record: DocumentRecord) -> IngestionJob | None:
         """Begin a fresh generation, unless one is already being built.
 
-        Returns None when work is already in flight. Reindexing is a button a
+        Returns None when work is really in flight. Reindexing is a button a
         user can press twice, and starting a second build would leave two
         workers writing different generations of the same version with only
         one of them ever activated.
+
+        What "in flight" means is the lease, not the state. A worker killed
+        mid-stage leaves the job marked active forever, and reading that as
+        busy strands the document: the state never changes on its own, so
+        every later attempt is refused and the only way back is the
+        database. `claim` already draws the line here - it re-enters an
+        active stage whose lease has run out - and these two disagreeing is
+        what made a stalled document permanently unreindexable.
+
+        Observed on a live deployment: two documents sat in `parsing` with
+        leases ninety minutes expired, and pressing reindex returned 202
+        and did nothing.
         """
         job = record.job
         if job is None:  # pragma: no cover - every version is created with a job
             return None
-        if IngestionStatus(job.state) not in TERMINAL_STATES:
+        if IngestionStatus(job.state) not in TERMINAL_STATES and not self._abandoned(job):
             return None
 
         job.generation_id = uuid.uuid4()
