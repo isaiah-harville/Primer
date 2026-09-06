@@ -120,9 +120,17 @@
 		  is nothing behind this to scroll, and on iOS the offer alone is
 		  enough to rubber-band the whole interface.
 		-->
+		<!--
+		  Padding steps down on a phone rather than up on a desktop. 24px of
+		  gutter either side of a 360px screen is a seventh of the width
+		  spent on nothing, and what it costs is the filename column. The
+		  `sm` and `lg` steps are the values this always had, so nothing
+		  above a phone moves.
+		-->
 		<main
 			id="main"
-			class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-6 py-8 lg:px-10"
+			class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6
+				sm:px-6 sm:py-8 lg:px-10"
 		>
 			{@render children()}
 		</main>

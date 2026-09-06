@@ -206,12 +206,24 @@
 		  being sized by whatever happens to be in them. Filenames are long
 		  and would otherwise take the whole row on one page and none of it on
 		  the next.
+
+		  The minimum width starts at `sm`. Below it, 46rem on a 24rem screen
+		  is a table that is technically scrollable and practically unusable -
+		  every row read by dragging sideways and back. Narrow screens instead
+		  drop the size column and let the rest share the width they have,
+		  which is the same table rather than a second one written for phones.
 		-->
-		<table class="w-full min-w-[46rem] table-fixed border-collapse text-sm">
+		<table class="w-full table-fixed border-collapse text-sm sm:min-w-[46rem]">
 			<caption class="sr-only">Documents in {data.library.name}</caption>
 			<thead>
 				<tr class="border-y border-border">
-					{#each [{ label: 'Document', width: 'w-auto' }, { label: 'Size', width: 'w-24' }, { label: 'Status', width: 'w-[22rem]' }] as column (column.label)}
+					<!--
+					  Size is the one column a narrow screen can do without: it
+					  is the only one that answers a question nobody opened this
+					  page to ask. Document and Status are why the table exists,
+					  and the actions have to stay reachable.
+					-->
+					{#each [{ label: 'Document', width: 'w-auto' }, { label: 'Size', width: 'hidden w-24 sm:table-cell' }, { label: 'Status', width: 'w-auto sm:w-[22rem]' }] as column (column.label)}
 						<th
 							scope="col"
 							class="{column.width} px-3 py-2 text-left font-mono text-[10px] font-medium
@@ -220,7 +232,7 @@
 							{column.label}
 						</th>
 					{/each}
-					<th scope="col" class="w-24 px-3 py-2">
+					<th scope="col" class="w-16 px-3 py-2 sm:w-24">
 						<span class="sr-only">Actions</span>
 					</th>
 				</tr>
@@ -229,7 +241,7 @@
 				{#each uploading as name (name)}
 					<tr class="border-b border-border text-muted-foreground">
 						<td class="px-3 py-2.5 font-mono">{name}</td>
-						<td class="px-3 py-2.5"></td>
+						<td class="hidden px-3 py-2.5 sm:table-cell"></td>
 						<td class="px-3 py-2.5">
 							<span class="flex items-center gap-2">
 								<Spinner size={13} aria-hidden="true" />
@@ -256,7 +268,10 @@
 								{document.filename}
 							</a>
 						</td>
-						<td class="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
+						<td
+							class="hidden whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground
+								sm:table-cell"
+						>
 							{formatBytes(document.byte_size)}
 						</td>
 						<td class="px-3 py-2.5">
