@@ -752,6 +752,44 @@ def test_a_tokenizer_can_be_named_when_the_model_does_not_name_one() -> None:
     assert env["PRIMER_MAX_CHUNK_TOKENS"] == "1024"
 
 
+def test_the_parse_worker_is_told_when_to_join_fragments() -> None:
+    """Structural splitting leaves values stranded from their labels.
+
+    A form whose labels are recognised as headings chunks to one value
+    apiece - "52,000.00" on its own - which answers nothing and scores
+    against questions it cannot answer.
+    """
+    rendered = render("inference.embeddings.model=Qwen/Qwen3-Embedding-0.6B")
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert env["PRIMER_MIN_CHUNK_CHARS"] == "40"
+
+
+def test_fragments_are_joined_even_without_a_tokenizer() -> None:
+    """The case that needs it most, so it is the one that must not skip it.
+
+    The chunk ceiling is meaningless without a tokenizer and is left out
+    with it. This is not: the structural fallback merges nothing at all, so
+    it produces the most fragments of any configuration.
+    """
+    rendered = render("inference.embeddings.model=text-embedding-3-small")
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert "PRIMER_CHUNK_TOKENIZER" not in env
+    assert env["PRIMER_MIN_CHUNK_CHARS"] == "40"
+
+
+def test_joining_fragments_can_be_switched_off() -> None:
+    """Zero is off, and has to survive being rendered rather than read falsy."""
+    rendered = render(
+        "inference.embeddings.model=Qwen/Qwen3-Embedding-0.6B",
+        "ingestion.minChunkChars=0",
+    )
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert env["PRIMER_MIN_CHUNK_CHARS"] == "0"
+
+
 def test_only_the_worker_that_chunks_downloads_a_tokenizer() -> None:
     """The index worker embeds what parse already split. It needs none."""
     rendered = render("inference.embeddings.model=Qwen/Qwen3-Embedding-0.6B")

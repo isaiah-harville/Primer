@@ -298,6 +298,15 @@ is why there is a ceiling rather than no number.
 - name: PRIMER_MAX_CHUNK_TOKENS
   value: {{ .Values.ingestion.maxChunkTokens | quote }}
 {{- end }}
+{{- /*
+Emitted whether or not a tokenizer is configured, unlike the ceiling above.
+The joining runs on whatever the chunker produced, and the structural
+fallback - the state you are in without a tokenizer - is the one that
+produces the most fragments, so this is least skippable exactly when the
+tokenizer is missing.
+*/}}
+- name: PRIMER_MIN_CHUNK_CHARS
+  value: {{ .Values.ingestion.minChunkChars | quote }}
 {{- end -}}
 
 {{/*
