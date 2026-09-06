@@ -145,6 +145,24 @@ extraEnv: []
 #
 # Primer ships no model. These point at whatever you already run.
 inference:
+  # Passages scoring below this are dropped, even when that means a search
+  # returns nothing - which is the point. A vector search always returns
+  # its top k, so a question your library cannot answer comes back with a
+  # full set of passages that are only the closest of a bad lot, and the
+  # model is handed them as evidence. Measured on one library before this
+  # existed, "describe the plot of the film Casablanca" scored higher
+  # against a corpus of mortgage paperwork than a question the corpus
+  # actually answered.
+  #
+  # Empty means no floor, which is the default: the right number is a
+  # property of whatever produced the score, and this chart cannot know it.
+  # Measure before setting one - embed a question alongside a passage that
+  # answers it and one that does not, and put the floor between them. For
+  # Qwen3-Embedding-0.6B that gap runs from about 0.19 for unrelated text
+  # to about 0.65 for a passage that answers the question. With a reranker
+  # configured this applies to the reranker's score instead, which is a
+  # different scale again.
+  minScore: ""
   chat:
     # Both optional. An endpoint is not required because Primer reports
     # having nowhere to send a question as itself, and providers can be added
