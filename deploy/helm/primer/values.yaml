@@ -293,6 +293,17 @@ ingestion:
   # --auto-truncate, so a single over-long chunk is trimmed rather than
   # failing the whole batch it arrived in.
   maxChunkTokens: 512
+  # Docling runs OCR only in its PDF pipeline. A slide deck or a report is
+  # converted by one that has none, so text living inside a pasted chart or
+  # a screenshot is read by this or not at all - and that is most of what a
+  # deck is.
+  #
+  # Each picture costs a full OCR pass, so this is a bound on the slowest
+  # thing the parse worker does rather than a view on how many images a
+  # document should have. Past it the remaining pictures go unread instead
+  # of the document going unfinished. 0 turns picture reading off while
+  # leaving OCR on for PDFs.
+  maxPicturesPerDocument: 100
 
 workers:
   parse:

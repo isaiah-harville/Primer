@@ -102,6 +102,29 @@ casual testing.
 The symptom is a citation that quotes two words. The parse worker warns at
 startup when it is in this state, because nothing downstream will.
 
+## Text inside pictures
+
+Docling runs OCR in its PDF pipeline only. Every other format Primer accepts
+is converted by a pipeline that has no OCR setting at all, so a slide deck of
+pasted charts, or a report whose figures carry its numbers, converts to its
+headings and a row of empty images.
+
+Primer reads those pictures itself, with the same RapidOCR engine the PDF
+pipeline uses. `ingestion.maxPicturesPerDocument` bounds it, because each
+picture costs a full pass and a deck built entirely of screenshots is the
+slowest thing the parse worker does. Past the ceiling the remaining images
+are left unread rather than the document left unfinished; `0` turns picture
+reading off while leaving OCR on for PDFs.
+
+Pictures smaller than 64 pixels on a side are skipped. Bullets, logos and
+spacers are most of the images in a real document and there is nothing in
+them to read.
+
+The usual caveat applies and is worth repeating: recognized text is a
+transcription rather than the document's own characters, so a citation drawn
+from it can be subtly wrong in a way a reader cannot see. Chunks carry no
+marker for this.
+
 ## Reranking
 
 A vector search compares a question and a passage through two embeddings

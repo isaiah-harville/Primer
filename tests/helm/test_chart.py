@@ -760,6 +760,33 @@ def test_only_the_worker_that_chunks_downloads_a_tokenizer() -> None:
     assert "PRIMER_CHUNK_TOKENIZER" not in env
 
 
+def test_the_parse_worker_is_told_how_many_pictures_to_read() -> None:
+    """Only the PDF pipeline does OCR of its own.
+
+    Every other format is converted by one that has none, so a slide deck
+    of pasted charts is read by this or not at all - and each picture costs
+    a full pass, which is why there is a number rather than no bound.
+    """
+    env = env_of(named(render(), "Deployment", "-worker-parse"))
+
+    assert int(env["PRIMER_MAX_PICTURES_PER_DOCUMENT"]) > 0
+
+
+def test_picture_reading_can_be_turned_off_without_disabling_ocr() -> None:
+    """A deployment that wants PDFs read but not every image in a deck."""
+    rendered = render("ingestion.maxPicturesPerDocument=0")
+    env = env_of(named(rendered, "Deployment", "-worker-parse"))
+
+    assert env["PRIMER_MAX_PICTURES_PER_DOCUMENT"] == "0"
+
+
+def test_only_the_worker_that_parses_reads_pictures() -> None:
+    """The index worker embeds what parse produced. It opens no documents."""
+    env = env_of(named(render(), "Deployment", "-worker-index"))
+
+    assert "PRIMER_MAX_PICTURES_PER_DOCUMENT" not in env
+
+
 # --- Staying up ---------------------------------------------------------
 
 

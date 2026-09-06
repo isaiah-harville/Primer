@@ -276,6 +276,19 @@ tokenizer is a download.
 {{- end -}}
 {{- end -}}
 
+{{/*
+How many embedded images the parse worker will run OCR over.
+
+Only the PDF pipeline does OCR of its own; every other format Primer
+accepts is converted by a pipeline that has none, so a slide deck of pasted
+charts is read by this or not at all. Each picture costs a full pass, which
+is why there is a ceiling rather than no number.
+*/}}
+{{- define "primer.pictureEnv" -}}
+- name: PRIMER_MAX_PICTURES_PER_DOCUMENT
+  value: {{ .Values.ingestion.maxPicturesPerDocument | quote }}
+{{- end -}}
+
 {{- define "primer.chunkingEnv" -}}
 {{- $tokenizer := include "primer.chunkTokenizer" . -}}
 {{- if $tokenizer }}

@@ -63,6 +63,16 @@ class Settings(BaseSettings):
         default=True,
         description="Read text from images and slides; off makes parsing faster and offline",
     )
+    #: Pictures are read one at a time and each costs a full OCR pass, so a
+    #: deck built entirely of screenshots is the slowest thing this worker
+    #: does. The ceiling is a bound on that rather than a judgement about
+    #: how many pictures a document should have: past it, the remaining
+    #: images are left unread rather than the document left unfinished.
+    max_pictures_per_document: int = Field(
+        default=100,
+        ge=0,
+        description="How many embedded images to run OCR over before giving up on the rest",
+    )
 
     #: Normally the embedding model's own Hugging Face id. Without it chunks
     #: are split on document structure alone, which is a markedly worse
