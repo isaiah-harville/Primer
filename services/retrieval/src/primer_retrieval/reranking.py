@@ -16,10 +16,12 @@ Off unless configured. Primer ships no model, and a deployment without a
 reranker endpoint must behave exactly as it did before this existed - the
 vector ordering, truncated to what was asked for.
 
-The protocol is the one everything else here speaks: an OpenAI-compatible
-`/rerank` endpoint, which is what text-embeddings-inference, vLLM, and the
-hosted rerankers all serve. Primer holds no model and no tokenizer of its
-own for this any more than for generation.
+The protocol is a `/rerank` endpoint, which text-embeddings-inference,
+vLLM, Cohere and Jina all serve - though not identically, and the
+differences are load-bearing. TEI reads the passages from `texts` and
+returns `score`; the others read `documents` and return `relevance_score`.
+Primer sends both names and reads either, because holding no model of its
+own means it does not get to pick whose server this is.
 """
 
 from __future__ import annotations
@@ -30,6 +32,20 @@ from dataclasses import dataclass
 import httpx2
 
 logger = logging.getLogger(__name__)
+
+
+def _score_of(entry: dict) -> float:
+    """The relevance this server put on a passage, under either name.
+
+    `relevance_score` is Cohere's and `score` is TEI's. Reading only one
+    with a default is worse than failing: every passage comes back scored
+    zero, the ordering still looks reranked because the indices are
+    honoured, and a relevance floor then discards the entire result.
+    """
+    for key in ("relevance_score", "score"):
+        if key in entry:
+            return float(entry[key])
+    raise KeyError(f"a rerank result carried no score: {sorted(entry)}")
 
 
 @dataclass(frozen=True)
@@ -64,9 +80,21 @@ class Reranker:
             f"{self._base_url}/rerank",
             timeout=self._timeout,
             headers={"Authorization": f"Bearer {self._api_key or 'none'}"},
+            # The passages are sent under both names because the servers
+            # that speak this endpoint do not agree on one.
+            # text-embeddings-inference reads `texts` and rejects a request
+            # without it; Cohere, vLLM and Jina read `documents`. Sending
+            # both satisfies either, and the one that is not read is
+            # ignored rather than refused - checked against TEI, which
+            # accepts the pair and answers normally.
+            #
+            # Probing instead would mean a wasted round trip on every
+            # deployment whose server was not guessed first, and hardcoding
+            # one would make Primer's choice of endpoint a fork.
             json={
                 "model": self._model,
                 "query": query,
+                "texts": passages,
                 "documents": passages,
                 "top_n": keep,
             },
@@ -76,10 +104,7 @@ class Reranker:
         # Servers differ on the envelope - some return a bare list, some wrap
         # it in `results` - and agree on the entries.
         entries = body.get("results", body) if isinstance(body, dict) else body
-        ranked = [
-            Reranked(index=int(entry["index"]), score=float(entry.get("relevance_score", 0.0)))
-            for entry in entries
-        ]
+        ranked = [Reranked(index=int(entry["index"]), score=_score_of(entry)) for entry in entries]
         return ranked[:keep]
 
 

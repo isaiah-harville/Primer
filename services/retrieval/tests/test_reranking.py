@@ -171,3 +171,79 @@ def test_an_unscored_passage_is_treated_as_no_match() -> None:
     from primer_retrieval.app import above_floor
 
     assert above_floor([Scored("x", None)], settings_with(0.1)) == []
+# --- The wire format ----------------------------------------------------
+#
+# `reorder` swallows a failed rerank and falls back to the vector ordering,
+# which is right - a reranker that is down should not lose the answer - and
+# it means every mistake in this file is silent. A reranker that 422s on
+# every request looks exactly like one that is working.
+#
+# Checked against a running text-embeddings-inference: Primer's original
+# payload was refused with "missing field `texts`", and its response parser
+# read `relevance_score` from a body that carries `score`.
+
+
+class Recorder:
+    """Stands in for the HTTP call, capturing what was sent."""
+
+    def __init__(self, body: object) -> None:
+        self.body = body
+        self.sent: dict = {}
+
+    def __call__(self, url: str, **kwargs: object) -> "Recorder":
+        self.sent = kwargs["json"]  # type: ignore[assignment]
+        return self
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> object:
+        return self.body
+
+
+def rank_with(monkeypatch: pytest.MonkeyPatch, body: object) -> tuple[list[Reranked], dict]:
+    from primer_retrieval import reranking
+
+    recorder = Recorder(body)
+    monkeypatch.setattr(reranking.httpx2, "post", recorder)
+    reranker = Reranker("http://rerank", "a-model", None, 5.0)
+    return reranker.rank("a question", ["first", "second"], keep=2), recorder.sent
+
+
+def test_the_passages_are_sent_under_both_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TEI reads `texts` and refuses without it; the others read `documents`.
+
+    Primer holds no model of its own, so it does not get to pick whose
+    server this is.
+    """
+    _, sent = rank_with(monkeypatch, [{"index": 0, "score": 0.9}])
+
+    assert sent["texts"] == ["first", "second"]
+    assert sent["documents"] == ["first", "second"]
+
+
+def test_a_tei_score_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TEI returns a bare list of `score`."""
+    ranked, _ = rank_with(
+        monkeypatch, [{"index": 1, "score": 0.48}, {"index": 0, "score": 0.00004}]
+    )
+
+    assert [(r.index, round(r.score, 5)) for r in ranked] == [(1, 0.48), (0, 0.00004)]
+
+
+def test_a_cohere_relevance_score_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cohere, vLLM and Jina wrap results and call the field something else."""
+    ranked, _ = rank_with(monkeypatch, {"results": [{"index": 1, "relevance_score": 0.7}]})
+
+    assert [(r.index, r.score) for r in ranked] == [(1, 0.7)]
+
+
+def test_a_result_with_no_score_is_not_read_as_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Defaulting to zero is worse than failing.
+
+    Every passage comes back scored zero, the ordering still looks reranked
+    because the indices are honoured, and a relevance floor then discards
+    the whole result - with nothing anywhere saying why.
+    """
+    with pytest.raises(KeyError):
+        rank_with(monkeypatch, [{"index": 0}])
