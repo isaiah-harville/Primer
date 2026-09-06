@@ -12,6 +12,7 @@ regression dressed as a feature.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import pytest
 from primer_retrieval.reranking import Reranked, Reranker, reorder
@@ -171,6 +172,8 @@ def test_an_unscored_passage_is_treated_as_no_match() -> None:
     from primer_retrieval.app import above_floor
 
     assert above_floor([Scored("x", None)], settings_with(0.1)) == []
+
+
 # --- The wire format ----------------------------------------------------
 #
 # `reorder` swallows a failed rerank and falls back to the vector ordering,
@@ -186,22 +189,22 @@ def test_an_unscored_passage_is_treated_as_no_match() -> None:
 class Recorder:
     """Stands in for the HTTP call, capturing what was sent."""
 
-    def __init__(self, body: object) -> None:
+    def __init__(self, body: Any) -> None:
         self.body = body
-        self.sent: dict = {}
+        self.sent: dict[str, Any] = {}
 
-    def __call__(self, url: str, **kwargs: object) -> "Recorder":
-        self.sent = kwargs["json"]  # type: ignore[assignment]
+    def __call__(self, url: str, **kwargs: Any) -> Recorder:
+        self.sent = kwargs["json"]
         return self
 
     def raise_for_status(self) -> None:
         return None
 
-    def json(self) -> object:
+    def json(self) -> Any:
         return self.body
 
 
-def rank_with(monkeypatch: pytest.MonkeyPatch, body: object) -> tuple[list[Reranked], dict]:
+def rank_with(monkeypatch: pytest.MonkeyPatch, body: Any) -> tuple[list[Reranked], dict[str, Any]]:
     from primer_retrieval import reranking
 
     recorder = Recorder(body)
