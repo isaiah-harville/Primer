@@ -54,6 +54,22 @@ class Settings(BaseSettings):
     #: it is the entire reason to rerank.
     rerank_candidates: int = Field(default=20, ge=1, le=200)
 
+    #: Passages scoring below this are not returned at all, even when that
+    #: means returning nothing.
+    #:
+    #: Off unless set, because the right value is a property of whatever
+    #: produced the score and this service cannot know it. Cosine similarity
+    #: from one embedding model is not comparable to cosine from another,
+    #: and neither is comparable to a reranker's output - so a default here
+    #: would either drop good passages on one deployment or admit everything
+    #: on the next, and both failures are silent.
+    #:
+    #: Measure before setting one. Embed a question alongside a passage that
+    #: answers it and a passage that does not, and put the floor between the
+    #: two. For Qwen3-Embedding-0.6B, unrelated text measures around 0.19
+    #: and a passage that answers the question around 0.63 to 0.69.
+    min_score: float | None = Field(default=None, ge=0.0, le=1.0)
+
     @property
     def reranking_enabled(self) -> bool:
         """Both are needed. An endpoint with no model cannot be called."""

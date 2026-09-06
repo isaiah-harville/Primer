@@ -126,6 +126,17 @@ post-renderer.
 {{- end -}}
 
 {{- define "primer.embeddingEnv" -}}
+{{- /*
+Passages scoring below this are not returned at all, even when that leaves
+nothing. Emitted only when set, because the right value belongs to whatever
+produced the score - cosine from one embedding model is not comparable to
+cosine from another, nor to a reranker's output - so a default here would
+drop good passages on one deployment and admit everything on the next.
+*/}}
+{{- if .Values.inference.minScore }}
+- name: PRIMER_MIN_SCORE
+  value: {{ .Values.inference.minScore | quote }}
+{{- end }}
 - name: PRIMER_EMBEDDING_BASE_URL
   value: {{ required "inference.embeddings.baseUrl is required" .Values.inference.embeddings.baseUrl | quote }}
 - name: PRIMER_EMBEDDING_MODEL

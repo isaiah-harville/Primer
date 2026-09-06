@@ -678,6 +678,25 @@ def test_the_parse_worker_runs_one_document_at_a_time(
     assert command[command.index("--concurrency") + 1] == "1"
 
 
+def test_no_relevance_floor_unless_one_is_measured() -> None:
+    """The scale belongs to the scorer, so the chart must not guess.
+
+    A default here would drop good passages on a deployment using one
+    embedding model and admit everything on the next, and both failures are
+    silent.
+    """
+    env = env_of(named(render(), "Deployment", "-retrieval"))
+
+    assert "PRIMER_MIN_SCORE" not in env
+
+
+def test_a_measured_floor_reaches_retrieval() -> None:
+    rendered = render("inference.minScore=0.45")
+    env = env_of(named(rendered, "Deployment", "-retrieval"))
+
+    assert env["PRIMER_MIN_SCORE"] == "0.45"
+
+
 # --- Chunking -----------------------------------------------------------
 #
 # The chart shipped for a long time without wiring any of this, so every

@@ -204,7 +204,34 @@ def search(payload: SearchRequest, state: State) -> SearchResult:
         lambda hit: hit.content or "",
         payload.limit,
     )
-    return SearchResult(chunks=tuple(to_retrieved(hit) for hit in kept))
+    return SearchResult(
+        chunks=tuple(to_retrieved(hit) for hit in above_floor(kept, state.settings))
+    )
+
+
+def above_floor(hits: list[Any], settings: Settings) -> list[Any]:
+    """Drop passages that answer the question no better than anything else.
+
+    This is the one place Retrieval discards results after the fact, which
+    the scope filter deliberately never does - and the difference is what
+    each is for. Scope decides what a caller is allowed to see, so it
+    belongs in the query where it cannot be forgotten. Relevance decides
+    whether what was found is worth showing, which cannot be known until it
+    has been scored.
+
+    Returning fewer than `limit` is the point rather than a side effect. A
+    vector search always returns its top k, so a question the library
+    cannot answer comes back with a full set of passages that are merely
+    the closest of a bad lot - and everything downstream treats them as
+    evidence. The model is told to say when the passages do not contain the
+    answer, but it is being asked to overrule what looks like retrieved
+    proof, and a small model will not.
+
+    Nothing is dropped when no floor is configured, which is the default.
+    """
+    if settings.min_score is None:
+        return hits
+    return [hit for hit in hits if (hit.score or 0.0) >= settings.min_score]
 
 
 @router.post("/delete", summary="Remove one generation's chunks")

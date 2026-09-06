@@ -106,3 +106,68 @@ def test_nothing_retrieved_asks_nothing() -> None:
 def test_never_more_than_asked_for(keep: int) -> None:
     found = hits(*[str(index) for index in range(10)])
     assert len(reorder(Fake(order=list(range(10))), "q", found, text_of, keep)) <= keep
+
+
+# --- The relevance floor ------------------------------------------------
+#
+# A vector search always returns its top k, so a question the library
+# cannot answer comes back with a full set of passages that are merely the
+# closest of a bad lot. Measured on a live library before this existed:
+# "Describe the plot of the film Casablanca" scored 0.392 against a corpus
+# of mortgage paperwork, beating a question the corpus did answer.
+
+
+@dataclass
+class Scored:
+    """Stands in for a retrieved chunk that has been ranked."""
+
+    content: str
+    score: float | None
+
+
+def settings_with(floor: float | None):
+    from primer_retrieval.config import Settings
+
+    return Settings(database_url="postgresql://x/y", min_score=floor)
+
+
+def test_nothing_is_dropped_when_no_floor_is_set() -> None:
+    """The default, and every deployment that predates this."""
+    from primer_retrieval.app import above_floor
+
+    found = [Scored("a", 0.9), Scored("b", 0.01)]
+
+    assert above_floor(found, settings_with(None)) == found
+
+
+def test_passages_below_the_floor_are_not_returned() -> None:
+    from primer_retrieval.app import above_floor
+
+    found = [Scored("answers it", 0.71), Scored("near miss", 0.44), Scored("unrelated", 0.19)]
+
+    kept = above_floor(found, settings_with(0.5))
+
+    assert [hit.content for hit in kept] == ["answers it"]
+
+
+def test_a_question_the_library_cannot_answer_returns_nothing() -> None:
+    """Returning fewer than `limit` is the point, not a side effect.
+
+    An empty result is a true statement about the corpus. A full one made
+    of the least bad passages is not, and everything downstream reads it as
+    evidence.
+    """
+    from primer_retrieval.app import above_floor
+
+    assert above_floor([Scored("x", 0.33), Scored("y", 0.31)], settings_with(0.5)) == []
+
+
+def test_an_unscored_passage_is_treated_as_no_match() -> None:
+    """A missing score is not a high one.
+
+    Reading None as zero keeps a store that omits scores from silently
+    admitting everything the floor exists to exclude.
+    """
+    from primer_retrieval.app import above_floor
+
+    assert above_floor([Scored("x", None)], settings_with(0.1)) == []

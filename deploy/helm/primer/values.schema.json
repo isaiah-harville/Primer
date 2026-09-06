@@ -213,6 +213,13 @@
               "type": "string"
             }
           }
+        },
+        "minScore": {
+          "description": "Drop passages scoring below this. Empty means no floor. The scale belongs to whatever produced the score, so measure before setting one.",
+          "type": [
+            "string",
+            "number"
+          ]
         }
       }
     },
