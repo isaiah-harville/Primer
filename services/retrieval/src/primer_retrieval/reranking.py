@@ -133,4 +133,18 @@ def reorder(
         return hits[:keep]
     # An index the server invented would be a passage nobody retrieved, so
     # anything out of range is dropped rather than trusted.
-    return [hits[entry.index] for entry in ranked if 0 <= entry.index < len(hits)]
+    kept = []
+    for entry in ranked:
+        if not 0 <= entry.index < len(hits):
+            continue
+        hit = hits[entry.index]
+        # The reranker's score replaces the vector one, because from here on
+        # it is the score that means something: it decided this ordering, and
+        # leaving the cosine value in place would report a number that no
+        # longer explains the position it sits at. A relevance floor reading
+        # these would also be comparing against the wrong scale entirely -
+        # cosine from this embedding model runs about 0.19 to 0.69, while a
+        # cross-encoder's output is far wider and differently shaped.
+        hit.score = entry.score
+        kept.append(hit)
+    return kept

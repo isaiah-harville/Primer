@@ -20,9 +20,10 @@ from primer_retrieval.reranking import Reranked, Reranker, reorder
 
 @dataclass
 class Hit:
-    """Stands in for a retrieved chunk; only its text is read."""
+    """Stands in for a retrieved chunk: its text is read, its score written."""
 
     content: str
+    score: float | None = None
 
 
 def hits(*texts: str) -> list[Hit]:
@@ -250,3 +251,39 @@ def test_a_result_with_no_score_is_not_read_as_zero(monkeypatch: pytest.MonkeyPa
     """
     with pytest.raises(KeyError):
         rank_with(monkeypatch, [{"index": 0}])
+
+
+class Ranks(Reranker):
+    """A reranker that returns exactly these entries, scores included."""
+
+    def __init__(self, entries: list[Reranked]) -> None:
+        self.entries = entries
+
+    def rank(self, query: str, passages: list[str], keep: int) -> list[Reranked]:
+        return self.entries[:keep]
+
+
+def test_the_rerankers_score_replaces_the_vector_one() -> None:
+    """From here on it is the score that means something.
+
+    It decided the ordering, so leaving the cosine value in place would
+    report a number that no longer explains the position it sits at - and a
+    relevance floor reading these would compare against the wrong scale
+    entirely. Cosine from the embedding model runs about 0.19 to 0.69,
+    while a cross-encoder's output is far wider and differently shaped.
+    """
+    found = [Hit("first", score=0.61), Hit("second", score=0.58)]
+
+    kept = reorder(Ranks([Reranked(1, 0.84), Reranked(0, 0.0003)]), "q", found, text_of, keep=2)
+
+    assert [(hit.content, hit.score) for hit in kept] == [("second", 0.84), ("first", 0.0003)]
+
+
+def test_a_failed_rerank_leaves_the_vector_scores_alone() -> None:
+    """The fallback is the ordering Primer would have given a moment ago,
+    and its scores are the ones that produced it."""
+    found = [Hit("first", score=0.61), Hit("second", score=0.58)]
+
+    kept = reorder(Fake(fail=True), "q", found, text_of, keep=2)
+
+    assert [(hit.content, hit.score) for hit in kept] == [("first", 0.61), ("second", 0.58)]
