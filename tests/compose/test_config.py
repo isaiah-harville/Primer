@@ -39,8 +39,19 @@ RESOLVE_ENV = {
 
 
 def resolve(*files: Path) -> dict[str, Any]:
-    """Ask Docker to resolve the files, so the test sees what Compose sees."""
-    command = ["docker", "compose"]
+    """Ask Docker to resolve the files, so the test sees what Compose sees.
+
+    `--env-file` names `env.example` explicitly, because Compose otherwise
+    loads whatever `deploy/compose/.env` a developer happens to have. That
+    file is gitignored and full of real credentials on any machine the
+    stack has actually been run on, so the secrets check below was reading
+    private local state and asserting things about it - passing in CI only
+    because CI has no `.env` to find.
+
+    The committed example is what these tests mean to check anyway: it is
+    the file an operator is told to copy.
+    """
+    command = ["docker", "compose", "--env-file", str(COMPOSE_DIR / "env.example")]
     for path in files:
         command += ["-f", str(path)]
     command.append("config")
@@ -100,7 +111,15 @@ def test_credentials_have_no_defaults(compose_config: dict[str, Any]) -> None:
 def test_the_resolved_configuration_contains_no_real_secrets(
     compose_config: dict[str, Any],
 ) -> None:
-    """Only the placeholders this test supplied should appear."""
+    """Only the placeholders this test supplied, and the committed example.
+
+    Worth stating what this can and cannot catch: it reads `env.example`
+    and the compose file, both of which are in the repository, so it
+    guards against a credential being committed. A developer's own `.env`
+    is deliberately out of scope - it is gitignored, it is meant to hold
+    real keys, and resolving it here would fail this test on every machine
+    where the stack works.
+    """
     rendered = yaml.safe_dump(compose_config)
     assert "sk-" not in rendered
     assert "BEGIN PRIVATE KEY" not in rendered
