@@ -86,6 +86,15 @@ class Settings(BaseSettings):
         gt=0,
         description="Token ceiling per chunk; ignored when no tokenizer is configured",
     )
+    #: Chunking splits on structure first, and a document whose labels are
+    #: recognised as headings ends up one value per chunk. Passages under
+    #: this length are joined to their neighbours afterwards - see
+    #: `_merge_fragments`. Zero switches the joining off.
+    min_chunk_chars: int = Field(
+        default=40,
+        ge=0,
+        description="Passages shorter than this are joined to the ones beside them",
+    )
     max_chunks_per_document: int = Field(
         default=5000,
         gt=0,

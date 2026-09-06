@@ -147,10 +147,29 @@ async def _chunks(upload: UploadFile, size: int) -> AsyncIterator[bytes]:
         yield chunk
 
 
-async def require_library(library_id: UUID, principal_id: UUID, session: AsyncSession) -> Library:
-    library = await LibraryRepository(session).get(
-        library_id, where=access.manageable(principal_id)
-    )
+async def require_library(
+    library_id: UUID,
+    principal_id: UUID,
+    session: AsyncSession,
+    *,
+    to_manage: bool,
+) -> Library:
+    """The library gate, at the same strength as the thing behind it.
+
+    This asked for `manageable` whichever endpoint called it, so a library
+    shared with someone refused them its documents: reading the list, a
+    single status, or the bytes all failed at the gate before the
+    per-document `readable` check below them could allow anything. A shared
+    library therefore opened to "no document with that identifier is
+    available to you" - the reader could see the library named in their
+    sidebar and nothing inside it.
+
+    Which check to apply is the caller's to say, because it is the caller
+    that knows whether it is about to read or to change. It is passed by
+    keyword so neither can be chosen by accident.
+    """
+    policy = access.manageable(principal_id) if to_manage else access.readable(principal_id)
+    library = await LibraryRepository(session).get(library_id, where=policy)
     if library is None:
         raise not_found()
     return library
@@ -188,7 +207,7 @@ async def store_version(
 async def list_documents(
     library_id: UUID, principal: CurrentPrincipal, session: Session
 ) -> list[DocumentSummary]:
-    await require_library(library_id, principal.user_id, session)
+    await require_library(library_id, principal.user_id, session, to_manage=False)
     records = await DocumentRepository(session).find_all(
         library_id=library_id, where=access.readable(principal.user_id)
     )
@@ -205,7 +224,7 @@ async def upload_document(
     background: BackgroundTasks,
     file: Upload,
 ) -> DocumentSummary:
-    await require_library(library_id, principal.user_id, session)
+    await require_library(library_id, principal.user_id, session, to_manage=True)
     record = await store_version(
         document=None, library_id=library_id, upload=file, store=store, session=session
     )
@@ -233,7 +252,7 @@ async def replace_document(
     Earlier versions stay readable so a citation pinned to a version keeps
     resolving to the text that was actually quoted.
     """
-    await require_library(library_id, principal.user_id, session)
+    await require_library(library_id, principal.user_id, session, to_manage=True)
     repository = DocumentRepository(session)
     existing = await repository.get(
         document_id, library_id=library_id, where=access.manageable(principal.user_id)
@@ -255,7 +274,7 @@ async def replace_document(
 async def read_document(
     library_id: UUID, document_id: UUID, principal: CurrentPrincipal, session: Session
 ) -> DocumentSummary:
-    await require_library(library_id, principal.user_id, session)
+    await require_library(library_id, principal.user_id, session, to_manage=False)
     record = await DocumentRepository(session).get(
         document_id, library_id=library_id, where=access.readable(principal.user_id)
     )
@@ -272,7 +291,7 @@ async def download_document(
     session: Session,
     store: Store,
 ) -> StreamingResponse:
-    await require_library(library_id, principal.user_id, session)
+    await require_library(library_id, principal.user_id, session, to_manage=False)
     record = await DocumentRepository(session).get(
         document_id, library_id=library_id, where=access.readable(principal.user_id)
     )
@@ -309,7 +328,7 @@ async def reindex_document(
     only one ever activated, so a rebuild already in flight is reported as
     it stands rather than restarted.
     """
-    await require_library(library_id, principal.user_id, session)
+    await require_library(library_id, principal.user_id, session, to_manage=True)
     repository = DocumentRepository(session)
     record = await repository.get(
         document_id, library_id=library_id, where=access.manageable(principal.user_id)
@@ -342,7 +361,7 @@ async def delete_document(
     means a slow or failing cleanup never leaves a deleted document
     answering questions in the meantime.
     """
-    await require_library(library_id, principal.user_id, session)
+    await require_library(library_id, principal.user_id, session, to_manage=True)
     repository = DocumentRepository(session)
     record = await repository.get(
         document_id, library_id=library_id, where=access.manageable(principal.user_id)

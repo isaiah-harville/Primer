@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -30,6 +30,22 @@ logger = logging.getLogger(__name__)
 #: generation, and position. Re-running a stage produces the same ids, which
 #: is what lets an interrupted index build be finished rather than doubled.
 CHUNK_NAMESPACE = uuid.UUID("9c8f1c62-8e0e-5f1c-9d3a-2b4c6e8a0d11")
+
+#: The length below which a passage is a fragment rather than a short
+#: answer. Deliberately far below any prose: the fragments this exists for
+#: measure 8 to 15 characters ("52,000.00", "Homeowners"), while the
+#: shortest legitimate passage in the test corpus is 58 ("Recall at rank
+#: ten was the decisive metric for this corpus."). A threshold up near
+#: ordinary sentence length does real damage - at 200 it merged a
+#: two-section paper into a single chunk and took its section locators
+#: with it.
+DEFAULT_MIN_CHUNK_CHARS = 40
+
+#: Stands in for a token budget when there is no tokenizer to ask, which is
+#: only the structural fallback. Generous on purpose: it bounds how much
+#: joining may do, and every part of a join was already a chunk the chunker
+#: was willing to emit.
+FALLBACK_MERGE_CHARS = 2000
 
 
 @dataclass(frozen=True)
@@ -162,6 +178,89 @@ def _from_text_items(document: DoclingDocument) -> Iterator[Passage]:
         yield Passage(content=text, embedding_text=text, locator=SourceLocator(page=page))
 
 
+def _sizing(chunker: BaseChunker) -> tuple[Callable[[str], int], int]:
+    """How to measure a passage, and how much of it will fit.
+
+    The chunker's own tokenizer, so a join is bounded by the same budget the
+    chunks were built against rather than by a guess about it.
+    """
+    tokenizer = getattr(chunker, "tokenizer", None)
+    if tokenizer is None:
+        return len, FALLBACK_MERGE_CHARS
+    return tokenizer.count_tokens, tokenizer.get_max_tokens()
+
+
+def _joined(run: list[Passage]) -> Passage:
+    """One passage from several, keeping each side of the split it was given.
+
+    The contents are joined to each other and the contextualized texts to
+    each other, rather than the contextualized text being promoted into the
+    content. A citation has to be findable in the source it points at, and
+    `contextualize` inserts headings around the text rather than reproducing
+    it - so using it as content would quote the document words it does not
+    contain.
+    """
+    if len(run) == 1:
+        return run[0]
+    return Passage(
+        content="\n".join(passage.content for passage in run),
+        # The headings survive here, which is where they matter: they are
+        # what says the number is a wage rather than a withholding, and
+        # they are in a different passage from the number itself.
+        embedding_text="\n".join(passage.embedding_text for passage in run),
+        locator=run[0].locator,
+    )
+
+
+def _merge_fragments(
+    passages: Iterable[Passage], *, size: Callable[[str], int], budget: int, min_chars: int
+) -> list[Passage]:
+    """Join passages too short to retrieve on to the ones beside them.
+
+    `HybridChunker` merges undersized chunks already, but only peers: items
+    sharing a heading. A form or a statement defeats that, because its
+    labels are recognised as headings, so every value sits alone under one
+    of its own and has no peer to merge with. Measured on a W2-shaped
+    document: five chunks averaging 10 characters, one of them the bare
+    string "52,000.00".
+
+    A passage like that is unretrievable twice over. Nothing anyone would
+    ask resembles it, and it drags the whole index down with it - a bare
+    "Homeowners" is short enough that any question mentioning a person
+    scores against it, which is how a fragment becomes a top hit for a
+    question it cannot answer.
+
+    So a fragment is joined across the heading boundary the chunker will
+    not cross, while the result still fits the embedding model. Passages
+    already long enough are left exactly as they were.
+    """
+    runs: list[list[Passage]] = []
+    # Summed rather than measured on the joined text: tokenizing each
+    # passage once is linear, and re-tokenizing a growing string on every
+    # join is not. The sum can only overstate the total - merging text
+    # never costs more tokens than its parts - so the budget holds.
+    used = 0
+    for passage in passages:
+        cost = size(passage.embedding_text)
+        previous = runs[-1][-1] if runs else None
+        joins = (
+            previous is not None
+            # Never across a page. A page is a real boundary in the source,
+            # and a passage carries only one page number, so joining two
+            # would cite a reader to a page that holds half of what they
+            # were shown. Slides are the sharp case: one page each.
+            and previous.locator.page == passage.locator.page
+            and (len(previous.content) < min_chars or len(passage.content) < min_chars)
+        )
+        if joins and used + cost <= budget:
+            runs[-1].append(passage)
+            used += cost
+            continue
+        runs.append([passage])
+        used = cost
+    return [_joined(run) for run in runs]
+
+
 def to_chunks(
     document: DoclingDocument,
     chunker: BaseChunker,
@@ -169,6 +268,7 @@ def to_chunks(
     *,
     max_chunks: int,
     ocr_attempted: bool = True,
+    min_chars: int = DEFAULT_MIN_CHUNK_CHARS,
 ) -> list[DocumentChunk]:
     """Convert a converted document into Primer's wire chunks.
 
@@ -176,7 +276,15 @@ def to_chunks(
     silently shortened document would answer questions from half its content
     and give no sign that the other half was dropped.
     """
-    passages = list(_from_chunker(document, chunker)) or list(_from_text_items(document))
+    size, budget = _sizing(chunker)
+    chunked = _merge_fragments(
+        _from_chunker(document, chunker), size=size, budget=budget, min_chars=min_chars
+    )
+    # The fallback is not joined. It runs only for a document that is
+    # nothing but headings, where there is no heading-from-value split to
+    # repair - every item is a heading - and joining them would turn an
+    # outline into one paragraph.
+    passages = chunked or list(_from_text_items(document))
 
     chunks: list[DocumentChunk] = []
     for ordinal, passage in enumerate(passages):

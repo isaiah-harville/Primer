@@ -221,6 +221,7 @@ class DocumentParser:
                 context,
                 max_chunks=self._settings.max_chunks_per_document,
                 ocr_attempted=self._settings.enable_ocr,
+                min_chars=self._settings.min_chunk_chars,
             )
             self._check_deadline(started, "chunking")
             return chunks

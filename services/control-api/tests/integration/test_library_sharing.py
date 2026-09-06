@@ -329,3 +329,70 @@ async def test_deleting_a_library_ends_the_sharing_of_it(
 
     response = await colleague.get(f"/api/v1/libraries/{library['id']}{path}")
     assert response.status_code == 404
+
+
+async def test_a_shared_library_shows_its_documents(
+    owner: UserClient, colleague: UserClient
+) -> None:
+    """The point of sharing one, and it was refused.
+
+    The library gate in the documents router asked for `manageable`
+    whichever endpoint was behind it, so every read failed on the library
+    before reaching the per-document check that would have allowed it. A
+    reader saw the library named in their sidebar, opened it, and got "no
+    document with that identifier is available to you".
+
+    Nothing caught this because the shared-library tests that touch
+    `/documents` all assert a 404 they would get anyway - after the library
+    is deleted, or for a stranger.
+    """
+    await register(colleague)
+    library = await create_library(owner)
+    await owner.upload(library["id"], "paper.txt", b"evidence")
+    await share(owner, library["id"], COLLEAGUE_EMAIL)
+
+    response = await colleague.get(f"/api/v1/libraries/{library['id']}/documents")
+
+    assert response.status_code == 200, response.text
+    assert [document["filename"] for document in response.json()] == ["paper.txt"]
+
+
+async def test_a_reader_can_open_a_shared_document_and_its_bytes(
+    owner: UserClient, colleague: UserClient
+) -> None:
+    """Reading the list is no use if every document in it is a 404."""
+    await register(colleague)
+    library = await create_library(owner)
+    document = (await owner.upload(library["id"], "paper.txt", b"evidence")).json()
+    await share(owner, library["id"], COLLEAGUE_EMAIL)
+
+    base = f"/api/v1/libraries/{library['id']}/documents/{document['id']}"
+    assert (await colleague.get(base)).status_code == 200
+    content = await colleague.get(f"{base}/content")
+    assert content.status_code == 200
+    assert content.content == b"evidence"
+
+
+@pytest.mark.parametrize("action", ["reindex", "delete"])
+async def test_reading_a_shared_library_still_grants_nothing_else(
+    owner: UserClient, colleague: UserClient, action: str
+) -> None:
+    """Relaxing the gate for reads must not relax it for anything else.
+
+    This is the risk in the fix: one gate served every endpoint, and
+    loosening it in the wrong place would hand every reader of a library
+    the ability to rebuild or destroy what is in it.
+    """
+    await register(colleague)
+    library = await create_library(owner)
+    document = (await owner.upload(library["id"], "paper.txt", b"evidence")).json()
+    await share(owner, library["id"], COLLEAGUE_EMAIL)
+
+    base = f"/api/v1/libraries/{library['id']}/documents/{document['id']}"
+    if action == "reindex":
+        response = await colleague.post(f"{base}/reindex", {})
+    else:
+        response = await colleague.delete(base)
+
+    assert response.status_code == 404, response.text
+    assert (await owner.get(base)).status_code == 200
