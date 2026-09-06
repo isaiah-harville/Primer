@@ -219,6 +219,85 @@ def test_a_stored_document_keeps_its_verbatim_text() -> None:
     assert stored[0].embedding == [0.5] * 8
 
 
+def chunk_for(content: str = "The corpus was small.", embedding_text: str | None = None):
+    from primer_contracts.chunks import DocumentChunk
+
+    return DocumentChunk(
+        chunk_id=uuid.uuid4(),
+        ordinal=0,
+        library_id=uuid.UUID(LIBRARY_ID),
+        document_id=uuid.uuid4(),
+        document_version_id=uuid.UUID(VERSION_ID),
+        owner_user_id=uuid.uuid4(),
+        generation_id=uuid.UUID(GENERATION_ID),
+        content=content,
+        embedding_text=content if embedding_text is None else embedding_text,
+        filename="paper.pdf",
+    )
+
+
+def test_a_chunk_with_no_vector_is_never_stored() -> None:
+    """The failure that made a library look indexed and answer nothing.
+
+    Haystack's embedder does not raise when a batch fails: it logs, and
+    hands back those documents with `embedding` still None. Writing them
+    produces rows that match no query at any distance, while the store
+    reports the expected number of chunks - so retrieval silently ranks
+    whatever survived, and answers get built from the least bad of a
+    handful. Observed on a live library at 225 of 249 chunks unembedded.
+    """
+    import pytest
+    from primer_retrieval.errors import UnembeddedChunks
+    from primer_retrieval.pipelines import to_documents
+
+    class Swallows:
+        """What the real embedder does with a batch the endpoint refused."""
+
+        def run(self, documents: list[Document]) -> dict[str, Any]:
+            return {
+                "documents": [
+                    Document(id=d.id, content=d.content, embedding=None) for d in documents
+                ]
+            }
+
+    with pytest.raises(UnembeddedChunks) as raised:
+        to_documents((chunk_for(), chunk_for()), Swallows())
+
+    assert raised.value.missing == 2
+    assert raised.value.total == 2
+
+
+def test_one_unembedded_chunk_fails_the_batch_it_arrived_in() -> None:
+    """Partial success is the shape that hid this.
+
+    A batch where most vectors came back is exactly when writing "the good
+    ones" is tempting, and it is how a generation ends up activated with
+    holes in it that nothing reports.
+    """
+    import pytest
+    from primer_retrieval.errors import UnembeddedChunks
+    from primer_retrieval.pipelines import to_documents
+
+    class MostlyWorks:
+        def run(self, documents: list[Document]) -> dict[str, Any]:
+            return {
+                "documents": [
+                    Document(
+                        id=d.id,
+                        content=d.content,
+                        embedding=None if i == 1 else [0.5] * 8,
+                    )
+                    for i, d in enumerate(documents)
+                ]
+            }
+
+    with pytest.raises(UnembeddedChunks) as raised:
+        to_documents((chunk_for(), chunk_for(), chunk_for()), MostlyWorks())
+
+    assert raised.value.missing == 1
+    assert raised.value.total == 3
+
+
 def test_health_endpoints_need_no_credential() -> None:
     """An orchestrator sends no service token, and never will.
 

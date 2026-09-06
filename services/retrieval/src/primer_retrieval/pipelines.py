@@ -20,6 +20,7 @@ from primer_contracts.chunks import DocumentChunk
 from primer_contracts.retrieval import RetrievedChunk, SourceLocator
 
 from primer_retrieval.config import Settings
+from primer_retrieval.errors import UnembeddedChunks
 
 #: Meta keys Primer filters and cites on. Named once because a typo in one
 #: of them is an isolation failure, not a formatting bug.
@@ -113,9 +114,30 @@ def to_documents(chunks: tuple[DocumentChunk, ...], embedder: DocumentEmbedder) 
     carries section headings so a passage keeps the subject it is about. What
     is stored and later quoted is `content`, verbatim. Storing the augmented
     text would put words in a citation that are not in the document.
+
+    A chunk with no vector is never written. Haystack's embedder does not
+    raise when a batch fails - it logs, and returns those documents with
+    `embedding` still None - so an endpoint that was restarting, timing out
+    or refusing a batch arrives here looking exactly like success.
+
+    Writing those rows anyway produced a store that reported the right
+    number of chunks and could not retrieve them. A NULL vector matches no
+    query at any distance, so search silently ranks whichever chunks did
+    embed: on a live library at 225 of 249 unembedded, the same passage was
+    returned for every question asked, scoring no better for one the corpus
+    answered than for one about a film it had never heard of. The model was
+    then handed those passages as evidence.
+
+    Failing makes the stage retry, which is what a transient endpoint
+    deserves - and a partial batch fails whole, because the tempting
+    alternative of keeping the vectors that did arrive is exactly how a
+    generation gets activated with holes nothing reports.
     """
     embedded = embedder.run([_for_embedding(chunk) for chunk in chunks])
     vectors = {document.id: document.embedding for document in embedded["documents"]}
+    missing = sum(1 for chunk in chunks if vectors.get(str(chunk.chunk_id)) is None)
+    if missing:
+        raise UnembeddedChunks(missing, len(chunks))
     return [_for_storage(chunk, vectors[str(chunk.chunk_id)]) for chunk in chunks]
 
 
@@ -123,7 +145,7 @@ def _for_embedding(chunk: DocumentChunk) -> Document:
     return Document(id=str(chunk.chunk_id), content=chunk.embedding_text)
 
 
-def _for_storage(chunk: DocumentChunk, embedding: list[float] | None) -> Document:
+def _for_storage(chunk: DocumentChunk, embedding: list[float]) -> Document:
     return Document(
         id=str(chunk.chunk_id),
         content=chunk.content,

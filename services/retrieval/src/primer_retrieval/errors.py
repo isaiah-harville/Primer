@@ -29,6 +29,19 @@ def dependency_unavailable(detail: str) -> ProblemError:
     )
 
 
+class UnembeddedChunks(RuntimeError):
+    """Chunks came back from the embedder with no vector on them.
+
+    Its own type because it is not the endpoint being down - the call
+    succeeded - and the two need different words in front of an operator.
+    """
+
+    def __init__(self, missing: int, total: int) -> None:
+        self.missing = missing
+        self.total = total
+        super().__init__(f"{missing} of {total} chunks came back without a vector.")
+
+
 @contextmanager
 def embedding_endpoint(consequence: str) -> Iterator[None]:
     """Mark a block that cannot run without the embedding endpoint.
@@ -52,6 +65,21 @@ def embedding_endpoint(consequence: str) -> Iterator[None]:
     """
     try:
         yield
+    except UnembeddedChunks as error:
+        # Reached, and answered, and still did not embed everything - so
+        # saying it could not be reached would send whoever reads this to
+        # check a service that is up. 503 all the same: it is transient and
+        # the caller should retry rather than record a partial index.
+        logger.warning(
+            "the embedding endpoint returned %d of %d chunks without a vector",
+            error.missing,
+            error.total,
+            exc_info=True,
+        )
+        raise dependency_unavailable(
+            f"The embedding endpoint returned {error.missing} of {error.total} chunks "
+            f"without a vector, so {consequence}."
+        ) from error
     except Exception as error:
         logger.warning("the embedding endpoint could not be reached", exc_info=True)
         raise dependency_unavailable(
