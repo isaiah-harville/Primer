@@ -536,7 +536,13 @@
 	{/if}
 
 	<Conversation.Root class="flex-1">
-		<Conversation.Content>
+		<!--
+		  The transcript is what a reader scrolls, so it keeps the gesture:
+		  reaching the top or the bottom stops there rather than passing it
+		  outward. On a phone that was the difference between scrolling the
+		  conversation and dragging the whole interface around behind it.
+		-->
+		<Conversation.Content class="overscroll-contain">
 			{#if transcript.length === 0}
 				<Conversation.Empty>
 					{#if libraryId}
@@ -606,8 +612,15 @@
 								class="[&>span:last-child]:text-xs [&>span:last-child]:font-normal
 									[&>span:last-child]:text-muted-foreground"
 							/>
+							<!--
+							  `overflow-wrap:anywhere` because thinking is where a
+							  model writes out a hash, a path or a URL unbroken,
+							  and `pre-wrap` alone will not break inside a word.
+							  The kit sets this on an answer already; reasoning
+							  is rendered here rather than through it.
+							-->
 							<Reasoning.Content
-								class="whitespace-pre-wrap border-l border-border pl-3 text-xs
+								class="whitespace-pre-wrap [overflow-wrap:anywhere] border-l border-border pl-3 text-xs
 									leading-relaxed text-muted-foreground"
 							>
 								{turn.stream.reasoning}

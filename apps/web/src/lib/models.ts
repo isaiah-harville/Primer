@@ -1,5 +1,3 @@
-import type { ChatModel } from '$lib/api/types';
-
 /**
  * Naming a model the way a request has to name it.
  *

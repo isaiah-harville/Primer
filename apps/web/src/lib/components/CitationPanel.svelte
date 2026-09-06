@@ -68,7 +68,12 @@
 			</Sheet.Description>
 		</Sheet.Header>
 
-		<div bind:this={list} class="flex flex-col gap-3 overflow-y-auto p-4">
+		<!--
+	  Keeps its own gesture, like the transcript: this opens over the
+	  conversation, and a flick that reached its end used to scroll whatever
+	  was behind the sheet.
+	-->
+	<div bind:this={list} class="flex flex-col gap-3 overflow-y-auto overscroll-contain p-4">
 			{#each citations as citation, index (citation.chunk_id)}
 				{@const position = index + 1}
 				<!--

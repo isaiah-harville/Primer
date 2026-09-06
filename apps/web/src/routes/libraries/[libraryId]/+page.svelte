@@ -194,7 +194,13 @@
 	  land at the far edge of the table, and drag the whole page sideways on
 	  a phone. Giving the scroll container a position keeps them inside it.
 	-->
-	<div class="relative mt-8 overflow-x-auto">
+	<!--
+	  `overscroll-x-contain` so a sideways flick across the table stays in
+	  the table. On iOS a horizontal gesture that runs out of content is
+	  taken as a back-navigation, which turns reading a wide row into
+	  leaving the page.
+	-->
+	<div class="relative mt-8 overflow-x-auto overscroll-x-contain">
 		<!--
 		  Fixed layout, so the columns keep the widths set below instead of
 		  being sized by whatever happens to be in them. Filenames are long
