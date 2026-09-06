@@ -97,4 +97,47 @@ https://github.com/aidan-neel/sivir-ui/issues/140
 		font-family: var(--font-sans);
 		-webkit-font-smoothing: antialiased;
 	}
+
+	/*
+	 * The document itself never scrolls. Primer is an application shell -
+	 * a rail beside a frame - and the only thing that moves is whichever
+	 * region inside it owns the overflow.
+	 *
+	 * Stated here as well as on the shell because the shell alone was not
+	 * enough on a phone. A mobile browser reports `100vh` as the viewport
+	 * with its chrome retracted, which is taller than what you can
+	 * actually see, so a shell sized to it hangs below the fold and the
+	 * body scrolls to reach the rest - the whole interface sliding under
+	 * a fixed header, with the composer walking off the bottom of the
+	 * screen. `overflow: hidden` here removes that scroll entirely rather
+	 * than relying on the shell's height being exactly right.
+	 *
+	 * `overscroll-behavior: none` is the other half. Without it, reaching
+	 * the end of the conversation hands the gesture to the page, which on
+	 * iOS rubber-bands the entire interface even when it has nowhere to
+	 * go.
+	 */
+	html,
+	body {
+		height: 100%;
+		overflow: hidden;
+		overscroll-behavior: none;
+	}
+}
+
+/*
+ * The viewport height, as the reader can actually see it.
+ *
+ * `100dvh` tracks the browser's chrome as it shows and hides; `100vh` is
+ * the retracted measurement and is simply wrong on a phone - tall enough
+ * that the shell hangs below the fold and the page scrolls to reach it.
+ *
+ * The `vh` line is a fallback for browsers without `dvh`, and every
+ * browser this builds for has it, so Lightning CSS strips the line back
+ * out again. It is kept because it costs nothing and stops being a no-op
+ * the day someone widens the browser targets.
+ */
+@utility h-viewport {
+	height: 100vh;
+	height: 100dvh;
 }

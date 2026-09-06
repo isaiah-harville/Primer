@@ -46,7 +46,7 @@
 			<Popover.Title class="border-b border-border px-3 py-2 text-sm font-medium">
 				Notifications
 			</Popover.Title>
-			<div class="max-h-80 overflow-y-auto">
+			<div class="max-h-80 overflow-y-auto overscroll-contain">
 				{#if notifications().length === 0}
 					<p class="px-3 py-6 text-center text-sm text-muted-foreground">Nothing yet.</p>
 				{:else}

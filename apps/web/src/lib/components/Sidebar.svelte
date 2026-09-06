@@ -140,7 +140,10 @@
 	  because two of them at once in a rail this narrow means neither can be
 	  read without scrolling past the other.
 	-->
-	<nav aria-label="Main" class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+	<nav
+		aria-label="Main"
+		class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain"
+	>
 		{#each sections as section (section.href)}
 			{@const active = inSection(section.href)}
 			{@const open = expanded[section.href as '/libraries' | '/chat']}
@@ -222,7 +225,7 @@
 									No libraries yet.
 								</p>
 							{/if}
-							<ul class="-mx-1 min-h-0 space-y-0.5 overflow-y-auto px-1">
+							<ul class="-mx-1 min-h-0 space-y-0.5 overflow-y-auto overscroll-contain px-1">
 								{#each libraries as library (library.id)}
 									{@const current = page.url.pathname === `/libraries/${library.id}`}
 									<li>

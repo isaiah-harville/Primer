@@ -87,7 +87,7 @@
 	</p>
 {/if}
 
-<ul class="-mx-1 min-h-0 space-y-0.5 overflow-y-auto px-1">
+<ul class="-mx-1 min-h-0 space-y-0.5 overflow-y-auto overscroll-contain px-1">
 	{#if draft.title}
 		<!--
 		  The thread being written, before it has been stored. It is not a

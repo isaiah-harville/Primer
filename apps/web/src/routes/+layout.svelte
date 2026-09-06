@@ -26,8 +26,13 @@
   scrolls; the content region does. Anything that added height out here - a
   banner across the top, say - gave every screen a scrollbar whether or not
   it had anything to scroll.
+
+  `h-viewport` rather than `h-screen`, because on a phone they are different
+  heights. `100vh` is the viewport with the browser's chrome retracted, so a
+  shell sized to it is taller than the screen and the whole interface slides
+  around under a fixed header while the composer sits below the fold.
 -->
-<div class="flex h-screen overflow-hidden">
+<div class="flex h-viewport overflow-hidden">
 	<!--
 	  A rail, not a column in the page flow: the navigation and the library
 	  list stay put while a document list or a conversation scrolls past them.
@@ -109,9 +114,23 @@
 		  has to think about shrinking. A page that wants the full height
 		  instead asks with `h-full`, which works because this has one.
 		-->
+		<!--
+		  `overscroll-contain` so reaching the end of a long page stops there
+		  rather than handing the gesture on. With the document locked there
+		  is nothing behind this to scroll, and on iOS the offer alone is
+		  enough to rubber-band the whole interface.
+		-->
+		<!--
+		  Padding steps down on a phone rather than up on a desktop. 24px of
+		  gutter either side of a 360px screen is a seventh of the width
+		  spent on nothing, and what it costs is the filename column. The
+		  `sm` and `lg` steps are the values this always had, so nothing
+		  above a phone moves.
+		-->
 		<main
 			id="main"
-			class="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-8 lg:px-10"
+			class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6
+				sm:px-6 sm:py-8 lg:px-10"
 		>
 			{@render children()}
 		</main>
