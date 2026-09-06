@@ -274,6 +274,11 @@
           "description": "Ceiling per chunk, in that tokenizer's tokens. Must stay under the embedding model's input limit.",
           "type": "integer",
           "minimum": 1
+        },
+        "maxPicturesPerDocument": {
+          "description": "How many embedded images the parse worker runs OCR over before leaving the rest unread. 0 disables picture reading.",
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

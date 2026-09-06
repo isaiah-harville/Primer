@@ -102,6 +102,7 @@ spec:
               value: http://{{ include "primer.fullname" $ }}-retrieval:8000
             {{- if eq $name "parse" }}
             {{- with include "primer.chunkingEnv" $ }}{{ . | trim | nindent 12 }}{{- end }}
+            {{- with include "primer.pictureEnv" $ }}{{ . | trim | nindent 12 }}{{- end }}
             {{- end }}
           resources:
             {{- toYaml $worker.resources | nindent 12 }}

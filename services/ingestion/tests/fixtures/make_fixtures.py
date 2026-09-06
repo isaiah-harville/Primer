@@ -129,6 +129,44 @@ def scanned_with_text() -> bytes:
     return build_pdf(objects)
 
 
+def picture_deck() -> bytes:
+    """A deck whose substance is inside a picture rather than beside it.
+
+    Which is what a great many real decks look like: a title, and a pasted
+    chart or screenshot carrying every number on the slide. Docling's
+    PowerPoint pipeline reads the title and nothing else, so this is the
+    fixture that tells whether Primer opened the picture.
+
+    The text is drawn large and plain, because what is being tested is that
+    OCR was attempted and its output reached the chunks - not how well an
+    OCR engine reads a hard image.
+    """
+    from io import BytesIO
+
+    from PIL import Image, ImageDraw
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    canvas = Image.new("RGB", (1400, 500), "white")
+    draw = ImageDraw.Draw(canvas)
+    for index, line in enumerate(
+        ["QUARTERLY REVENUE SUMMARY", "Total bookings reached 4.2 million"]
+    ):
+        draw.text((40, 60 + index * 140), line, fill="black")
+    picture = BytesIO()
+    canvas.save(picture, format="PNG")
+    picture.seek(0)
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "Results"
+    slide.shapes.add_picture(picture, Inches(0.5), Inches(1.5), width=Inches(9))
+
+    buffer = BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
 def slide_deck() -> bytes:
     """A two-slide deck with titles and body text.
 
@@ -161,4 +199,8 @@ if __name__ == "__main__":
     (HERE / "scanned-paper.pdf").write_bytes(scanned_paper())
     (HERE / "scanned-with-text.pdf").write_bytes(scanned_with_text())
     (HERE / "slides.pptx").write_bytes(slide_deck())
-    print("wrote text-paper.pdf, scanned-paper.pdf, scanned-with-text.pdf, and slides.pptx")
+    (HERE / "slides-with-a-picture.pptx").write_bytes(picture_deck())
+    print(
+        "wrote text-paper.pdf, scanned-paper.pdf, scanned-with-text.pdf, "
+        "slides.pptx, and slides-with-a-picture.pptx"
+    )

@@ -33,6 +33,7 @@ from primer_storage import DOCX_MEDIA_TYPE, PDF_MEDIA_TYPE, PPTX_MEDIA_TYPE
 from primer_ingestion.chunking import DocumentContext, build_chunker, to_chunks
 from primer_ingestion.config import Settings
 from primer_ingestion.errors import PermanentStageError, StageError, UnsupportedDocument
+from primer_ingestion.pictures import PictureReader, build_picture_reader, read_pictures
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +62,14 @@ EXTENSIONS: dict[InputFormat, str] = {
 def build_converter(*, enable_ocr: bool = True) -> DocumentConverter:
     """A converter matching what Primer claims to support.
 
-    OCR is on. Slide decks and reports carry much of their content inside
-    images and diagrams, so without it a PowerPoint or a scanned report is
-    accepted and then indexed as almost nothing - which reads to a user as
-    Primer being unable to find text that is plainly on the page.
+    OCR is on, and reaches exactly one format. `do_ocr` is an option on the
+    PDF pipeline; every other format here is converted by `SimplePipeline`,
+    which has no OCR setting at all - so this argument says nothing about a
+    PowerPoint. Whatever a slide keeps inside a picture is read afterwards,
+    by `read_pictures`, or not at all.
+
+    This docstring used to claim the opposite, and a deck of pasted charts
+    was accepted, reported ready, and indexed as its titles.
 
     The cost is real and worth stating: recognized text is a transcription,
     not the document's own characters, so a citation drawn from it can be
@@ -125,6 +130,7 @@ class DocumentParser:
         self._settings = settings
         self._given_converter = converter
         self._given_chunker = chunker
+        self._given_picture_reader: PictureReader | None = None
 
     @property
     def converter(self) -> DocumentConverter:
@@ -137,6 +143,26 @@ class DocumentParser:
         if self._given_chunker is None:
             self._given_chunker = build_chunker(self._settings)
         return self._given_chunker
+
+    @property
+    def picture_reader(self) -> PictureReader:
+        if self._given_picture_reader is None:
+            self._given_picture_reader = build_picture_reader()
+        return self._given_picture_reader
+
+    def _reads_pictures(self, input_format: InputFormat) -> bool:
+        """Whether this format needs its pictures opened separately.
+
+        Only the PDF pipeline does OCR of its own, so PDFs are excluded -
+        running over them again would recognize the same text twice and
+        charge for it. Everything else Primer accepts is converted by
+        `SimplePipeline`, which has no OCR at any setting: a slide deck of
+        pasted charts, or a report whose figures carry its numbers,
+        otherwise converts to headings and empty images.
+        """
+        if not self._settings.enable_ocr:
+            return False
+        return input_format is not InputFormat.PDF
 
     def format_for(self, media_type: str) -> InputFormat:
         input_format = FORMATS_BY_MEDIA_TYPE.get(media_type)
@@ -176,6 +202,18 @@ class DocumentParser:
                     "The document could not be read. It may be corrupt or password protected.",
                 )
             self._check_deadline(started, "conversion")
+
+            if self._reads_pictures(input_format):
+                read = read_pictures(
+                    result.document,
+                    self.picture_reader,
+                    max_pictures=self._settings.max_pictures_per_document,
+                )
+                if read:
+                    logger.info(
+                        "read text from %d picture(s) in %s", read, context.document_version_id
+                    )
+                self._check_deadline(started, "read pictures")
 
             chunks = to_chunks(
                 result.document,

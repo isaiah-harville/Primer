@@ -12,6 +12,12 @@ dependencies = [
     "primer-observability",
     "primer-storage",
     "pydantic-settings",
+    # Imported directly by `pictures`, not only reached through Docling.
+    # Docling runs OCR in its PDF pipeline alone, so the text inside a
+    # slide's pictures is recognized by Primer calling this engine itself -
+    # and a dependency that is imported should be declared, rather than
+    # relied on to keep arriving underneath something else.
+    "rapidocr",
     # Declared directly, though Docling is what needs them, so the workspace
     # can pin them to the CPU-only index. Left transitive, Linux resolves a
     # torch that bundles the entire CUDA toolkit for hardware Primer's
