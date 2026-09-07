@@ -102,6 +102,43 @@ casual testing.
 The symptom is a citation that quotes two words. The parse worker warns at
 startup when it is in this state, because nothing downstream will.
 
+### Fragments survive a correct tokenizer too
+
+A tokenizer is necessary and not sufficient. `HybridChunker` merges
+undersized chunks only when they are **peers** - items sharing a heading -
+and a form defeats that completely: Docling recognises its labels as
+headings, so every value sits alone under a heading of its own with no peer
+to merge with.
+
+Measured on a W2-shaped document with the tokenizer correctly configured:
+five chunks averaging **10 characters**, one of them the bare string
+`52,000.00`. A passage like that answers nothing, and it drags the rest of
+the index down with it - a bare `Homeowners` is short enough to score
+against any question mentioning a person, which is how a fragment becomes
+the top hit for a question it cannot answer.
+
+`ingestion.minChunkChars` (default 40) joins such passages to the ones
+beside them, across the heading boundary the chunker will not cross. The
+contents are joined to each other and the contextualized texts to each
+other, so a citation stays quotable from its source while the headings that
+name the values survive into what is embedded. Never across a page: a
+passage carries one page number, and slides are the sharp case.
+
+Leave it alone unless you have a reason. It is far below prose on purpose -
+the fragments it exists for measure 8 to 15 characters, a real sentence 60
+or more - and raised towards sentence length it merges passages that were
+fine and takes their section citations with them. At 200 it merged an
+ordinary two-section paper into one chunk. `0` switches it off.
+
+### Changing any of this means reindexing
+
+Everything indexed under the old settings is stale together. **Reindex
+all**, at the top of a library, rebuilds every document in one press. The
+library keeps answering from its current index while that runs, and
+switches over a document at a time as each finishes; nothing is deleted.
+Documents already being rebuilt are reported separately rather than
+restarted, so pressing it twice is safe.
+
 ## Text inside pictures
 
 Docling runs OCR in its PDF pipeline only. Every other format Primer accepts

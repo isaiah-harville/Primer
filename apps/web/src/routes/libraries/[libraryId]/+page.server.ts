@@ -47,6 +47,21 @@ export const actions: Actions = {
 		return { reindexed: true };
 	},
 
+	// Rebuilding the whole library, which is the reason anyone reindexes:
+	// the chunker or the embedding model changed and everything indexed
+	// under the old settings is stale together. Control decides which
+	// documents are actually startable, and reports the ones it left alone
+	// rather than treating them as failures.
+	reindexAll: async ({ params, request, fetch }) => {
+		try {
+			const summary = await apiFor(request, fetch).reindexLibrary(params.libraryId);
+			return { rebuilt: summary };
+		} catch (cause) {
+			if (cause instanceof ApiError) return fail(cause.status, { error: cause.message });
+			throw cause;
+		}
+	},
+
 	delete: async ({ params, request, fetch }) => {
 		const form = await request.formData();
 		try {

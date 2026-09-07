@@ -6,6 +6,7 @@ import type {
 	LibrarySummary,
 	Principal,
 	ProblemDetail,
+	ReindexSummary,
 } from './types';
 
 /**
@@ -163,12 +164,40 @@ export class PrimerApi {
 		return this.request(`/api/v1/libraries/${libraryId}/documents/${documentId}`);
 	}
 
+	/**
+	 * A document's bytes, as the response carrying them.
+	 *
+	 * The response rather than the body, because the caller is a proxy: it
+	 * forwards the stream on without reading it, and needs the headers
+	 * Control set to say what the bytes are and what they are called.
+	 * Buffering here instead would hold a whole upload in memory to hand
+	 * back something it already had.
+	 */
+	async content(libraryId: string, documentId: string): Promise<Response> {
+		const response = await this.fetch(
+			`${this.baseUrl}/api/v1/libraries/${libraryId}/documents/${documentId}/content`,
+		);
+		if (!response.ok) {
+			throw new ApiError(await this.problemFrom(response));
+		}
+		return response;
+	}
+
 	upload(libraryId: string, file: File): Promise<DocumentSummary> {
 		const body = new FormData();
 		body.append('file', file);
 		// No Content-Type header: the browser sets it with the multipart
 		// boundary, and overriding it produces an unparseable request.
 		return this.request(`/api/v1/libraries/${libraryId}/documents`, { method: 'POST', body });
+	}
+
+	/** Rebuild every document in a library, which is why anyone reindexes. */
+	reindexLibrary(libraryId: string): Promise<ReindexSummary> {
+		return this.request(`/api/v1/libraries/${libraryId}/documents/reindex`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: '{}',
+		});
 	}
 
 	reindex(libraryId: string, documentId: string): Promise<DocumentSummary> {

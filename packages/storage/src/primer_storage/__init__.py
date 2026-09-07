@@ -8,6 +8,7 @@ is the whole basis of Primer's deduplication.
 from primer_storage.artifact_store import ArtifactStore
 from primer_storage.source_store import (
     DOCX_MEDIA_TYPE,
+    FORMAT_NAMES,
     PDF_MEDIA_TYPE,
     PPTX_MEDIA_TYPE,
     SUPPORTED_EXTENSIONS,
@@ -16,11 +17,13 @@ from primer_storage.source_store import (
     SourceStoreError,
     StoredSource,
     UnsupportedContent,
+    accepted_formats,
     detect_media_type,
 )
 
 __all__ = [
     "DOCX_MEDIA_TYPE",
+    "FORMAT_NAMES",
     "PDF_MEDIA_TYPE",
     "PPTX_MEDIA_TYPE",
     "SUPPORTED_EXTENSIONS",
@@ -30,6 +33,7 @@ __all__ = [
     "SourceStoreError",
     "StoredSource",
     "UnsupportedContent",
+    "accepted_formats",
     "detect_media_type",
 ]
 

@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { emptyStream, parseFrame, reduce } from './sse';
+import { emptyStream, parseEvents, reduce } from './sse';
+
+/** A byte stream delivered in the chunks given, as a connection would. */
+function streamOf(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+	return new ReadableStream({
+		start(controller) {
+			for (const chunk of chunks) controller.enqueue(chunk);
+			controller.close();
+		},
+	});
+}
+
+async function drain(body: ReadableStream<Uint8Array>) {
+	const events = [];
+	for await (const event of parseEvents(body)) events.push(event);
+	return events;
+}
+
+/** Everything parsed out of a stream written as text. */
+function collect(...chunks: string[]) {
+	const encoder = new TextEncoder();
+	return drain(streamOf(...chunks.map((chunk) => encoder.encode(chunk))));
+}
 
 describe('SSE reduction', () => {
 	it('coalesces deltas in arrival order', () => {
@@ -82,15 +104,53 @@ describe('SSE reduction', () => {
 		expect(state.done).toBe(true);
 	});
 
-	it('reads a framed event', () => {
-		const parsed = parseFrame('id: 3\nevent: message.delta\ndata: {"id":3,"text":"hi"}');
-		expect(parsed).toEqual({ id: 3, text: 'hi' });
+	it('reads a framed event', async () => {
+		const events = await collect('id: 3\nevent: message.delta\ndata: {"id":3,"text":"hi"}\n\n');
+		expect(events).toEqual([{ id: 3, text: 'hi' }]);
 	});
 
-	it('skips a malformed frame rather than aborting', () => {
-		// The rest of the answer is still worth showing.
-		expect(parseFrame('id: 3\ndata: {"id":3,')).toBeNull();
-		expect(parseFrame(': keepalive')).toBeNull();
+	it('skips a malformed frame rather than aborting', async () => {
+		// The rest of the answer is still worth showing, so a bad payload
+		// costs one event rather than the whole answer.
+		const events = await collect(
+			'id: 3\ndata: {"id":3,\n\n: keepalive\n\ndata: {"id":4,"text":"rest"}\n\n',
+		);
+		expect(events).toEqual([{ id: 4, text: 'rest' }]);
+	});
+});
+
+/**
+ * Framing the hand-written parser got wrong.
+ *
+ * It matched the one shape Primer's own server sends - `\n\n` separators and
+ * `data:` with exactly one space - rather than the specification. Both of
+ * these are legal SSE that it dropped or hung on, and both would have
+ * arrived the moment anything between the server and the browser rewrote
+ * the stream.
+ */
+describe('SSE framing that is legal but not what we send', () => {
+	it('reads data with no space after the colon', async () => {
+		// The space is optional in the specification. This was silently
+		// dropped: no error, just an event that never arrived.
+		expect(await collect('data:{"id":1,"text":"hi"}\n\n')).toEqual([{ id: 1, text: 'hi' }]);
+	});
+
+	it('reads frames separated by CRLF', async () => {
+		// `indexOf('\n\n')` never finds `\r\n\r\n`, so the old parser
+		// buffered such a stream forever and yielded nothing at all.
+		expect(await collect('data: {"id":1,"text":"hi"}\r\n\r\n')).toEqual([{ id: 1, text: 'hi' }]);
+	});
+
+	it('reassembles an event split across chunks', async () => {
+		// The case the old parser did handle, kept because it is the one
+		// that happens on every real connection.
+		expect(await collect('data: {"id":1,', '"text":"hi"}\n\n')).toEqual([{ id: 1, text: 'hi' }]);
+	});
+
+	it('reassembles a multi-byte character split across chunks', async () => {
+		const bytes = new TextEncoder().encode('data: {"id":1,"text":"é"}\n\n');
+		const events = await drain(streamOf(bytes.slice(0, 22), bytes.slice(22)));
+		expect(events).toEqual([{ id: 1, text: 'é' }]);
 	});
 });
 

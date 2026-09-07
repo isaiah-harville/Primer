@@ -302,3 +302,89 @@ async def test_a_stranger_cannot_reindex_or_delete(
         else await stranger.delete(path)
     )
     assert response.status_code == 404
+
+
+class TestReindexingAWholeLibrary:
+    """One press for the whole library, because that is why anyone reindexes.
+
+    What changes is almost never one document: the chunker, the embedding
+    model, the tokenizer. Everything indexed under the old settings goes
+    stale together, and rebuilding a row at a time means clicking once per
+    document with no way to tell which ones were missed.
+    """
+
+    async def test_every_document_is_queued(
+        self, owner: UserClient, service: ServiceClient, library_id: str, database: Database
+    ) -> None:
+        first = await upload(owner, library_id, database, name="one.txt")
+        second = await upload(owner, library_id, database, name="two.txt")
+        for job in (first, second):
+            await take_to_ready(service, job)
+
+        response = await owner.post(f"/api/v1/libraries/{library_id}/documents/reindex", {})
+
+        assert response.status_code == 202, response.text
+        assert response.json() == {"queued": 2, "skipped": 0}
+        for job in (first, second):
+            assert (await job_row(database, job.document_id)).state == "queued"
+
+    async def test_a_rebuild_already_running_is_counted_not_restarted(
+        self, owner: UserClient, service: ServiceClient, library_id: str, database: Database
+    ) -> None:
+        """Pressing twice must not put two workers on one version.
+
+        They would write different generations of the same version with
+        only one ever activated. The second press is the ordinary case
+        rather than a fault, so it is reported instead of refused.
+        """
+        ready = await upload(owner, library_id, database, name="one.txt")
+        await take_to_ready(service, ready)
+        running = await upload(owner, library_id, database, name="two.txt")
+        await service.claim(running.job_id, "parse")
+
+        response = await owner.post(f"/api/v1/libraries/{library_id}/documents/reindex", {})
+
+        assert response.json() == {"queued": 1, "skipped": 1}
+
+    async def test_a_stalled_document_is_picked_up(
+        self, owner: UserClient, service: ServiceClient, library_id: str, database: Database
+    ) -> None:
+        """A worker that died mid-stage leaves a job active forever.
+
+        Reading that as busy would strand the document: the state never
+        changes on its own, so a library-wide rebuild would skip it every
+        time and the only way back would be the database.
+        """
+        stalled = await upload(owner, library_id, database, name="one.txt")
+        await service.claim(stalled.job_id, "parse")
+        await expire_lease(database, stalled.job_id)
+
+        response = await owner.post(f"/api/v1/libraries/{library_id}/documents/reindex", {})
+
+        assert response.json() == {"queued": 1, "skipped": 0}
+
+    async def test_a_reader_cannot_rebuild_a_library_shared_with_them(
+        self, owner: UserClient, colleague: UserClient, library_id: str, database: Database
+    ) -> None:
+        """A share says the reader may read, and this is not reading.
+
+        The one-document endpoint has always refused them; adding a second
+        way in is exactly how the two would come to disagree.
+        """
+        await colleague.post("/api/v1/libraries", {"name": "Their own"})
+        await upload(owner, library_id, database)
+        await owner.post(
+            f"/api/v1/libraries/{library_id}/shares", {"email": "colleague@example.edu"}
+        )
+
+        response = await colleague.post(f"/api/v1/libraries/{library_id}/documents/reindex", {})
+
+        assert response.status_code == 404, response.text
+
+    async def test_an_empty_library_is_not_an_error(
+        self, owner: UserClient, library_id: str
+    ) -> None:
+        response = await owner.post(f"/api/v1/libraries/{library_id}/documents/reindex", {})
+
+        assert response.status_code == 202
+        assert response.json() == {"queued": 0, "skipped": 0}

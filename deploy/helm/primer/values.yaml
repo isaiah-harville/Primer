@@ -293,6 +293,17 @@ ingestion:
   # --auto-truncate, so a single over-long chunk is trimmed rather than
   # failing the whole batch it arrived in.
   maxChunkTokens: 512
+  # Chunking splits on structure first, and a document whose labels are
+  # recognised as headings - a form, a W2, a statement - ends up one value
+  # per chunk: passages of "52,000.00" that answer nothing and score
+  # against questions they cannot answer. Passages shorter than this are
+  # joined to the ones beside them, never across a page.
+  #
+  # Far below ordinary prose on purpose. The fragments this exists for
+  # measure 8 to 15 characters; a real sentence is 60 or more. Raised
+  # towards sentence length it starts merging passages that were fine and
+  # taking their section citations with them. 0 switches it off.
+  minChunkChars: 40
   # Docling runs OCR only in its PDF pipeline. A slide deck or a report is
   # converted by one that has none, so text living inside a pasted chart or
   # a screenshot is read by this or not at all - and that is most of what a

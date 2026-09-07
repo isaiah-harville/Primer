@@ -2,7 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { RefreshCw, Trash2, Users } from '@lucide/svelte';
-	import { Alert, Breadcrumb, Button, Spinner } from '@sivir-ui/svelte';
+	import { Alert, AlertDialog, Breadcrumb, Button, Spinner } from '@sivir-ui/svelte';
 	import type { DocumentSummary } from '$lib/api/types';
 	import DocumentStatus from '$lib/components/DocumentStatus.svelte';
 	import SharePanel from '$lib/components/SharePanel.svelte';
@@ -15,6 +15,8 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let uploading = $state<string[]>([]);
+	let confirmingRebuild = $state(false);
+	let rebuilding = $state(false);
 	let announcement = $state('');
 	let uploadError = $state('');
 
@@ -123,10 +125,78 @@
 		</p>
 	</div>
 
-	{#if data.capabilities.ingestion_available && data.owned}
-		<UploadDropzone capabilities={data.capabilities} onupload={upload} />
+	{#if data.owned}
+		<div class="flex items-center gap-2">
+			<!--
+			  A plain form, so the rebuild is a POST that works the way every
+			  other action on this page does. The button that starts it is not
+			  its submit button: it opens the confirmation, and the dialog's
+			  confirm submits this through its `form` attribute - which
+			  associates across the DOM, so the dialog is free to render
+			  wherever it likes.
+			-->
+			<form
+				id="reindex-all"
+				method="POST"
+				action="?/reindexAll"
+				use:enhance={() => {
+					rebuilding = true;
+					return async ({ update }) => {
+						await update();
+						rebuilding = false;
+					};
+				}}
+			></form>
+
+			{#if data.documents.length > 0}
+				<Button
+					variant="quiet"
+					onclick={() => (confirmingRebuild = true)}
+					disabled={rebuilding}
+					title="Rebuild the index for every document in this library"
+				>
+					{#if rebuilding}
+						<Spinner size={14} aria-hidden="true" />
+					{:else}
+						<RefreshCw size={14} aria-hidden="true" />
+					{/if}
+					Reindex all
+				</Button>
+			{/if}
+
+			{#if data.capabilities.ingestion_available}
+				<UploadDropzone capabilities={data.capabilities} onupload={upload} />
+			{/if}
+		</div>
 	{/if}
 </div>
+
+<!--
+  Asked for rather than assumed. Reindexing is not destructive - the current
+  index keeps answering until a new generation is built - but it is not
+  free either: every document is parsed, embedded and indexed again, which
+  on a large library is hours of work and the whole ingestion queue. That is
+  worth a deliberate second press.
+-->
+<AlertDialog.Root bind:open={confirmingRebuild}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>
+				Reindex {data.documents.length}
+				{data.documents.length === 1 ? 'document' : 'documents'}?
+			</AlertDialog.Title>
+			<AlertDialog.Description>
+				Every document in {data.library.name} is read, embedded and indexed again. The library
+				keeps answering questions from its current index while that happens, and answers switch
+				over one document at a time as each finishes. Nothing is deleted.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Exit>Cancel</AlertDialog.Exit>
+			<AlertDialog.Confirm type="submit" form="reindex-all">Reindex all</AlertDialog.Confirm>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 {#if !data.owned}
 	<!--
@@ -163,6 +233,27 @@
 {#if form?.error}
 	<Alert.Root variant="error" class="mt-4">
 		<Alert.Description>{form.error}</Alert.Description>
+	</Alert.Root>
+{/if}
+
+{#if form?.rebuilt}
+	<!--
+	  Both numbers, because they differ for a reason the user should see. A
+	  document already being rebuilt is not restarted, so pressing this
+	  twice queues nothing the second time - reported as "0 queued" with no
+	  explanation, that reads as a failure.
+	-->
+	<Alert.Root variant="success" class="mt-4">
+		<Alert.Description>
+			{form.rebuilt.queued}
+			{form.rebuilt.queued === 1 ? 'document is' : 'documents are'} being rebuilt.
+			{#if form.rebuilt.skipped > 0}
+				{form.rebuilt.skipped}
+				already {form.rebuilt.skipped === 1 ? 'was' : 'were'}, and {form.rebuilt.skipped === 1
+					? 'was'
+					: 'were'} left to finish.
+			{/if}
+		</Alert.Description>
 	</Alert.Root>
 {/if}
 

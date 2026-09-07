@@ -107,6 +107,26 @@ def _looks_like_text(prefix: bytes) -> bool:
     return False
 
 
+#: How each accepted extension is named to a person. Deduplicated on the way
+#: out, because `.md` and `.markdown` are one format to everyone but the
+#: filesystem. A test holds this in step with `SUPPORTED_EXTENSIONS`, which
+#: is the drift that put PPTX in the table and left it out of the sentence.
+FORMAT_NAMES = {
+    ".pdf": "PDF",
+    ".docx": "DOCX",
+    ".pptx": "PPTX",
+    ".md": "Markdown",
+    ".markdown": "Markdown",
+    ".txt": "plain text",
+}
+
+
+def accepted_formats() -> str:
+    """The formats Primer takes, in a form that reads as a sentence."""
+    names = list(dict.fromkeys(FORMAT_NAMES[extension] for extension in SUPPORTED_EXTENSIONS))
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
 def detect_media_type(prefix: bytes, filename: str) -> str:
     """Resolve the media type from the bytes, cross-checked against the name.
 
@@ -119,7 +139,7 @@ def detect_media_type(prefix: bytes, filename: str) -> str:
     if declared is None:
         raise UnsupportedContent(
             "unsupported_extension",
-            "Primer accepts PDF, DOCX, Markdown, and plain text files.",
+            f"Primer accepts {accepted_formats()} files.",
         )
 
     if declared == PDF_MEDIA_TYPE:

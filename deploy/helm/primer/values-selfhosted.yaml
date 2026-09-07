@@ -95,6 +95,17 @@ ingestion:
   # A paragraph-sized passage: long enough that a citation reads as prose,
   # short enough that one embedding is about one thing.
   maxChunkTokens: 512
+  # Chunking splits on structure first, and a document whose labels are
+  # recognised as headings - a form, a W2, a statement - ends up one value
+  # per chunk: passages of "52,000.00" that answer nothing and score
+  # against questions they cannot answer. Passages shorter than this are
+  # joined to the ones beside them, never across a page.
+  #
+  # Far below ordinary prose on purpose. The fragments this exists for
+  # measure 8 to 15 characters; a real sentence is 60 or more. Raised
+  # towards sentence length it starts merging passages that were fine and
+  # taking their section citations with them. 0 switches it off.
+  minChunkChars: 40
 
 workers:
   parse:
