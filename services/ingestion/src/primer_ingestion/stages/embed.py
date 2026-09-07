@@ -8,6 +8,7 @@ embedded independently could write vectors the store cannot compare.
 from __future__ import annotations
 
 import logging
+from itertools import batched
 
 from primer_contracts.chunks import DocumentChunk
 from primer_contracts.indexing import IndexRequest
@@ -19,7 +20,6 @@ from primer_ingestion.errors import PermanentStageError
 from primer_ingestion.retrieval_client import (
     RetrievalClient,
     VectorIndex,
-    batched,
     worker_principal,
 )
 from primer_ingestion.stages.parse import CHUNKS_ARTIFACT
@@ -41,10 +41,7 @@ class EmbedStage:
     def __call__(self, claim: JobClaim) -> None:
         chunks = self._load(claim)
 
-        # Batched so one timeout costs one batch rather than a whole
-        # document. Re-sending a batch is safe: chunk ids are derived, so a
-        # repeated write overwrites the same rows.
-        for batch in batched(chunks, self._settings.index_batch_size):
+        for batch in batched(chunks, self._settings.index_batch_size, strict=False):
             self._index.index(
                 IndexRequest(
                     principal=worker_principal(claim.owner_user_id),

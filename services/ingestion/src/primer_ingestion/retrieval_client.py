@@ -18,7 +18,6 @@ from typing import Protocol
 from uuid import UUID
 
 import httpx2
-from primer_contracts.chunks import DocumentChunk
 from primer_contracts.identity import Principal
 from primer_contracts.indexing import (
     DeleteRequest,
@@ -144,7 +143,3 @@ def worker_principal(owner_user_id: UUID) -> Principal:
     this as permission to read anything.
     """
     return Principal(subject=f"ingestion-worker:{owner_user_id}", user_id=owner_user_id)
-
-
-def batched(chunks: list[DocumentChunk], size: int) -> list[list[DocumentChunk]]:
-    return [chunks[start : start + size] for start in range(0, len(chunks), size)]

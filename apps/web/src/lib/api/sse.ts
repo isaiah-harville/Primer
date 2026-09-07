@@ -1,3 +1,4 @@
+import { createParser } from 'eventsource-parser';
 import type { Citation, MessageSummary } from './types';
 
 /**
@@ -105,42 +106,64 @@ export function reduce(state: StreamState, event: RawEvent): StreamState {
 /**
  * Split an SSE byte stream into events.
  *
- * Frames are separated by a blank line and can arrive split across chunks,
- * so a partial frame is held back rather than parsed as a whole one.
+ * The framing is `eventsource-parser`'s rather than ours. What we had
+ * handled the shape our own server happens to send and only that: a frame
+ * separator of exactly `\n\n`, and a `data:` prefix with exactly one space
+ * after the colon. Both are narrower than the specification. The space is
+ * optional, so a compliant `data:{"id":1}` was **silently dropped** - no
+ * error, just an event that never arrived - and a `\r\n\r\n` separator is
+ * not found by a search for `\n\n` at all, so a stream using it would
+ * hang rather than yield.
+ *
+ * Nothing was broken in practice, because Primer's own `sse.py` writes the
+ * one shape the old parser understood. That is the problem with it: it
+ * worked by agreement with a single sender rather than by following the
+ * protocol, and anything between the two - an edge proxy, a future
+ * endpoint - only had to be correct to break it.
  */
 export async function* parseEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<RawEvent> {
+	const ready: RawEvent[] = [];
+	const parser = createParser({
+		onEvent: (message) => {
+			const event = decode(message.data);
+			if (event) ready.push(event);
+		},
+		// A malformed frame is skipped rather than aborting the stream: the
+		// rest of the answer is still worth showing. `terminate` would throw
+		// away a whole answer over one bad line.
+		onError: () => {},
+	});
+
+	// A reader rather than `for await` over the stream. Async iteration of a
+	// ReadableStream is still missing from Chrome and Safari, so iterating
+	// the piped stream directly would work in Node, pass in tests, and fail
+	// in most browsers.
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
-	let buffer = '';
-
 	while (true) {
 		const { done, value } = await reader.read();
-		if (done) break;
-		buffer += decoder.decode(value, { stream: true });
-
-		let boundary = buffer.indexOf('\n\n');
-		while (boundary !== -1) {
-			const frame = buffer.slice(0, boundary);
-			buffer = buffer.slice(boundary + 2);
-			const parsed = parseFrame(frame);
-			if (parsed) yield parsed;
-			boundary = buffer.indexOf('\n\n');
-		}
+		if (done) return;
+		// `stream: true`, because a multi-byte character can be split across
+		// two chunks and decoding each alone would corrupt it.
+		parser.feed(decoder.decode(value, { stream: true }));
+		while (ready.length > 0) yield ready.shift() as RawEvent;
 	}
 }
 
-export function parseFrame(frame: string): RawEvent | null {
-	const data = frame
-		.split('\n')
-		.filter((line) => line.startsWith('data: '))
-		.map((line) => line.slice('data: '.length))
-		.join('\n');
+/**
+ * One event's JSON payload, or null when it is not usable.
+ *
+ * Primer puts everything in `data` as JSON, including the id it dedupes on
+ * - the SSE `id:` field carries the same number, but as text, and reading
+ * one of the two rather than both keeps a single source of truth.
+ */
+export function decode(data: string): RawEvent | null {
 	if (!data) return null;
 	try {
 		return JSON.parse(data) as RawEvent;
 	} catch {
-		// A truncated or malformed frame is skipped rather than aborting the
-		// stream: the rest of the answer is still worth showing.
+		// A truncated or malformed payload is skipped rather than aborting
+		// the stream: the rest of the answer is still worth showing.
 		return null;
 	}
 }

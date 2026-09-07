@@ -33,6 +33,7 @@
 		"@lucide/svelte": "^1.38.0",
 		"@sivir-ui/svelte": "^0.2.4",
 		"@tailwindcss/vite": "^4.3.3",
+		"eventsource-parser": "4.1.0",
 		"tailwindcss": "^4.3.3"
 	}
 }
